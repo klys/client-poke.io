@@ -43,7 +43,18 @@ const UserControl = () => {
     useEventListener('click', clickOverMap)
 
     const keyUpEvent = (event:KeyboardEvent) => {
+        event.preventDefault()
         if (waiting) return;
+        console.log("players", players)
+        // const keys = Object.keys(players)
+        /* let myId = undefined
+        for(let i = 0; i < keys.length; i++) {
+            if (players[keys[i]].playerId === socket.id) {
+                myId = keys[i]
+                break;
+            }
+        } */
+        //const myId = players.findIndex((player:any) => player.playerId == socket.id)[0];
         if ((event.key == "q")) {
             
             console.log("Pressing Q")
@@ -58,9 +69,57 @@ const UserControl = () => {
 
             socket.emit("shotProjectil", shotProjectileData)
         }
+        
+        /* if (typeof myId == 'undefined') return;
+        console.log("my_player",players[myId])
+        const moveSlot = 32;
+        if ((event.key == "ArrowUp")) {
+            socket.emit("move", { x: players[myId].x , y: players[myId].y-moveSlot })
+        }
+        if ((event.key == "ArrowDown")) {
+            socket.emit("move", { x: players[myId].x, y: players[myId].y+moveSlot })
+        }
+        if ((event.key == "ArrowLeft")) {
+            socket.emit("move", { x: players[myId].x-moveSlot, y: players[myId].y })
+        }
+        if ((event.key == "ArrowRight")) {
+            socket.emit("move", { x: players[myId].x+moveSlot, y: players[myId].y })
+        } */
+    }
+
+
+    const keyDownEvent = (event:KeyboardEvent) => {
+        event.preventDefault()
+        if (waiting) return;
+        console.log("players", players)
+        const keys = Object.keys(players)
+        let myId = undefined
+        for(let i = 0; i < keys.length; i++) {
+            if (players[keys[i]].playerId === socket.id) {
+                myId = keys[i]
+                break;
+            }
+        }
+        if (typeof myId == 'undefined') return;
+        console.log("my_player",players[myId])
+        const moveSlot = 32;
+        if ((event.key == "ArrowUp")) {
+            socket.emit("move", { x: players[myId].x , y: players[myId].y-moveSlot })
+        }
+        if ((event.key == "ArrowDown")) {
+            socket.emit("move", { x: players[myId].x, y: players[myId].y+moveSlot })
+        }
+        if ((event.key == "ArrowLeft")) {
+            socket.emit("move", { x: players[myId].x-moveSlot, y: players[myId].y })
+        }
+        if ((event.key == "ArrowRight")) {
+            socket.emit("move", { x: players[myId].x+moveSlot, y: players[myId].y })
+        }
     }
 
     useEventListener('keyup', keyUpEvent)
+
+    useEventListener('keydown', keyDownEvent)
 
 
     // useEventListener('scroll',(event:Event) => {

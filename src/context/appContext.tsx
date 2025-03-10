@@ -21,7 +21,7 @@ export type InitialStateType = {
 }
 
 const InitialState = {
-    socket: io('https://game-server-socketio.herokuapp.com/'),
+    socket: io('http://localhost:3001/'),
     players: [],
     //playersIds: {},
     projectiles:[],
@@ -96,8 +96,25 @@ const reducer = (state:any, action:any) => {
                 players: state.players
             }
         case actions.MOVE_PLAYER:
-            if (state.playersIds[action.playerData.playerId] !== undefined) {
-                state.players.splice(state.playersIds[action.playerData.playerId], 1, {jsx:<Ship playerInfo={action.playerData} key={action.playerData.playerId} />, ...action.playerData})
+            /*
+                playerData:{
+             
+                    playerData:{
+                        playerId:
+                        angle,
+                        id
+                        jsx
+                        x
+                        y
+                    }
+                }
+            */
+           console.log("appContext->action.playerData",action.playerData)
+            if (typeof state.players[action.playerData.id] !== undefined) {
+                state.players[action.playerData.id] = {
+                                    ...state.players[action.playerData.id],
+                                    ...action.playerData
+                    }
             }
             return {
                 ...state,

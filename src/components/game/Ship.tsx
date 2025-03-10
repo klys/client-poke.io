@@ -1,10 +1,18 @@
 import React, { useState, useContext, useEffect, useCallback } from "react";
-import { ScriptElementKindModifier } from "typescript";
 import { AppContext } from "../../context/appContext";
-
+/**
+ * 
+ * @param props {
+ *    playerData:{
+ *        playerId:,
+ *        
+ *    }
+ * } 
+ * @returns 
+ */
 const Ship = (props:any) => {
   const [death, setDeath] = useState(false)
-  const { socket } = useContext(AppContext)
+  const { socket, players, movePlayer } = useContext(AppContext)
 
   const [pos, setPos] = useState({x:100,y:100,angle:0})
 
@@ -57,7 +65,23 @@ const Ship = (props:any) => {
 const move = useCallback(() => {
   socket.on("move"+playerId, (data:any)=>{
     setPos({x:data.x,y:data.y,angle:data.angle})
-    
+    const keys = Object.keys(players)
+    let myId = undefined
+    for(let i = 0; i < keys.length; i++) {
+      if (players[keys[i]].playerId == socket.id) {
+        myId = keys[i]
+        break;
+      }
+    }
+    if (typeof myId == 'undefined') return;
+    movePlayer({
+      
+        id:myId,
+        angle:data.angle,
+        x:data.x,
+        y:data.y                 
+      
+    })
   })
 },[])
 
@@ -83,6 +107,42 @@ useEffect(()=>{
   }
 },[pos])
   
+const renderCharacterAngle = () => {
+  switch(pos.angle) {
+    case 450: // up
+    return (<img
+      
+      src="/character0/TestChar_Up.png"
+      alt="Character facing up"
+      width={32}
+      height={32}
+    />)
+    case 270: // down
+    return (<img
+      
+      src="/character0/TestChar_Down.png"
+      alt="Character facing up"
+      width={32}
+      height={32}
+    />)
+    case 360: // left
+    return (<img
+      
+      src="/character0/TestChar_Left.png"
+      alt="Character facing up"
+      width={32}
+      height={32}
+    />)
+    case 180: // right
+    return (<img
+      
+      src="/character0/TestChar_Right.png"
+      alt="Character facing up"
+      width={32}
+      height={32}
+    />)
+  }
+}
   
   return (<>
     <div
@@ -96,8 +156,8 @@ useEffect(()=>{
         
       }}
     >
-
-      <img
+      {renderCharacterAngle()}
+      {/*<img
         style={{ 
         transform: "rotate(" + pos.angle + "deg)"
        }}
@@ -105,7 +165,7 @@ useEffect(()=>{
         alt="Picture of a spaceship"
         width={32}
         height={32}
-      />
+      />*/}
     </div>
   </>)
 }

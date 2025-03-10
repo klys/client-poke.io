@@ -25,7 +25,7 @@ const Map = ({children}:{children:any}) => {
     useEventListener('pointermove',mapPointerMoveEvent, mapRef) 
     
     return(<>
-        <div id="map" ref ={mapRef} style={{height:'3200px', width:'3200px', background:"repeat center/20% url('/bg0.jpg')"}}>
+        <div id="map" ref ={mapRef} style={{height:'3200px', width:'3200px', background:"repeat center/1% url('/map0/Tile_Grass.png')"}}>
             {(children) ? children : null}
         </div>
     </>)
