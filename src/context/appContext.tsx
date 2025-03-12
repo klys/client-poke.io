@@ -12,6 +12,7 @@ export type Player = { // unused
 export type InitialStateType = {
     socket: any
     players: any[]
+    objects: any[]
     //playersIds: {}
     projectiles: any[]
     mouse: {}
@@ -23,6 +24,7 @@ export type InitialStateType = {
 const InitialState = {
     socket: io('http://localhost:3001/'),
     players: [],
+    objects: [],
     //playersIds: {},
     projectiles:[],
     mouse:{x:-1,y:-1},
@@ -51,7 +53,8 @@ enum actions {
     SET_LIFE = 'SET_LIFE',
     START_WAIT = 'START_WAIT',
     STOP_WAIT = 'STOP_WAIT',
-    SET_MYPLAYER = 'SET_MYPLAYER'
+    SET_MYPLAYER = 'SET_MYPLAYER',
+    ADD_OBJECT = 'ADD_OBJECT'
 }
 
 // Actions are handle on this reducer
@@ -194,6 +197,12 @@ const reducer = (state:any, action:any) => {
                 ...state,
                 myplayer:action.playerId
             }
+        case actions.ADD_OBJECT:
+            state.objects.push(action.objectData)
+            return{
+                ...state,
+                objects:state.objects
+            }
             
     }
 }
@@ -214,6 +223,7 @@ export const Provider = ({ children }:{children:any}) => {
         life:state.life ?? 100,
         waiting:state.waiting ?? false,
         myplayer:state.myplayer ?? "",
+        objects:state.objects ?? [],
         connect: () => {
             dispatch({ type: actions.CONNECT })
         },
@@ -258,6 +268,9 @@ export const Provider = ({ children }:{children:any}) => {
         },
         setMyPlayer: (playerId:string) => {
             dispatch({type:actions.SET_MYPLAYER, playerId})
+        },
+        addObject: (objectData:any) => {
+            dispatch({type: actions.ADD_OBJECT, objectData})
         }
     }
 

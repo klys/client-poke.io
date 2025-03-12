@@ -1,11 +1,13 @@
 
-import { useContext, useEffect, useCallback } from "react";
+import { useContext, useEffect, useCallback, useRef } from "react";
 import { AppContext } from "../../context/appContext"
 
 
 const Network = () => {
 
-    const { socket, addPlayer, removePlayer, addProjectil, removeProjectil } = useContext(AppContext);
+    const loadOnce = useRef(false)
+
+    const { socket, addPlayer, removePlayer, addProjectil, removeProjectil, addObject } = useContext(AppContext);
     
     const socketAddPlayer = useCallback((data:any) => {
         console.log("addPlayer",data)
@@ -27,6 +29,11 @@ const Network = () => {
         removeProjectil(data)
     },[])
 
+    const socketAddObject = useCallback((data:any) => {
+        console.log("addObject", data)
+        addObject(data)
+    },[])
+
     socket.emit("addPlayer")
 
 
@@ -34,9 +41,9 @@ const Network = () => {
         //console.log("Network mounted!")
         
 
+        if (!loadOnce.current) {
 
-
-
+            loadOnce.current = true;
         socket.on("addPlayer", socketAddPlayer)
 
         socket.on("removePlayer", socketRemovePlayer)
@@ -50,6 +57,8 @@ const Network = () => {
 
         socket.on("explodeProjectil", socketExplodeProjectil)
 
+        socket.on("addObject", socketAddObject)
+
         //  socket.on("playerDeath", (data:any) => {
         //      //console.log(`player:${data.playerId} has die!`)
         //      if (data.playerId == socket.id) startWait()
@@ -62,7 +71,7 @@ const Network = () => {
         //  })
         
           
-      
+    }
         
 
         

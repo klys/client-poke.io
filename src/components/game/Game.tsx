@@ -10,6 +10,8 @@ import Missiles from "./Missiles";
 // import Mouse from "./Mouse";
 import LifeBar from "../ux/game/lifeBar";
 import DeathMessage from "../ux/game/DeathMessage"
+import Objects from "./Objects";
+
 
 const Game = () => {
     return (<>
@@ -18,11 +20,11 @@ const Game = () => {
             <Network />
             <UserControl />
             <Map>
-                
+                <Objects/>
             </Map>
             <Missiles />
             <Ships />
-            
+          
             <LifeBar/>
             <DeathMessage/>
                         

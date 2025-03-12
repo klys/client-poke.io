@@ -102,7 +102,7 @@ const UserControl = () => {
         }
         if (typeof myId == 'undefined') return;
         console.log("my_player",players[myId])
-        const moveSlot = 32;
+        const moveSlot = 16;
         if ((event.key == "ArrowUp")) {
             socket.emit("move", { x: players[myId].x , y: players[myId].y-moveSlot })
         }
