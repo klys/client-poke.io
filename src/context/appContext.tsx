@@ -1,5 +1,5 @@
-import { createContext, useReducer } from "react"
-import io from "socket.io-client"
+import { createContext, useEffect, useReducer, useState } from "react"
+import io, { Socket } from "socket.io-client"
 import Ship from "../components/game/Ship"
 
 export type Player = { // unused
@@ -10,7 +10,7 @@ export type Player = { // unused
 }
 
 export type InitialStateType = {
-    socket: any
+    socket: Socket
     players: any[]
     objects: any[]
     //playersIds: {}
@@ -21,8 +21,8 @@ export type InitialStateType = {
     myplayer:string
 }
 
-const InitialState = {
-    socket: io('http://localhost:3001/'),
+const createInitialState = (socket: Socket) => ({
+    socket,
     players: [],
     objects: [],
     //playersIds: {},
@@ -33,7 +33,7 @@ const InitialState = {
     life: 0,
     waiting:false,
     myplayer:""
-}
+})
 
 export const networkEvents = {
     
@@ -63,8 +63,7 @@ const reducer = (state:any, action:any) => {
     switch (action.type) {
         case actions.CONNECT:
             return {
-                ...state,
-                socket: io('https://game-server-socketio.herokuapp.com/')
+                ...state
             }
         case actions.ADD_PLAYER:
             //console.log("action.playerData:", action.playerData);
@@ -208,10 +207,18 @@ const reducer = (state:any, action:any) => {
 }
 
 // Context and Provider
-export const AppContext = createContext<any>(InitialState);
+export const AppContext = createContext<any>(null);
 
-export const Provider = ({ children }:{children:any}) => {
-    const [state, dispatch] = useReducer(reducer, InitialState);
+export const Provider = ({ children, socketUrl }:{children:any, socketUrl:string}) => {
+    const [socket] = useState(() => io(socketUrl))
+    const [state, dispatch] = useReducer(reducer, createInitialState(socket));
+
+    useEffect(() => {
+        return () => {
+            socket.disconnect()
+        }
+    }, [socket])
+
     const api = {
         socket: state.socket,
         players: state.players ?? [],
@@ -280,4 +287,3 @@ export const Provider = ({ children }:{children:any}) => {
         </AppContext.Provider>
     )
 }
-

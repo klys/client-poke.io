@@ -13,9 +13,9 @@ import DeathMessage from "../ux/game/DeathMessage"
 import Objects from "./Objects";
 
 
-const Game = () => {
+const Game = ({ socketUrl }:{ socketUrl:string }) => {
     return (<>
-        <Provider>
+        <Provider socketUrl={socketUrl}>
   
             <Network />
             <UserControl />
