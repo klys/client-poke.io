@@ -1,9 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import Game from './components/game/Game'
-
-type RuntimeConfig = {
-  backendUrl: string
-}
+import React, { useEffect, useMemo, useState } from 'react';
+import { RouterProvider } from 'react-router-dom';
+import { createAppRouter, type RuntimeConfig } from './endpoint';
+import { AuthProvider } from './context/authContext';
 
 const DEFAULT_CONFIG: RuntimeConfig = {
   backendUrl: 'http://localhost:3001/'
@@ -11,6 +9,9 @@ const DEFAULT_CONFIG: RuntimeConfig = {
 
 function App() {
   const [config, setConfig] = useState<RuntimeConfig | null>(null);
+  const router = useMemo(() => (
+    config ? createAppRouter(config) : null
+  ), [config]);
 
   useEffect(() => {
     let mounted = true;
@@ -43,14 +44,14 @@ function App() {
     };
   }, []);
 
-  if (config === null) {
+  if (router === null || config === null) {
     return <>Loading...</>;
   }
 
   return (
-    <>
-      <Game socketUrl={config.backendUrl} />
-    </>
+    <AuthProvider socketUrl={config.backendUrl}>
+      <RouterProvider router={router} />
+    </AuthProvider>
   );
 }
 

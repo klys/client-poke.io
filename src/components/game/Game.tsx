@@ -11,11 +11,13 @@ import Missiles from "./Missiles";
 import LifeBar from "../ux/game/lifeBar";
 import DeathMessage from "../ux/game/DeathMessage"
 import Objects from "./Objects";
+import AccountMenu from "../ux/auth/AccountMenu";
 
 
 const Game = ({ socketUrl }:{ socketUrl:string }) => {
     return (<>
         <Provider socketUrl={socketUrl}>
+            <AccountMenu />
   
             <Network />
             <UserControl />
