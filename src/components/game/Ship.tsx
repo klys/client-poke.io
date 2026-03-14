@@ -1,181 +1,277 @@
-import React, { useState, useContext, useEffect, useCallback } from "react";
+import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AppContext } from "../../context/appContext";
-/**
- * 
- * @param props {
- *    playerData:{
- *        playerId:,
- *        
- *    }
- * } 
- * @returns 
+
+type Position = {
+  x: number
+  y: number
+  angle: number
+}
+
+type Direction = "up" | "down" | "left" | "right";
+
+const DEFAULT_POSITION: Position = {
+  x: 100,
+  y: 100,
+  angle: 270
+}
+
+/*
+ * Movement timing guide:
+ * - MOVEMENT_DURATION_PER_PIXEL is the main "feel" control. Higher values make each step glide longer.
+ * - MIN_MOVEMENT_DURATION prevents very short moves from looking like teleports.
+ * - MAX_MOVEMENT_DURATION caps long moves so the client does not feel sluggish when several updates queue up.
+ *
+ * Current examples:
+ * - A 16px step uses about 112ms (16 * 7), which fits between the min and max values.
+ * - Raising MIN_MOVEMENT_DURATION makes tiny corrections more visible.
+ * - Lowering MAX_MOVEMENT_DURATION makes catch-up movement more responsive when network updates stack.
  */
-const Ship = (props:any) => {
-  const [death, setDeath] = useState(false)
-  const { socket, players, movePlayer } = useContext(AppContext)
-  const playerInfo = props.playerInfo ?? {}
-  const playerId = playerInfo.playerId;
-  const [pos, setPos] = useState(() => ({
-    x: playerInfo.x ?? 100,
-    y: playerInfo.y ?? 100,
-    angle: playerInfo.angle ?? 270
-  }))
+const MIN_MOVEMENT_DURATION = 90;
+const MAX_MOVEMENT_DURATION = 180;
+const MOVEMENT_DURATION_PER_PIXEL = 7;
 
-  //console.log("props:", props.playerInfo)
-  // useEffect(() => {
-  //   socket.on("playerHurt", (data:any) => {
-  //     console.log("playerHurt received!!")
-  //     if (playerId == data.playerId) setLife(data.life)
-  //   })
-  // }, [life])
-  // socket.on("move", (data:any) => {
-  //   //console.log("move", data)
-  //   if (playerId == data.playerId) movePlayer(data)
-    
-  // })
-  const socketPlayerDeath = useCallback(() => {
-    console.log("playerDeath"+playerId)
-    setDeath(true)
-    socket.off("move"+playerId)
-  
-  },[])
-
-  const socketPlayerReborn = useCallback(() => {
-    setDeath(false)
-    move()
-},[])
-
-  let camLoop: NodeJS.Timer;
-  useEffect(()=> {
-
-  socket.on("playerDeath"+playerId, socketPlayerDeath)
-
-  socket.on("playerReborn"+playerId, socketPlayerReborn)
-  
-  if (death === false) {
-    move()
-  }
-  
-
-  
-
-  return(()=> {
-    //socket.off("playerDeath"+playerId)
-    //socket.off("playerReborn"+playerId)
-    //if(death === false) socket.off("move"+playerId)
-  })
-},[death])
-
-const move = useCallback(() => {
-  socket.on("move"+playerId, (data:any)=>{
-    setPos({x:data.x,y:data.y,angle:data.angle})
-    const keys = Object.keys(players)
-    let myId = undefined
-    for(let i = 0; i < keys.length; i++) {
-      if (players[keys[i]].playerId == socket.id) {
-        myId = keys[i]
-        break;
-      }
-    }
-    if (typeof myId == 'undefined') return;
-    movePlayer({
-      
-        id:myId,
-        angle:data.angle,
-        x:data.x,
-        y:data.y                 
-      
-    })
-  })
-},[])
-
-const updateCamera = useCallback( () => {
-  //if (playersIds[socket.id] !== undefined) {
-    //console.log("updateCamera")
-      const cam_x = pos.x - (window.visualViewport.width/2)
-      const cam_y = pos.y - (window.visualViewport.height/2)
-      window.scroll(cam_x,cam_y)
-  //}
-
-},[pos])
-
-useEffect(()=>{
-  if (socket.id === playerId) {
-    // setup camera for our player
-    //console.log("camera mounted")
-        
-        camLoop = setInterval(updateCamera, 1)
-  }
-  return () => {
-    clearInterval(camLoop)
-  }
-},[pos])
-  
-const renderCharacterAngle = () => {
-  switch(pos.angle) {
-    case 450: // up
+const getDirectionFromAngle = (angle: number): Direction => {
+  switch (angle) {
+    case 450:
     case 90:
-    return (<img
-      
-      src="/character0/TestChar_Up.png"
-      alt="Character facing up"
-      width={32}
-      height={32}
-    />)
-    case 270: // down
-    return (<img
-      
-      src="/character0/TestChar_Down.png"
-      alt="Character facing up"
-      width={32}
-      height={32}
-    />)
-    case 360: // left
+      return "up";
+    case 180:
+      return "right";
+    case 360:
     case 0:
-    return (<img
-      
-      src="/character0/TestChar_Left.png"
-      alt="Character facing up"
-      width={32}
-      height={32}
-    />)
-    case 180: // right
-    return (<img
-      
-      src="/character0/TestChar_Right.png"
-      alt="Character facing up"
-      width={32}
-      height={32}
-    />)
-    default:return (<div>{pos.angle}</div>)
+      return "left";
+    case 270:
+    default:
+      return "down";
   }
 }
-  
-  return (<>
+
+const sameCoordinates = (first: Position, second: Position) =>
+  first.x === second.x && first.y === second.y;
+
+const samePosition = (first: Position, second: Position) =>
+  sameCoordinates(first, second) && first.angle === second.angle;
+
+const easeOutCubic = (progress: number) => 1 - Math.pow(1 - progress, 3);
+
+const buildSpritePath = (direction: Direction, isWalking: boolean) =>
+  `/character0/player_${isWalking ? "walk" : "stand"}_${direction}.${isWalking ? "gif" : "png"}`;
+
+const Ship = (props: any) => {
+  const [death, setDeath] = useState(false);
+  const { socket, movePlayer } = useContext(AppContext);
+  const playerInfo = props.playerInfo ?? {};
+  const playerId = playerInfo.playerId;
+  const playerIndex = playerInfo.id;
+  const initialPosition = {
+    x: playerInfo.x ?? DEFAULT_POSITION.x,
+    y: playerInfo.y ?? DEFAULT_POSITION.y,
+    angle: playerInfo.angle ?? DEFAULT_POSITION.angle
+  };
+
+  const [pos, setPos] = useState<Position>(() => initialPosition);
+  const [direction, setDirection] = useState<Direction>(() => getDirectionFromAngle(initialPosition.angle));
+  const [isWalking, setIsWalking] = useState(false);
+
+  const posRef = useRef(initialPosition);
+  const deathRef = useRef(death);
+  const movePlayerRef = useRef(movePlayer);
+  const moveQueueRef = useRef<Position[]>([]);
+  const animationFrameRef = useRef<number | null>(null);
+  const currentTargetRef = useRef<Position | null>(null);
+
+  useEffect(() => {
+    posRef.current = pos;
+  }, [pos]);
+
+  useEffect(() => {
+    deathRef.current = death;
+  }, [death]);
+
+  useEffect(() => {
+    movePlayerRef.current = movePlayer;
+  }, [movePlayer]);
+
+  const stopMovement = useCallback(() => {
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
+    currentTargetRef.current = null;
+    moveQueueRef.current = [];
+    setIsWalking(false);
+  }, []);
+
+  // Queue one server movement at a time so each update can be animated smoothly.
+  const processMoveQueue = useCallback(() => {
+    if (animationFrameRef.current !== null) {
+      return;
+    }
+
+    const nextPosition = moveQueueRef.current.shift();
+
+    if (!nextPosition) {
+      currentTargetRef.current = null;
+      setIsWalking(false);
+      return;
+    }
+
+    const startPosition = posRef.current;
+    const nextDirection = getDirectionFromAngle(nextPosition.angle);
+
+    setDirection(nextDirection);
+
+    if (samePosition(startPosition, nextPosition)) {
+      currentTargetRef.current = null;
+      posRef.current = nextPosition;
+      setPos(nextPosition);
+      processMoveQueue();
+      return;
+    }
+
+    if (sameCoordinates(startPosition, nextPosition)) {
+      currentTargetRef.current = null;
+      posRef.current = nextPosition;
+      setPos(nextPosition);
+      processMoveQueue();
+      return;
+    }
+
+    currentTargetRef.current = nextPosition;
+    setIsWalking(true);
+
+    const distance = Math.hypot(nextPosition.x - startPosition.x, nextPosition.y - startPosition.y);
+    // Clamp duration so short steps remain visible and long catch-up steps do not drag.
+    const duration = Math.max(
+      MIN_MOVEMENT_DURATION,
+      Math.min(MAX_MOVEMENT_DURATION, distance * MOVEMENT_DURATION_PER_PIXEL)
+    );
+    const startedAt = performance.now();
+
+    const animate = (currentTime: number) => {
+      const progress = Math.min(1, (currentTime - startedAt) / duration);
+      const easedProgress = easeOutCubic(progress);
+      const animatedPosition = {
+        x: Math.round(startPosition.x + (nextPosition.x - startPosition.x) * easedProgress),
+        y: Math.round(startPosition.y + (nextPosition.y - startPosition.y) * easedProgress),
+        angle: nextPosition.angle
+      };
+
+      posRef.current = animatedPosition;
+      setPos(animatedPosition);
+
+      if (progress < 1) {
+        animationFrameRef.current = requestAnimationFrame(animate);
+        return;
+      }
+
+      animationFrameRef.current = null;
+      currentTargetRef.current = null;
+      posRef.current = nextPosition;
+      setPos(nextPosition);
+
+      if (moveQueueRef.current.length === 0) {
+        setIsWalking(false);
+        return;
+      }
+
+      processMoveQueue();
+    };
+
+    animationFrameRef.current = requestAnimationFrame(animate);
+  }, []);
+
+  useEffect(() => {
+    if (!playerId) {
+      return undefined;
+    }
+
+    const handlePlayerMove = (data: any) => {
+      if (deathRef.current) {
+        return;
+      }
+
+      const nextPosition = {
+        x: data.x ?? posRef.current.x,
+        y: data.y ?? posRef.current.y,
+        angle: data.angle ?? posRef.current.angle
+      };
+      const lastKnownTarget =
+        moveQueueRef.current[moveQueueRef.current.length - 1] ??
+        currentTargetRef.current ??
+        posRef.current;
+
+      if (!samePosition(lastKnownTarget, nextPosition)) {
+        moveQueueRef.current.push(nextPosition);
+        processMoveQueue();
+      }
+
+      if (typeof playerIndex !== "undefined") {
+        movePlayerRef.current({
+          id: playerIndex,
+          angle: nextPosition.angle,
+          x: nextPosition.x,
+          y: nextPosition.y
+        });
+      }
+    };
+
+    const handlePlayerDeath = () => {
+      setDeath(true);
+      stopMovement();
+    };
+
+    const handlePlayerReborn = () => {
+      setDeath(false);
+    };
+
+    socket.on(`move${playerId}`, handlePlayerMove);
+    socket.on(`playerDeath${playerId}`, handlePlayerDeath);
+    socket.on(`playerReborn${playerId}`, handlePlayerReborn);
+
+    return () => {
+      socket.off(`move${playerId}`, handlePlayerMove);
+      socket.off(`playerDeath${playerId}`, handlePlayerDeath);
+      socket.off(`playerReborn${playerId}`, handlePlayerReborn);
+      stopMovement();
+    };
+  }, [playerId, playerIndex, processMoveQueue, socket, stopMovement]);
+
+  useEffect(() => {
+    if (socket.id !== playerId) {
+      return;
+    }
+
+    const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+
+    window.scroll(pos.x - viewportWidth / 2, pos.y - viewportHeight / 2);
+  }, [playerId, pos, socket.id]);
+
+  const spritePath = buildSpritePath(direction, isWalking);
+  const spriteLabel = `${isWalking ? "walking" : "standing"} ${direction}`;
+
+  return (
     <div
-      id = {playerId}
+      id={playerId}
       hidden={death}
       style={{
         position: "absolute",
-        top: pos.y + "px",
-        left: pos.x + "px",
-        zIndex: 999,
-        
+        top: `${pos.y}px`,
+        left: `${pos.x}px`,
+        zIndex: 999
       }}
     >
-      {renderCharacterAngle()}
-      {/*<img
-        style={{ 
-        transform: "rotate(" + pos.angle + "deg)"
-       }}
-        src="/ship.png"
-        alt="Picture of a spaceship"
+      <img
+        src={spritePath}
+        alt={`Player ${spriteLabel}`}
         width={32}
         height={32}
-      />*/}
+        style={{ imageRendering: "pixelated" }}
+      />
     </div>
-  </>)
-}
+  );
+};
 
 export default Ship;
-
