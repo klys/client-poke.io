@@ -66,10 +66,10 @@ const reducer = (state:any, action:any) => {
                 ...state
             }
         case actions.ADD_PLAYER:
-            //console.log("action.playerData:", action.playerData);
+            console.log("action.playerData:", action.playerData);
             //console.log("state.playersIds[action.playerData.playerId]: ", state.playersIds[action.playerData.playerId])
             
-            if (state.players[action.playerData.id] !== undefined) return state;
+            if (typeof state.players[action.playerData.id] !== "undefined") return state;
             state.players[action.playerData.id] = ({jsx:<Ship playerInfo={action.playerData} key={action.playerData.playerId} />, ...action.playerData})
             // if (state.playersIds[action.playerData.playerId] === undefined) {
             //     state.players.push({jsx:<Ship playerInfo={action.playerData} key={action.playerData.playerId} />, ...action.playerData})
@@ -213,11 +213,11 @@ export const Provider = ({ children, socketUrl }:{children:any, socketUrl:string
     const [socket] = useState(() => io(socketUrl))
     const [state, dispatch] = useReducer(reducer, createInitialState(socket));
 
-    useEffect(() => {
+    /*useEffect(() => {
         return () => {
             socket.disconnect()
         }
-    }, [socket])
+    }, [socket])*/
 
     const api = {
         socket: state.socket,

@@ -14,7 +14,7 @@ const Ship = (props:any) => {
   const [death, setDeath] = useState(false)
   const { socket, players, movePlayer } = useContext(AppContext)
 
-  const [pos, setPos] = useState({x:100,y:100,angle:0})
+  const [pos, setPos] = useState({x:100,y:100,angle:270})
 
   //console.log("props:", props.playerInfo)
   const playerId = props.playerInfo.playerId;

@@ -34,16 +34,18 @@ const Network = () => {
         addObject(data)
     },[])
 
-    socket.emit("addPlayer")
+    
 
 
     useEffect(() => {
-        //console.log("Network mounted!")
+        console.log("Network mounted!", loadOnce.current)
         
 
-        if (!loadOnce.current) {
-
+        if (loadOnce.current == false) {
+            
+            socket.emit("addPlayer")
             loadOnce.current = true;
+            console.log("Load Once is executed", loadOnce.current)
         socket.on("addPlayer", socketAddPlayer)
 
         socket.on("removePlayer", socketRemovePlayer)

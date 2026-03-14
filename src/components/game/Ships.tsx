@@ -1,11 +1,12 @@
-import { useContext, useRef } from "react";
+import { useContext } from "react";
 import { AppContext } from "../../context/appContext";
 
 const Ships = () => {
-    let players = useRef(useContext(AppContext))
+    const { players } = useContext(AppContext);
 
     return (<>
-        {players.current.players.map((player:any) => player.jsx)}
+            <h1>{players.length}</h1>
+        {players.map((player:any) => player.jsx)}
     </>)
 }
 

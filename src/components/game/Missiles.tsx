@@ -1,10 +1,10 @@
-import { useContext, useRef } from "react";
+import { useContext } from "react";
 import {AppContext} from "../../context/appContext"
 import Missile from "./Missile";
 const Missiles = () => {
-    const projectiles = useRef(useContext(AppContext));
+    const { projectiles } = useContext(AppContext);
     return (<>
-    {projectiles.current.projectiles.map((projectil:any) => {
+    {projectiles.map((projectil:any) => {
         return <Missile data = {projectil} key={projectil.id} />
     })}
     </>)
