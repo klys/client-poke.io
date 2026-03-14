@@ -13,11 +13,15 @@ import { AppContext } from "../../context/appContext";
 const Ship = (props:any) => {
   const [death, setDeath] = useState(false)
   const { socket, players, movePlayer } = useContext(AppContext)
-
-  const [pos, setPos] = useState({x:100,y:100,angle:270})
+  const playerInfo = props.playerInfo ?? {}
+  const playerId = playerInfo.playerId;
+  const [pos, setPos] = useState(() => ({
+    x: playerInfo.x ?? 100,
+    y: playerInfo.y ?? 100,
+    angle: playerInfo.angle ?? 270
+  }))
 
   //console.log("props:", props.playerInfo)
-  const playerId = props.playerInfo.playerId;
   // useEffect(() => {
   //   socket.on("playerHurt", (data:any) => {
   //     console.log("playerHurt received!!")
@@ -110,6 +114,7 @@ useEffect(()=>{
 const renderCharacterAngle = () => {
   switch(pos.angle) {
     case 450: // up
+    case 90:
     return (<img
       
       src="/character0/TestChar_Up.png"
@@ -126,6 +131,7 @@ const renderCharacterAngle = () => {
       height={32}
     />)
     case 360: // left
+    case 0:
     return (<img
       
       src="/character0/TestChar_Left.png"
@@ -141,6 +147,7 @@ const renderCharacterAngle = () => {
       width={32}
       height={32}
     />)
+    default:return (<div>{pos.angle}</div>)
   }
 }
   
@@ -171,5 +178,4 @@ const renderCharacterAngle = () => {
 }
 
 export default Ship;
-
 
