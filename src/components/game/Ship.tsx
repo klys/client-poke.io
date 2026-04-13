@@ -268,7 +268,10 @@ const Ship = (props: any) => {
         alt={`Player ${spriteLabel}`}
         width={32}
         height={32}
-        style={{ imageRendering: "pixelated" }}
+        style={{ 
+          imageRendering: "pixelated",
+          objectPosition: "center",
+        }}
       />
     </div>
   );

@@ -37,6 +37,10 @@ const Object = (props:any) => {
         alt="Picture of a Rock"
         width={32}
         height={32}
+        style={{ 
+          imageRendering: "pixelated",
+          objectPosition: "center",
+        }}
       />
     </div>
   </>)

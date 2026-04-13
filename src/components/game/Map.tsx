@@ -1,6 +1,7 @@
 import { useContext, useRef } from "react";
 import { AppContext } from "../../context/appContext";
 import { useEventListener } from "usehooks-ts";
+import Cursor from "./Cursor";
 //import { point_direction } from "./gameMath";
 
 const Map = ({children}:{children:any}) => {
@@ -28,6 +29,12 @@ const Map = ({children}:{children:any}) => {
         <div id="map" ref ={mapRef} style={{height:'3200px', width:'3200px', background:"repeat center/1% url('/map0/Tile_Grass.png')"}}>
             {(children) ? children : null}
         </div>
+        <Cursor
+            gridSize={36}
+            squareSize={36}
+            color="#00ff88"
+            mode="cell"
+        />
     </>)
 }
 
