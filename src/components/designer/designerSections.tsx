@@ -28,11 +28,25 @@ export interface DesignerItemDetail {
   value: string;
 }
 
+export type DesignerMapObjectType = "obstacle" | "mob area" | "floor" | "water";
+
+export interface DesignerMapObjectAsset {
+  imageSrc: string;
+  width: number;
+  height: number;
+  objectType: DesignerMapObjectType;
+}
+
+export interface DesignerItemCreateOptions {
+  mapObjectAsset?: DesignerMapObjectAsset;
+}
+
 export interface DesignerItemSeed {
   id: string;
   name: string;
   category: string;
   details: DesignerItemDetail[];
+  mapObjectAsset?: DesignerMapObjectAsset;
 }
 
 export interface DesignerSectionDefinition {
@@ -46,7 +60,12 @@ export interface DesignerSectionDefinition {
   icon: DesignerIconName;
   defaultCategories: string[];
   demoItems: DesignerItemSeed[];
-  createDetails: (name: string, category: string, index: number) => DesignerItemDetail[];
+  createDetails: (
+    name: string,
+    category: string,
+    index: number,
+    options?: DesignerItemCreateOptions
+  ) => DesignerItemDetail[];
 }
 
 export function DesignerIcon(props: IconProps & { icon: DesignerIconName }) {
@@ -380,25 +399,25 @@ export const designerSections: DesignerSectionDefinition[] = [
         id: "object-ancient-oak",
         name: "Ancient Oak",
         category: "Nature",
-        details: [detail("Tiles", "2 x 3"), detail("Layer", "Front"), detail("Solid", "Yes")],
+        details: [detail("Type", "obstacle"), detail("Width", "96 px"), detail("Height", "144 px")],
       },
       {
         id: "object-market-stall",
         name: "Market Stall",
         category: "Buildings",
-        details: [detail("Tiles", "3 x 2"), detail("Layer", "Middle"), detail("Solid", "Yes")],
+        details: [detail("Type", "floor"), detail("Width", "144 px"), detail("Height", "96 px")],
       },
       {
         id: "object-crystal-switch",
         name: "Crystal Switch",
         category: "Interactables",
-        details: [detail("Tiles", "1 x 1"), detail("Layer", "Front"), detail("Solid", "No")],
+        details: [detail("Type", "mob area"), detail("Width", "48 px"), detail("Height", "48 px")],
       },
     ],
-    createDetails: (_name, category, index) => [
-      detail("Tiles", `${(index % 3) + 1} x ${(index % 2) + 1}`),
-      detail("Layer", ["Back", "Middle", "Front"][index % 3]),
-      detail("Solid", category === "Interactables" ? "No" : "Yes"),
+    createDetails: (_name, _category, index, options) => [
+      detail("Type", options?.mapObjectAsset?.objectType || "obstacle"),
+      detail("Width", `${options?.mapObjectAsset?.width || 32 + index * 16} px`),
+      detail("Height", `${options?.mapObjectAsset?.height || 32 + index * 16} px`),
     ],
   },
   {

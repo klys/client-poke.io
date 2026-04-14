@@ -7,6 +7,8 @@ import {
   FormControl,
   FormLabel,
   Heading,
+  Icon,
+  IconButton,
   Input,
   Modal,
   ModalBody,
@@ -23,6 +25,8 @@ import {
 import { Link as RouterLink } from "react-router-dom";
 import {
   DesignerIcon,
+  type DesignerMapObjectAsset,
+  type DesignerMapObjectType,
   designerSectionsByKey,
   type DesignerItemSeed,
   type DesignerSectionKey,
@@ -39,6 +43,14 @@ interface DesignerSectionProps {
 
 const UNCATEGORIZED = "Uncategorized";
 const ALL_CATEGORIES = "__all__";
+const MAP_OBJECT_TYPES: DesignerMapObjectType[] = [
+  "obstacle",
+  "mob area",
+  "floor",
+  "water",
+];
+const DEFAULT_MAP_OBJECT_TYPE: DesignerMapObjectType = "obstacle";
+const DEFAULT_MAP_OBJECT_SIZE = 64;
 
 function normalizeCategoryName(value: string) {
   return value.trim().replace(/\s+/g, " ");
@@ -54,6 +66,46 @@ function findCategoryName(categories: string[], target: string) {
 
 function getStorageKey(sectionKey: DesignerSectionKey) {
   return `designer-demo:${sectionKey}`;
+}
+
+function isValidMapObjectType(value: unknown): value is DesignerMapObjectType {
+  return (
+    typeof value === "string" &&
+    MAP_OBJECT_TYPES.includes(value as DesignerMapObjectType)
+  );
+}
+
+function sanitizeMapObjectAsset(value: unknown): DesignerMapObjectAsset | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const candidate = value as Partial<DesignerMapObjectAsset>;
+  const width =
+    typeof candidate.width === "number" && Number.isFinite(candidate.width)
+      ? Math.max(1, Math.round(candidate.width))
+      : null;
+  const height =
+    typeof candidate.height === "number" && Number.isFinite(candidate.height)
+      ? Math.max(1, Math.round(candidate.height))
+      : null;
+
+  if (
+    typeof candidate.imageSrc !== "string" ||
+    !candidate.imageSrc ||
+    width === null ||
+    height === null ||
+    !isValidMapObjectType(candidate.objectType)
+  ) {
+    return undefined;
+  }
+
+  return {
+    imageSrc: candidate.imageSrc,
+    width,
+    height,
+    objectType: candidate.objectType,
+  };
 }
 
 function buildInitialState(sectionKey: DesignerSectionKey): DesignerSectionState {
@@ -107,6 +159,7 @@ function loadStoredState(sectionKey: DesignerSectionKey): DesignerSectionState {
       .map((item) => ({
         ...item,
         category: normalizeCategoryName(item.category) || UNCATEGORIZED,
+        mapObjectAsset: sanitizeMapObjectAsset(item.mapObjectAsset),
       }));
 
     items.forEach((item) => categories.push(item.category));
@@ -122,15 +175,22 @@ function loadStoredState(sectionKey: DesignerSectionKey): DesignerSectionState {
 
 export default function Section({ sectionKey }: DesignerSectionProps) {
   const section = designerSectionsByKey[sectionKey];
+  const isObjectsSection = sectionKey === "objects";
   const [sectionState, setSectionState] = useState<DesignerSectionState>(() =>
     loadStoredState(sectionKey)
   );
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
   const [isMoveOpen, setIsMoveOpen] = useState(false);
   const [newItemName, setNewItemName] = useState("");
   const [newItemCategory, setNewItemCategory] = useState(
+    sectionState.categories[0] || UNCATEGORIZED
+  );
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editItemName, setEditItemName] = useState("");
+  const [editItemCategory, setEditItemCategory] = useState(
     sectionState.categories[0] || UNCATEGORIZED
   );
   const [moveCategory, setMoveCategory] = useState(
@@ -143,10 +203,31 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const [editingCategoryName, setEditingCategoryName] = useState("");
   const [deletingCategory, setDeletingCategory] = useState<string | null>(null);
   const [deleteCategoryTarget, setDeleteCategoryTarget] = useState(UNCATEGORIZED);
+  const [newMapObjectImage, setNewMapObjectImage] = useState("");
+  const [newMapObjectWidth, setNewMapObjectWidth] = useState(
+    String(DEFAULT_MAP_OBJECT_SIZE)
+  );
+  const [newMapObjectHeight, setNewMapObjectHeight] = useState(
+    String(DEFAULT_MAP_OBJECT_SIZE)
+  );
+  const [newMapObjectType, setNewMapObjectType] =
+    useState<DesignerMapObjectType>(DEFAULT_MAP_OBJECT_TYPE);
+  const [editMapObjectImage, setEditMapObjectImage] = useState("");
+  const [editMapObjectWidth, setEditMapObjectWidth] = useState(
+    String(DEFAULT_MAP_OBJECT_SIZE)
+  );
+  const [editMapObjectHeight, setEditMapObjectHeight] = useState(
+    String(DEFAULT_MAP_OBJECT_SIZE)
+  );
+  const [editMapObjectType, setEditMapObjectType] =
+    useState<DesignerMapObjectType>(DEFAULT_MAP_OBJECT_TYPE);
 
   useEffect(() => {
     setSectionState(loadStoredState(sectionKey));
     setSelectedIds([]);
+    setIsAddOpen(false);
+    setIsEditOpen(false);
+    setEditingItemId(null);
     setSearchTerm("");
     setCategoryFilter(ALL_CATEGORIES);
     setEditingCategory(null);
@@ -169,6 +250,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       setNewItemCategory(sectionState.categories[0] || UNCATEGORIZED);
     }
 
+    if (!sectionState.categories.includes(editItemCategory)) {
+      setEditItemCategory(sectionState.categories[0] || UNCATEGORIZED);
+    }
+
     if (!sectionState.categories.includes(moveCategory)) {
       setMoveCategory(sectionState.categories[0] || UNCATEGORIZED);
     }
@@ -189,6 +274,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   }, [
     categoryFilter,
     deleteCategoryTarget,
+    editItemCategory,
     moveCategory,
     newItemCategory,
     sectionState.categories,
@@ -196,6 +282,26 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
 
   const selectedCount = selectedIds.length;
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const parsedMapObjectWidth = Number.parseInt(newMapObjectWidth, 10);
+  const parsedMapObjectHeight = Number.parseInt(newMapObjectHeight, 10);
+  const parsedEditMapObjectWidth = Number.parseInt(editMapObjectWidth, 10);
+  const parsedEditMapObjectHeight = Number.parseInt(editMapObjectHeight, 10);
+  const hasValidMapObjectWidth =
+    Number.isFinite(parsedMapObjectWidth) && parsedMapObjectWidth > 0;
+  const hasValidMapObjectHeight =
+    Number.isFinite(parsedMapObjectHeight) && parsedMapObjectHeight > 0;
+  const hasValidEditMapObjectWidth =
+    Number.isFinite(parsedEditMapObjectWidth) && parsedEditMapObjectWidth > 0;
+  const hasValidEditMapObjectHeight =
+    Number.isFinite(parsedEditMapObjectHeight) && parsedEditMapObjectHeight > 0;
+  const isMapObjectFormValid =
+    !isObjectsSection ||
+    (!!newMapObjectImage && hasValidMapObjectWidth && hasValidMapObjectHeight);
+  const isEditMapObjectFormValid =
+    !isObjectsSection ||
+    (!!editMapObjectImage &&
+      hasValidEditMapObjectWidth &&
+      hasValidEditMapObjectHeight);
 
   const categorySummary = useMemo(
     () =>
@@ -235,7 +341,29 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const openAddModal = () => {
     setNewItemName("");
     setNewItemCategory(sectionState.categories[0] || UNCATEGORIZED);
+    setNewMapObjectImage("");
+    setNewMapObjectWidth(String(DEFAULT_MAP_OBJECT_SIZE));
+    setNewMapObjectHeight(String(DEFAULT_MAP_OBJECT_SIZE));
+    setNewMapObjectType(DEFAULT_MAP_OBJECT_TYPE);
     setIsAddOpen(true);
+  };
+
+  const closeEditModal = () => {
+    setIsEditOpen(false);
+    setEditingItemId(null);
+  };
+
+  const openEditModal = (item: DesignerItemSeed) => {
+    const mapObjectAsset = sanitizeMapObjectAsset(item.mapObjectAsset);
+
+    setEditingItemId(item.id);
+    setEditItemName(item.name);
+    setEditItemCategory(item.category || sectionState.categories[0] || UNCATEGORIZED);
+    setEditMapObjectImage(mapObjectAsset?.imageSrc || "");
+    setEditMapObjectWidth(String(mapObjectAsset?.width || DEFAULT_MAP_OBJECT_SIZE));
+    setEditMapObjectHeight(String(mapObjectAsset?.height || DEFAULT_MAP_OBJECT_SIZE));
+    setEditMapObjectType(mapObjectAsset?.objectType || DEFAULT_MAP_OBJECT_TYPE);
+    setIsEditOpen(true);
   };
 
   const openCategoriesModal = () => {
@@ -378,21 +506,66 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     cancelDeleteCategory();
   };
 
+  const handleMapObjectImageChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+    onImageChange: (value: string) => void
+  ) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      onImageChange("");
+      return;
+    }
+
+    const isAllowedType =
+      file.type === "image/png" ||
+      file.type === "image/gif" ||
+      /\.(png|gif)$/i.test(file.name);
+
+    if (!isAllowedType) {
+      window.alert("Please upload a PNG or GIF image for the map object.");
+      event.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        onImageChange(reader.result);
+      }
+    };
+
+    reader.readAsDataURL(file);
+  };
+
   const handleAddItem = () => {
     const name = newItemName.trim();
     const category = normalizeCategoryName(newItemCategory) || UNCATEGORIZED;
 
-    if (!name) {
+    if (!name || (isObjectsSection && !isMapObjectFormValid)) {
       return;
     }
 
     setSectionState((current) => {
       const nextIndex = current.items.length + 1;
+      const mapObjectAsset =
+        isObjectsSection && newMapObjectImage
+          ? {
+              imageSrc: newMapObjectImage,
+              width: parsedMapObjectWidth,
+              height: parsedMapObjectHeight,
+              objectType: newMapObjectType,
+            }
+          : undefined;
       const item: DesignerItemSeed = {
         id: `${section.key}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`,
         name,
         category,
-        details: section.createDetails(name, category, nextIndex),
+        details: section.createDetails(name, category, nextIndex, {
+          mapObjectAsset,
+        }),
+        mapObjectAsset,
       };
 
       return {
@@ -404,6 +577,48 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     });
 
     setIsAddOpen(false);
+  };
+
+  const handleEditItem = () => {
+    const name = editItemName.trim();
+    const category = normalizeCategoryName(editItemCategory) || UNCATEGORIZED;
+
+    if (!editingItemId || !name || (isObjectsSection && !isEditMapObjectFormValid)) {
+      return;
+    }
+
+    setSectionState((current) => {
+      const mapObjectAsset =
+        isObjectsSection && editMapObjectImage
+          ? {
+              imageSrc: editMapObjectImage,
+              width: parsedEditMapObjectWidth,
+              height: parsedEditMapObjectHeight,
+              objectType: editMapObjectType,
+            }
+          : undefined;
+
+      return {
+        categories: current.categories.includes(category)
+          ? current.categories
+          : [...current.categories, category],
+        items: current.items.map((item, index) =>
+          item.id === editingItemId
+            ? {
+                ...item,
+                name,
+                category,
+                details: section.createDetails(name, category, index + 1, {
+                  mapObjectAsset,
+                }),
+                mapObjectAsset,
+              }
+            : item
+        ),
+      };
+    });
+
+    closeEditModal();
   };
 
   const handleDeleteSelected = () => {
@@ -647,13 +862,23 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={{ base: 4, md: 5 }}>
               {filteredItems.map((item) => {
                 const isSelected = selectedSet.has(item.id);
+                const mapObjectAsset = isObjectsSection
+                  ? sanitizeMapObjectAsset(item.mapObjectAsset)
+                  : undefined;
 
                 return (
                   <Box
                     key={item.id}
-                    as="button"
-                    type="button"
+                    as="div"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => toggleItem(item.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        toggleItem(item.id);
+                      }
+                    }}
                     minH={{ base: "168px", md: "188px" }}
                     p={{ base: 4, md: 5 }}
                     borderRadius="24px"
@@ -665,6 +890,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                         : "linear-gradient(135deg, #fffdf6 0%, #edf4ea 100%)"
                     }
                     color="#213128"
+                    cursor="pointer"
                     textAlign="left"
                     transition="transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease"
                     boxShadow={
@@ -684,13 +910,30 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                           w="56px"
                           h="56px"
                           borderRadius="18px"
+                          overflow="hidden"
                           display="grid"
                           placeItems="center"
-                          bg="rgba(126, 166, 120, 0.12)"
+                          bg={
+                            mapObjectAsset
+                              ? "linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(227,235,224,0.95) 100%)"
+                              : "rgba(126, 166, 120, 0.12)"
+                          }
                           color="#2e5b37"
                           flexShrink={0}
                         >
-                          <DesignerIcon icon={section.icon} boxSize={8} />
+                          {mapObjectAsset ? (
+                            <Box
+                              as="img"
+                              src={mapObjectAsset.imageSrc}
+                              alt={`${item.name} preview`}
+                              width={`${Math.max(20, Math.min(mapObjectAsset.width, 56))}px`}
+                              height={`${Math.max(20, Math.min(mapObjectAsset.height, 56))}px`}
+                              objectFit="contain"
+                              style={{ imageRendering: "pixelated" }}
+                            />
+                          ) : (
+                            <DesignerIcon icon={section.icon} boxSize={8} />
+                          )}
                         </Box>
                         <Box>
                           <Text fontSize="lg" fontWeight="700" mb={1}>
@@ -737,6 +980,38 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                         </Flex>
                       ))}
                     </Stack>
+                    <Flex mt={4} justify="flex-end">
+                      <IconButton
+                        aria-label={`Edit ${item.name}`}
+                        size="sm"
+                        variant="outline"
+                        borderColor="rgba(43, 66, 47, 0.24)"
+                        color="#2e5b37"
+                        icon={
+                          <Icon viewBox="0 0 24 24" boxSize={4}>
+                            <path
+                              d="M4 20h4l10.5-10.5-4-4L4 16v4Z"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinejoin="round"
+                              strokeLinecap="round"
+                            />
+                            <path
+                              d="m12.5 7.5 4 4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                            />
+                          </Icon>
+                        }
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openEditModal(item);
+                        }}
+                      />
+                    </Flex>
                   </Box>
                 );
               })}
@@ -745,7 +1020,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         </Box>
       </Box>
 
-      <Modal isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} isCentered>
+      <Modal
+        isOpen={isAddOpen}
+        onClose={() => setIsAddOpen(false)}
+        size={isObjectsSection ? "3xl" : "md"}
+      >
         <ModalOverlay bg="blackAlpha.400" />
         <ModalContent borderRadius="24px">
           <ModalHeader>Add New {section.itemLabel}</ModalHeader>
@@ -773,6 +1052,124 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   ))}
                 </Select>
               </FormControl>
+              {isObjectsSection ? (
+                <>
+                  <FormControl isRequired>
+                    <FormLabel>Image</FormLabel>
+                    <Input
+                      type="file"
+                      accept=".png,.gif,image/png,image/gif"
+                      onChange={(event) =>
+                        handleMapObjectImageChange(event, setNewMapObjectImage)
+                      }
+                      p={1.5}
+                    />
+                    <Text mt={2} fontSize="sm" color="#55645a">
+                      Upload a transparent PNG or GIF to use as the map object
+                      sprite.
+                    </Text>
+                  </FormControl>
+                  <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                    <FormControl isRequired isInvalid={newMapObjectWidth !== "" && !hasValidMapObjectWidth}>
+                      <FormLabel>Width</FormLabel>
+                      <Input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={newMapObjectWidth}
+                        onChange={(event) => setNewMapObjectWidth(event.target.value)}
+                        placeholder="Width in pixels"
+                      />
+                    </FormControl>
+                    <FormControl isRequired isInvalid={newMapObjectHeight !== "" && !hasValidMapObjectHeight}>
+                      <FormLabel>Height</FormLabel>
+                      <Input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={newMapObjectHeight}
+                        onChange={(event) => setNewMapObjectHeight(event.target.value)}
+                        placeholder="Height in pixels"
+                      />
+                    </FormControl>
+                  </SimpleGrid>
+                  <FormControl isRequired>
+                    <FormLabel>Map Object Type</FormLabel>
+                    <Select
+                      value={newMapObjectType}
+                      onChange={(event) =>
+                        setNewMapObjectType(event.target.value as DesignerMapObjectType)
+                      }
+                    >
+                      {MAP_OBJECT_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <Box
+                    p={4}
+                    borderRadius="20px"
+                    border="1px solid rgba(43, 66, 47, 0.12)"
+                    bg="linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(241,246,238,0.95) 100%)"
+                  >
+                    <Text
+                      fontSize="sm"
+                      fontWeight="700"
+                      textTransform="uppercase"
+                      letterSpacing="0.14em"
+                      color="#5e7a61"
+                      mb={3}
+                    >
+                      Preview
+                    </Text>
+                    <Flex
+                      minH="220px"
+                      align="center"
+                      justify="center"
+                      borderRadius="18px"
+                      border="1px dashed rgba(43, 66, 47, 0.18)"
+                      bgSize="20px 20px"
+                      bgImage="linear-gradient(45deg, rgba(46,91,55,0.07) 25%, transparent 25%, transparent 75%, rgba(46,91,55,0.07) 75%, rgba(46,91,55,0.07)), linear-gradient(45deg, rgba(46,91,55,0.07) 25%, transparent 25%, transparent 75%, rgba(46,91,55,0.07) 75%, rgba(46,91,55,0.07))"
+                      bgPosition="0 0, 10px 10px"
+                    >
+                      {newMapObjectImage ? (
+                        <Box
+                          as="img"
+                          src={newMapObjectImage}
+                          alt="Map object preview"
+                          width={
+                            hasValidMapObjectWidth
+                              ? `${newMapObjectWidth}px`
+                              : `${DEFAULT_MAP_OBJECT_SIZE}px`
+                          }
+                          height={
+                            hasValidMapObjectHeight
+                              ? `${newMapObjectHeight}px`
+                              : `${DEFAULT_MAP_OBJECT_SIZE}px`
+                          }
+                          maxW="100%"
+                          maxH="200px"
+                          objectFit="contain"
+                          style={{ imageRendering: "pixelated" }}
+                        />
+                      ) : (
+                        <Text color="#6d7b71" textAlign="center" maxW="240px">
+                          Upload a PNG or GIF to preview the map object with the
+                          selected width and height.
+                        </Text>
+                      )}
+                    </Flex>
+                    <Text mt={3} fontSize="sm" color="#55645a">
+                      Saved size:{" "}
+                      {hasValidMapObjectWidth ? newMapObjectWidth : "--"} x{" "}
+                      {hasValidMapObjectHeight ? newMapObjectHeight : "--"} px
+                      • Type: {newMapObjectType}
+                    </Text>
+                  </Box>
+                </>
+              ) : null}
             </Stack>
           </ModalBody>
           <ModalFooter gap={3}>
@@ -782,7 +1179,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             <Button
               colorScheme="green"
               onClick={handleAddItem}
-              isDisabled={!newItemName.trim()}
+              isDisabled={!newItemName.trim() || !isMapObjectFormValid}
             >
               Create
             </Button>
@@ -790,7 +1187,180 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         </ModalContent>
       </Modal>
 
-      <Modal isOpen={isCategoriesOpen} onClose={() => setIsCategoriesOpen(false)} isCentered size="2xl">
+      <Modal
+        isOpen={isEditOpen}
+        onClose={closeEditModal}
+        size={isObjectsSection ? "3xl" : "md"}
+      >
+        <ModalOverlay bg="blackAlpha.400" />
+        <ModalContent borderRadius="24px">
+          <ModalHeader>Edit {section.itemLabel}</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Stack spacing={4}>
+              <FormControl>
+                <FormLabel>Name</FormLabel>
+                <Input
+                  value={editItemName}
+                  onChange={(event) => setEditItemName(event.target.value)}
+                  placeholder={`Enter ${section.itemLabel} name`}
+                />
+              </FormControl>
+              <FormControl>
+                <FormLabel>Category</FormLabel>
+                <Select
+                  value={editItemCategory}
+                  onChange={(event) => setEditItemCategory(event.target.value)}
+                >
+                  {sectionState.categories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </Select>
+              </FormControl>
+              {isObjectsSection ? (
+                <>
+                  <FormControl isRequired>
+                    <FormLabel>Image</FormLabel>
+                    <Input
+                      type="file"
+                      accept=".png,.gif,image/png,image/gif"
+                      onChange={(event) =>
+                        handleMapObjectImageChange(event, setEditMapObjectImage)
+                      }
+                      p={1.5}
+                    />
+                    <Text mt={2} fontSize="sm" color="#55645a">
+                      Upload a transparent PNG or GIF to replace the current map
+                      object sprite.
+                    </Text>
+                  </FormControl>
+                  <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                    <FormControl
+                      isRequired
+                      isInvalid={editMapObjectWidth !== "" && !hasValidEditMapObjectWidth}
+                    >
+                      <FormLabel>Width</FormLabel>
+                      <Input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={editMapObjectWidth}
+                        onChange={(event) => setEditMapObjectWidth(event.target.value)}
+                        placeholder="Width in pixels"
+                      />
+                    </FormControl>
+                    <FormControl
+                      isRequired
+                      isInvalid={editMapObjectHeight !== "" && !hasValidEditMapObjectHeight}
+                    >
+                      <FormLabel>Height</FormLabel>
+                      <Input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={editMapObjectHeight}
+                        onChange={(event) => setEditMapObjectHeight(event.target.value)}
+                        placeholder="Height in pixels"
+                      />
+                    </FormControl>
+                  </SimpleGrid>
+                  <FormControl isRequired>
+                    <FormLabel>Map Object Type</FormLabel>
+                    <Select
+                      value={editMapObjectType}
+                      onChange={(event) =>
+                        setEditMapObjectType(event.target.value as DesignerMapObjectType)
+                      }
+                    >
+                      {MAP_OBJECT_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <Box
+                    p={4}
+                    borderRadius="20px"
+                    border="1px solid rgba(43, 66, 47, 0.12)"
+                    bg="linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(241,246,238,0.95) 100%)"
+                  >
+                    <Text
+                      fontSize="sm"
+                      fontWeight="700"
+                      textTransform="uppercase"
+                      letterSpacing="0.14em"
+                      color="#5e7a61"
+                      mb={3}
+                    >
+                      Preview
+                    </Text>
+                    <Flex
+                      minH="220px"
+                      align="center"
+                      justify="center"
+                      borderRadius="18px"
+                      border="1px dashed rgba(43, 66, 47, 0.18)"
+                      bgSize="20px 20px"
+                      bgImage="linear-gradient(45deg, rgba(46,91,55,0.07) 25%, transparent 25%, transparent 75%, rgba(46,91,55,0.07) 75%, rgba(46,91,55,0.07)), linear-gradient(45deg, rgba(46,91,55,0.07) 25%, transparent 25%, transparent 75%, rgba(46,91,55,0.07) 75%, rgba(46,91,55,0.07))"
+                      bgPosition="0 0, 10px 10px"
+                    >
+                      {editMapObjectImage ? (
+                        <Box
+                          as="img"
+                          src={editMapObjectImage}
+                          alt="Map object preview"
+                          width={
+                            hasValidEditMapObjectWidth
+                              ? `${editMapObjectWidth}px`
+                              : `${DEFAULT_MAP_OBJECT_SIZE}px`
+                          }
+                          height={
+                            hasValidEditMapObjectHeight
+                              ? `${editMapObjectHeight}px`
+                              : `${DEFAULT_MAP_OBJECT_SIZE}px`
+                          }
+                          maxW="100%"
+                          maxH="200px"
+                          objectFit="contain"
+                          style={{ imageRendering: "pixelated" }}
+                        />
+                      ) : (
+                        <Text color="#6d7b71" textAlign="center" maxW="240px">
+                          Upload a PNG or GIF to preview the map object with the
+                          selected width and height.
+                        </Text>
+                      )}
+                    </Flex>
+                    <Text mt={3} fontSize="sm" color="#55645a">
+                      Saved size:{" "}
+                      {hasValidEditMapObjectWidth ? editMapObjectWidth : "--"} x{" "}
+                      {hasValidEditMapObjectHeight ? editMapObjectHeight : "--"} px
+                      • Type: {editMapObjectType}
+                    </Text>
+                  </Box>
+                </>
+              ) : null}
+            </Stack>
+          </ModalBody>
+          <ModalFooter gap={3}>
+            <Button variant="ghost" onClick={closeEditModal}>
+              Cancel
+            </Button>
+            <Button
+              colorScheme="green"
+              onClick={handleEditItem}
+              isDisabled={!editItemName.trim() || !isEditMapObjectFormValid}
+            >
+              Save Changes
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={isCategoriesOpen} onClose={() => setIsCategoriesOpen(false)} size="2xl">
         <ModalOverlay bg="blackAlpha.400" />
         <ModalContent borderRadius="24px">
           <ModalHeader>Categories</ModalHeader>
@@ -969,7 +1539,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         </ModalContent>
       </Modal>
 
-      <Modal isOpen={isMoveOpen} onClose={() => setIsMoveOpen(false)} isCentered>
+      <Modal isOpen={isMoveOpen} onClose={() => setIsMoveOpen(false)}>
         <ModalOverlay bg="blackAlpha.400" />
         <ModalContent borderRadius="24px">
           <ModalHeader>Move Selected Elements</ModalHeader>
