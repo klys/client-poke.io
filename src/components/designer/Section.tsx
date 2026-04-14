@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Badge,
   Box,
@@ -21,8 +21,10 @@ import {
   SimpleGrid,
   Stack,
   Text,
+  useToast,
 } from "@chakra-ui/react";
 import { Link as RouterLink } from "react-router-dom";
+import { useAuth } from "../../context/authContext";
 import {
   DesignerIcon,
   type DesignerMapObjectAsset,
@@ -39,6 +41,13 @@ interface DesignerSectionState {
 
 interface DesignerSectionProps {
   sectionKey: DesignerSectionKey;
+}
+
+interface DesignerObjectsSyncPayload {
+  state: DesignerSectionState;
+  updatedAt: string | null;
+  updatedByUserId: number | null;
+  updatedByUsername: string | null;
 }
 
 const UNCATEGORIZED = "Uncategorized";
@@ -122,6 +131,51 @@ function buildInitialState(sectionKey: DesignerSectionKey): DesignerSectionState
   };
 }
 
+function sanitizeSectionState(
+  sectionKey: DesignerSectionKey,
+  value: unknown
+): DesignerSectionState {
+  const fallback = buildInitialState(sectionKey);
+
+  if (!value || typeof value !== "object") {
+    return fallback;
+  }
+
+  const parsed = value as Partial<DesignerSectionState>;
+  if (!Array.isArray(parsed.categories) || !Array.isArray(parsed.items)) {
+    return fallback;
+  }
+
+  const categories = Array.from(
+    new Set(
+      [UNCATEGORIZED, ...parsed.categories]
+        .map((category) => normalizeCategoryName(category))
+        .filter(Boolean)
+    )
+  );
+
+  const items = parsed.items
+    .filter(
+      (item): item is DesignerItemSeed =>
+        typeof item?.id === "string" &&
+        typeof item?.name === "string" &&
+        typeof item?.category === "string" &&
+        Array.isArray(item?.details)
+    )
+    .map((item) => ({
+      ...item,
+      category: normalizeCategoryName(item.category) || UNCATEGORIZED,
+      mapObjectAsset: sanitizeMapObjectAsset(item.mapObjectAsset),
+    }));
+
+  items.forEach((item) => categories.push(item.category));
+
+  return {
+    categories: Array.from(new Set(categories)),
+    items,
+  };
+}
+
 function loadStoredState(sectionKey: DesignerSectionKey): DesignerSectionState {
   const fallback = buildInitialState(sectionKey);
 
@@ -135,39 +189,7 @@ function loadStoredState(sectionKey: DesignerSectionKey): DesignerSectionState {
       return fallback;
     }
 
-    const parsed = JSON.parse(raw) as Partial<DesignerSectionState>;
-    if (!Array.isArray(parsed.categories) || !Array.isArray(parsed.items)) {
-      return fallback;
-    }
-
-    const categories = Array.from(
-      new Set(
-        [UNCATEGORIZED, ...parsed.categories]
-          .map((category) => normalizeCategoryName(category))
-          .filter(Boolean)
-      )
-    );
-
-    const items = parsed.items
-      .filter(
-        (item): item is DesignerItemSeed =>
-          typeof item?.id === "string" &&
-          typeof item?.name === "string" &&
-          typeof item?.category === "string" &&
-          Array.isArray(item?.details)
-      )
-      .map((item) => ({
-        ...item,
-        category: normalizeCategoryName(item.category) || UNCATEGORIZED,
-        mapObjectAsset: sanitizeMapObjectAsset(item.mapObjectAsset),
-      }));
-
-    items.forEach((item) => categories.push(item.category));
-
-    return {
-      categories: Array.from(new Set(categories)),
-      items,
-    };
+    return sanitizeSectionState(sectionKey, JSON.parse(raw));
   } catch {
     return fallback;
   }
@@ -176,14 +198,27 @@ function loadStoredState(sectionKey: DesignerSectionKey): DesignerSectionState {
 export default function Section({ sectionKey }: DesignerSectionProps) {
   const section = designerSectionsByKey[sectionKey];
   const isObjectsSection = sectionKey === "objects";
+  const toast = useToast();
+  const { authReady, authenticated, socket } = useAuth();
   const [sectionState, setSectionState] = useState<DesignerSectionState>(() =>
     loadStoredState(sectionKey)
   );
+  const [isObjectsStateHydrated, setIsObjectsStateHydrated] = useState(
+    !isObjectsSection
+  );
+  const [objectsSyncMeta, setObjectsSyncMeta] = useState<{
+    updatedAt: string | null;
+    updatedByUsername: string | null;
+  }>({
+    updatedAt: null,
+    updatedByUsername: null,
+  });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
   const [isMoveOpen, setIsMoveOpen] = useState(false);
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [newItemName, setNewItemName] = useState("");
   const [newItemCategory, setNewItemCategory] = useState(
     sectionState.categories[0] || UNCATEGORIZED
@@ -221,9 +256,29 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   );
   const [editMapObjectType, setEditMapObjectType] =
     useState<DesignerMapObjectType>(DEFAULT_MAP_OBJECT_TYPE);
+  const shouldBroadcastRef = useRef(false);
+  const latestSectionStateRef = useRef(sectionState);
+
+  const updateSectionState = useCallback(
+    (updater: React.SetStateAction<DesignerSectionState>) => {
+      if (isObjectsSection) {
+        shouldBroadcastRef.current = true;
+      }
+
+      setSectionState(updater);
+    },
+    [isObjectsSection]
+  );
 
   useEffect(() => {
-    setSectionState(loadStoredState(sectionKey));
+    latestSectionStateRef.current = sectionState;
+  }, [sectionState]);
+
+  useEffect(() => {
+    const nextStoredState = loadStoredState(sectionKey);
+
+    setSectionState(nextStoredState);
+    latestSectionStateRef.current = nextStoredState;
     setSelectedIds([]);
     setIsAddOpen(false);
     setIsEditOpen(false);
@@ -232,7 +287,14 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setCategoryFilter(ALL_CATEGORIES);
     setEditingCategory(null);
     setDeletingCategory(null);
-  }, [sectionKey]);
+    setDeletingItemId(null);
+    setIsObjectsStateHydrated(!isObjectsSection);
+    setObjectsSyncMeta({
+      updatedAt: null,
+      updatedByUsername: null,
+    });
+    shouldBroadcastRef.current = false;
+  }, [isObjectsSection, sectionKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -244,6 +306,80 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       JSON.stringify(sectionState)
     );
   }, [sectionKey, sectionState]);
+
+  useEffect(() => {
+    if (!isObjectsSection || !shouldBroadcastRef.current) {
+      return;
+    }
+
+    shouldBroadcastRef.current = false;
+
+    if (!socket || !authenticated) {
+      return;
+    }
+
+    socket.emit("designer:objects:update", {
+      state: sectionState,
+    });
+  }, [authenticated, isObjectsSection, sectionState, socket]);
+
+  useEffect(() => {
+    if (!isObjectsSection) {
+      return;
+    }
+
+    if (!authReady || !authenticated || !socket) {
+      return;
+    }
+
+    const joinObjectsRoom = () => {
+      setIsObjectsStateHydrated(false);
+      socket.emit("designer:objects:join", {
+        seedState: latestSectionStateRef.current,
+      });
+    };
+
+    const handleObjectsState = (payload: DesignerObjectsSyncPayload) => {
+      shouldBroadcastRef.current = false;
+      const nextState = sanitizeSectionState(sectionKey, payload.state);
+
+      latestSectionStateRef.current = nextState;
+      setSectionState(nextState);
+      setObjectsSyncMeta({
+        updatedAt: payload.updatedAt,
+        updatedByUsername: payload.updatedByUsername,
+      });
+      setIsObjectsStateHydrated(true);
+    };
+
+    const handleObjectsError = ({ message }: { message: string }) => {
+      setIsObjectsStateHydrated(false);
+      toast({
+        title: message,
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+        position: "top",
+      });
+    };
+
+    socket.on("designer:objects:state", handleObjectsState);
+    socket.on("designer:objects:error", handleObjectsError);
+    socket.on("connect", joinObjectsRoom);
+
+    if (!socket.connected) {
+      socket.connect();
+    } else {
+      joinObjectsRoom();
+    }
+
+    return () => {
+      socket.emit("designer:objects:leave");
+      socket.off("designer:objects:state", handleObjectsState);
+      socket.off("designer:objects:error", handleObjectsError);
+      socket.off("connect", joinObjectsRoom);
+    };
+  }, [authReady, authenticated, isObjectsSection, sectionKey, socket, toast]);
 
   useEffect(() => {
     if (!sectionState.categories.includes(newItemCategory)) {
@@ -282,6 +418,20 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
 
   const selectedCount = selectedIds.length;
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const isObjectsSyncReady =
+    !isObjectsSection ||
+    (authReady && authenticated && Boolean(socket?.connected) && isObjectsStateHydrated);
+  const lastSyncedLabel = useMemo(() => {
+    if (!objectsSyncMeta.updatedAt) {
+      return null;
+    }
+
+    const timestamp = new Date(objectsSyncMeta.updatedAt);
+
+    return Number.isNaN(timestamp.getTime())
+      ? objectsSyncMeta.updatedAt
+      : timestamp.toLocaleString();
+  }, [objectsSyncMeta.updatedAt]);
   const parsedMapObjectWidth = Number.parseInt(newMapObjectWidth, 10);
   const parsedMapObjectHeight = Number.parseInt(newMapObjectHeight, 10);
   const parsedEditMapObjectWidth = Number.parseInt(editMapObjectWidth, 10);
@@ -380,6 +530,14 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setIsMoveOpen(true);
   };
 
+  const openDeleteItemConfirm = (itemId: string) => {
+    setDeletingItemId(itemId);
+  };
+
+  const closeDeleteItemConfirm = () => {
+    setDeletingItemId(null);
+  };
+
   const handleAddCategory = () => {
     const normalizedCategory = normalizeCategoryName(newCategoryName);
 
@@ -387,7 +545,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       return;
     }
 
-    setSectionState((current) => {
+    updateSectionState((current) => {
       const existingCategory = findCategoryName(current.categories, normalizedCategory);
       if (existingCategory) {
         return current;
@@ -427,7 +585,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       return;
     }
 
-    setSectionState((current) => {
+    updateSectionState((current) => {
       const existingCategory = findCategoryName(current.categories, normalizedCategory);
       const renamedTo = existingCategory && existingCategory !== editingCategory
         ? existingCategory
@@ -482,7 +640,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
 
     const targetCategory = deleteCategoryTarget || UNCATEGORIZED;
 
-    setSectionState((current) => ({
+    updateSectionState((current) => ({
       categories: current.categories.filter((category) => category !== deletingCategory),
       items: current.items.map((item) =>
         item.category === deletingCategory
@@ -547,7 +705,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       return;
     }
 
-    setSectionState((current) => {
+    updateSectionState((current) => {
       const nextIndex = current.items.length + 1;
       const mapObjectAsset =
         isObjectsSection && newMapObjectImage
@@ -587,7 +745,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       return;
     }
 
-    setSectionState((current) => {
+    updateSectionState((current) => {
       const mapObjectAsset =
         isObjectsSection && editMapObjectImage
           ? {
@@ -626,11 +784,29 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       return;
     }
 
-    setSectionState((current) => ({
+    updateSectionState((current) => ({
       ...current,
       items: current.items.filter((item) => !selectedSet.has(item.id)),
     }));
     setSelectedIds([]);
+  };
+
+  const handleDeleteItem = () => {
+    if (!deletingItemId) {
+      return;
+    }
+
+    updateSectionState((current) => ({
+      ...current,
+      items: current.items.filter((item) => item.id !== deletingItemId),
+    }));
+    setSelectedIds((current) => current.filter((id) => id !== deletingItemId));
+
+    if (editingItemId === deletingItemId) {
+      closeEditModal();
+    }
+
+    closeDeleteItemConfirm();
   };
 
   const handleMoveSelected = () => {
@@ -640,7 +816,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       return;
     }
 
-    setSectionState((current) => ({
+    updateSectionState((current) => ({
       categories: current.categories.includes(category)
         ? current.categories
         : [...current.categories, category],
@@ -725,14 +901,18 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             Menu
           </Text>
           <Flex wrap="wrap" gap={3}>
-            <Button colorScheme="green" onClick={openAddModal}>
+            <Button
+              colorScheme="green"
+              onClick={openAddModal}
+              isDisabled={!isObjectsSyncReady}
+            >
               Add New {section.itemLabel}
             </Button>
             <Button
               variant="outline"
               borderColor="rgba(43, 66, 47, 0.24)"
               onClick={handleDeleteSelected}
-              isDisabled={selectedCount === 0}
+              isDisabled={selectedCount === 0 || !isObjectsSyncReady}
             >
               Delete Multiple Elements
             </Button>
@@ -740,6 +920,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               variant="outline"
               borderColor="rgba(43, 66, 47, 0.24)"
               onClick={openCategoriesModal}
+              isDisabled={!isObjectsSyncReady}
             >
               Categories
             </Button>
@@ -747,13 +928,23 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               variant="outline"
               borderColor="rgba(43, 66, 47, 0.24)"
               onClick={openMoveModal}
-              isDisabled={selectedCount === 0}
+              isDisabled={selectedCount === 0 || !isObjectsSyncReady}
             >
               Move Multiple Elements
             </Button>
           </Flex>
           <Text mt={4} color="#55645a" fontSize="sm">
-            Demo mode is active with seeded {section.itemLabelPlural}. {selectedCount} selected.
+            {isObjectsSection
+              ? !authReady
+                ? "Preparing the live collaborative objects channel."
+                : !authenticated
+                  ? "Authentication is required to edit live map objects."
+                  : !socket?.connected
+                    ? "Reconnecting the live collaborative objects channel."
+                    : !isObjectsStateHydrated
+                      ? "Syncing map objects from Redis through the realtime server."
+                      : `Live sync is active for map objects. ${selectedCount} selected.${lastSyncedLabel ? ` Last saved ${lastSyncedLabel}.` : ""}${objectsSyncMeta.updatedByUsername ? ` Latest change by ${objectsSyncMeta.updatedByUsername}.` : ""}`
+              : `Demo mode is active with seeded ${section.itemLabelPlural}. ${selectedCount} selected.`}
           </Text>
         </Box>
 
@@ -981,36 +1172,92 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                       ))}
                     </Stack>
                     <Flex mt={4} justify="flex-end">
-                      <IconButton
-                        aria-label={`Edit ${item.name}`}
-                        size="sm"
-                        variant="outline"
-                        borderColor="rgba(43, 66, 47, 0.24)"
-                        color="#2e5b37"
-                        icon={
-                          <Icon viewBox="0 0 24 24" boxSize={4}>
-                            <path
-                              d="M4 20h4l10.5-10.5-4-4L4 16v4Z"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.8"
-                              strokeLinejoin="round"
-                              strokeLinecap="round"
-                            />
-                            <path
-                              d="m12.5 7.5 4 4"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.8"
-                              strokeLinecap="round"
-                            />
-                          </Icon>
-                        }
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          openEditModal(item);
-                        }}
-                      />
+                      <Flex gap={2}>
+                        <IconButton
+                          aria-label={`Delete ${item.name}`}
+                          size="sm"
+                          variant="outline"
+                          borderColor="rgba(145, 67, 53, 0.24)"
+                          color="#914335"
+                          isDisabled={!isObjectsSyncReady}
+                          icon={
+                            <Icon viewBox="0 0 24 24" boxSize={4}>
+                              <path
+                                d="M5 7h14"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                              />
+                              <path
+                                d="M9 7V5.8c0-.66.54-1.2 1.2-1.2h3.6c.66 0 1.2.54 1.2 1.2V7"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                              <path
+                                d="M8 7l.7 11.02c.04.57.51.98 1.08.98h4.44c.57 0 1.04-.41 1.08-.98L16 7"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                              <path
+                                d="M10.5 10.5v5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                              />
+                              <path
+                                d="M13.5 10.5v5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                              />
+                            </Icon>
+                          }
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openDeleteItemConfirm(item.id);
+                          }}
+                        />
+                        <IconButton
+                          aria-label={`Edit ${item.name}`}
+                          size="sm"
+                          variant="outline"
+                          borderColor="rgba(43, 66, 47, 0.24)"
+                          color="#2e5b37"
+                          isDisabled={!isObjectsSyncReady}
+                          icon={
+                            <Icon viewBox="0 0 24 24" boxSize={4}>
+                              <path
+                                d="M4 20h4l10.5-10.5-4-4L4 16v4Z"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinejoin="round"
+                                strokeLinecap="round"
+                              />
+                              <path
+                                d="m12.5 7.5 4 4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                              />
+                            </Icon>
+                          }
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openEditModal(item);
+                          }}
+                        />
+                      </Flex>
                     </Flex>
                   </Box>
                 );
@@ -1346,6 +1593,19 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             </Stack>
           </ModalBody>
           <ModalFooter gap={3}>
+            <Button
+              colorScheme="red"
+              variant="outline"
+              mr="auto"
+              onClick={() => {
+                if (editingItemId) {
+                  openDeleteItemConfirm(editingItemId);
+                }
+              }}
+              isDisabled={!editingItemId || !isObjectsSyncReady}
+            >
+              Delete
+            </Button>
             <Button variant="ghost" onClick={closeEditModal}>
               Cancel
             </Button>
@@ -1355,6 +1615,27 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               isDisabled={!editItemName.trim() || !isEditMapObjectFormValid}
             >
               Save Changes
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={Boolean(deletingItemId)} onClose={closeDeleteItemConfirm} size="md">
+        <ModalOverlay bg="blackAlpha.400" />
+        <ModalContent borderRadius="24px">
+          <ModalHeader color="#914335">Delete {section.itemLabel}</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Text color="#6e2f24">
+              Are you sure you want to delete this {section.itemLabel}?
+            </Text>
+          </ModalBody>
+          <ModalFooter gap={3}>
+            <Button variant="ghost" onClick={closeDeleteItemConfirm}>
+              No
+            </Button>
+            <Button colorScheme="red" onClick={handleDeleteItem}>
+              Yes
             </Button>
           </ModalFooter>
         </ModalContent>
