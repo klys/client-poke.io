@@ -27,6 +27,7 @@ import { Link as RouterLink } from "react-router-dom";
 import { useAuth } from "../../context/authContext";
 import {
   DesignerIcon,
+  type DesignerPlayableMapBackgroundImageMode,
   type DesignerMapSizePreset,
   type DesignerMapObjectAsset,
   type DesignerMapObjectType,
@@ -94,6 +95,13 @@ const DEFAULT_MAP_OBJECT_SIZE = 64;
 const DEFAULT_MAP_CELL_SIZE = 32;
 const DEFAULT_MAP_SIZE_PRESET: DesignerMapSizePreset = "medium";
 const DEFAULT_MAP_TYPE: DesignerPlayableMapType = "grassland";
+const MAP_BACKGROUND_IMAGE_MODES: DesignerPlayableMapBackgroundImageMode[] = [
+  "repeat",
+  "centered",
+  "stretched",
+];
+const DEFAULT_MAP_BACKGROUND_COLOR = "#8bc17f";
+const DEFAULT_MAP_BACKGROUND_IMAGE_MODE: DesignerPlayableMapBackgroundImageMode = "repeat";
 
 function createUniqueMapId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -159,6 +167,61 @@ function isValidMapSizePreset(value: unknown): value is DesignerMapSizePreset {
 
 function isValidPlayableMapType(value: unknown): value is DesignerPlayableMapType {
   return typeof value === "string" && MAP_TYPES.includes(value as DesignerPlayableMapType);
+}
+
+function isValidBackgroundImageMode(
+  value: unknown
+): value is DesignerPlayableMapBackgroundImageMode {
+  return (
+    typeof value === "string" &&
+    MAP_BACKGROUND_IMAGE_MODES.includes(value as DesignerPlayableMapBackgroundImageMode)
+  );
+}
+
+function normalizeBackgroundColor(value: string) {
+  return /^#[0-9a-f]{6}$/i.test(value) ? value : DEFAULT_MAP_BACKGROUND_COLOR;
+}
+
+function getPlayableMapBackgroundStyle(config: {
+  backgroundColor: string;
+  backgroundImageSrc: string;
+  backgroundImageMode: DesignerPlayableMapBackgroundImageMode;
+}): React.CSSProperties {
+  const backgroundColor = normalizeBackgroundColor(config.backgroundColor);
+
+  if (!config.backgroundImageSrc) {
+    return {
+      backgroundColor,
+    };
+  }
+
+  if (config.backgroundImageMode === "centered") {
+    return {
+      backgroundColor,
+      backgroundImage: `url("${config.backgroundImageSrc}")`,
+      backgroundPosition: "center",
+      backgroundRepeat: "no-repeat",
+      backgroundSize: "auto",
+    };
+  }
+
+  if (config.backgroundImageMode === "stretched") {
+    return {
+      backgroundColor,
+      backgroundImage: `url("${config.backgroundImageSrc}")`,
+      backgroundPosition: "center",
+      backgroundRepeat: "no-repeat",
+      backgroundSize: "100% 100%",
+    };
+  }
+
+  return {
+    backgroundColor,
+    backgroundImage: `url("${config.backgroundImageSrc}")`,
+    backgroundPosition: "top left",
+    backgroundRepeat: "repeat",
+    backgroundSize: "auto",
+  };
 }
 
 function formatMapTypeLabel(value: DesignerPlayableMapType) {
@@ -275,6 +338,14 @@ function sanitizePlayableMapConfig(
         ? Math.round(candidate.regionY)
         : 0,
     mapType: candidate.mapType,
+    backgroundColor: normalizeBackgroundColor(candidate.backgroundColor ?? ""),
+    backgroundImageSrc:
+      typeof candidate.backgroundImageSrc === "string"
+        ? candidate.backgroundImageSrc
+        : "",
+    backgroundImageMode: isValidBackgroundImageMode(candidate.backgroundImageMode)
+      ? candidate.backgroundImageMode
+      : DEFAULT_MAP_BACKGROUND_IMAGE_MODE,
   };
 }
 
@@ -385,6 +456,43 @@ function loadStoredState(sectionKey: DesignerSectionKey): DesignerSectionState {
   }
 }
 
+function buildImportedSectionState(
+  sectionKey: DesignerSectionKey,
+  value: unknown
+): DesignerSectionState | null {
+  if (Array.isArray(value)) {
+    return sanitizeSectionState(sectionKey, {
+      categories: [],
+      items: value,
+    });
+  }
+
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const nestedValue =
+    "state" in candidate
+      ? candidate.state
+      : "data" in candidate
+        ? candidate.data
+        : value;
+
+  if (nestedValue !== value) {
+    return buildImportedSectionState(sectionKey, nestedValue);
+  }
+
+  if (!Array.isArray(candidate.items)) {
+    return null;
+  }
+
+  return sanitizeSectionState(sectionKey, {
+    categories: Array.isArray(candidate.categories) ? candidate.categories : [],
+    items: candidate.items,
+  });
+}
+
 export default function Section({ sectionKey }: DesignerSectionProps) {
   const section = designerSectionsByKey[sectionKey];
   const isObjectsSection = sectionKey === "objects";
@@ -457,6 +565,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const [newMapRegionX, setNewMapRegionX] = useState("0");
   const [newMapRegionY, setNewMapRegionY] = useState("0");
   const [newMapType, setNewMapType] = useState<DesignerPlayableMapType>(DEFAULT_MAP_TYPE);
+  const [newMapBackgroundColor, setNewMapBackgroundColor] = useState(
+    DEFAULT_MAP_BACKGROUND_COLOR
+  );
+  const [newMapBackgroundImage, setNewMapBackgroundImage] = useState("");
+  const [newMapBackgroundImageMode, setNewMapBackgroundImageMode] =
+    useState<DesignerPlayableMapBackgroundImageMode>(DEFAULT_MAP_BACKGROUND_IMAGE_MODE);
   const [editMapCellSize, setEditMapCellSize] = useState(String(DEFAULT_MAP_CELL_SIZE));
   const [editMapSizePreset, setEditMapSizePreset] =
     useState<DesignerMapSizePreset>(DEFAULT_MAP_SIZE_PRESET);
@@ -466,8 +580,15 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const [editMapRegionX, setEditMapRegionX] = useState("0");
   const [editMapRegionY, setEditMapRegionY] = useState("0");
   const [editMapType, setEditMapType] = useState<DesignerPlayableMapType>(DEFAULT_MAP_TYPE);
+  const [editMapBackgroundColor, setEditMapBackgroundColor] = useState(
+    DEFAULT_MAP_BACKGROUND_COLOR
+  );
+  const [editMapBackgroundImage, setEditMapBackgroundImage] = useState("");
+  const [editMapBackgroundImageMode, setEditMapBackgroundImageMode] =
+    useState<DesignerPlayableMapBackgroundImageMode>(DEFAULT_MAP_BACKGROUND_IMAGE_MODE);
   const shouldBroadcastRef = useRef(false);
   const latestSectionStateRef = useRef(sectionState);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const updateSectionState = useCallback(
     (updater: React.SetStateAction<DesignerSectionState>) => {
@@ -747,6 +868,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setNewMapRegionX("0");
     setNewMapRegionY("0");
     setNewMapType(DEFAULT_MAP_TYPE);
+    setNewMapBackgroundColor(DEFAULT_MAP_BACKGROUND_COLOR);
+    setNewMapBackgroundImage("");
+    setNewMapBackgroundImageMode(DEFAULT_MAP_BACKGROUND_IMAGE_MODE);
     setIsAddOpen(true);
   };
 
@@ -774,6 +898,13 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setEditMapRegionX(String(playableMapConfig?.regionX || 0));
     setEditMapRegionY(String(playableMapConfig?.regionY || 0));
     setEditMapType(playableMapConfig?.mapType || DEFAULT_MAP_TYPE);
+    setEditMapBackgroundColor(
+      playableMapConfig?.backgroundColor || DEFAULT_MAP_BACKGROUND_COLOR
+    );
+    setEditMapBackgroundImage(playableMapConfig?.backgroundImageSrc || "");
+    setEditMapBackgroundImageMode(
+      playableMapConfig?.backgroundImageMode || DEFAULT_MAP_BACKGROUND_IMAGE_MODE
+    );
     setIsEditOpen(true);
   };
 
@@ -958,6 +1089,34 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     reader.readAsDataURL(file);
   };
 
+  const handleMapBackgroundImageChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+    onImageChange: (value: string) => void
+  ) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      onImageChange("");
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      window.alert("Please upload an image file for the map background.");
+      event.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        onImageChange(reader.result);
+      }
+    };
+
+    reader.readAsDataURL(file);
+  };
+
   const handleAddItem = () => {
     const name = newItemName.trim();
     const category = normalizeCategoryName(newItemCategory) || UNCATEGORIZED;
@@ -992,6 +1151,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               regionX: parseMapCoordinate(newMapRegionX),
               regionY: parseMapCoordinate(newMapRegionY),
               mapType: newMapType,
+              backgroundColor: normalizeBackgroundColor(newMapBackgroundColor),
+              backgroundImageSrc: newMapBackgroundImage,
+              backgroundImageMode: newMapBackgroundImageMode,
             }
           : undefined;
       const item: DesignerItemSeed = {
@@ -1053,6 +1215,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               regionX: parseMapCoordinate(editMapRegionX),
               regionY: parseMapCoordinate(editMapRegionY),
               mapType: editMapType,
+              backgroundColor: normalizeBackgroundColor(editMapBackgroundColor),
+              backgroundImageSrc: editMapBackgroundImage,
+              backgroundImageMode: editMapBackgroundImageMode,
             }
           : undefined;
 
@@ -1130,6 +1295,115 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setIsMoveOpen(false);
   };
 
+  const handleExportItems = () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const payload = {
+      version: 1,
+      section: sectionKey,
+      exportedAt: new Date().toISOString(),
+      state: sectionState,
+    };
+    const fileName = `${section.key}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const objectUrl = window.URL.createObjectURL(blob);
+    const link = window.document.createElement("a");
+
+    link.href = objectUrl;
+    link.download = fileName;
+    window.document.body.appendChild(link);
+    link.click();
+    window.document.body.removeChild(link);
+    window.URL.revokeObjectURL(objectUrl);
+
+    toast({
+      title: `${section.title} exported`,
+      description: `${sectionState.items.length} ${section.itemLabelPlural} saved to JSON.`,
+      status: "success",
+      duration: 3000,
+      isClosable: true,
+      position: "top",
+    });
+  };
+
+  const openImportPicker = () => {
+    importInputRef.current?.click();
+  };
+
+  const handleImportItems = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        `Importing will replace the current ${section.itemLabelPlural} list. Continue?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const fileContents = await file.text();
+      const parsed = JSON.parse(fileContents) as unknown;
+      const metadata =
+        parsed && typeof parsed === "object"
+          ? (parsed as Record<string, unknown>)
+          : null;
+
+      if (
+        metadata &&
+        typeof metadata.section === "string" &&
+        metadata.section !== sectionKey
+      ) {
+        throw new Error(
+          `This file is for "${metadata.section}", not "${sectionKey}".`
+        );
+      }
+
+      const nextState = buildImportedSectionState(sectionKey, parsed);
+
+      if (!nextState) {
+        throw new Error("The selected file does not contain a valid designer JSON export.");
+      }
+
+      updateSectionState(nextState);
+      setSelectedIds([]);
+
+      toast({
+        title: `${section.title} imported`,
+        description: `${nextState.items.length} ${section.itemLabelPlural} loaded from JSON.`,
+        status: "success",
+        duration: 4000,
+        isClosable: true,
+        position: "top",
+      });
+    } catch (error) {
+      toast({
+        title: "Import failed",
+        description:
+          error instanceof Error
+            ? error.message
+            : "The selected file could not be imported.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+        position: "top",
+      });
+    }
+  };
+
   const renderPlayableMapFields = ({
     cellSize,
     onCellSizeChange,
@@ -1147,6 +1421,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     onRegionYChange,
     mapType,
     onMapTypeChange,
+    backgroundColor,
+    onBackgroundColorChange,
+    backgroundImageSrc,
+    onBackgroundImageChange,
+    backgroundImageMode,
+    onBackgroundImageModeChange,
     isValidDimensions,
   }: {
     cellSize: string;
@@ -1165,163 +1445,257 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     onRegionYChange: (value: string) => void;
     mapType: DesignerPlayableMapType;
     onMapTypeChange: (value: DesignerPlayableMapType) => void;
+    backgroundColor: string;
+    onBackgroundColorChange: (value: string) => void;
+    backgroundImageSrc: string;
+    onBackgroundImageChange: (value: string) => void;
+    backgroundImageMode: DesignerPlayableMapBackgroundImageMode;
+    onBackgroundImageModeChange: (value: DesignerPlayableMapBackgroundImageMode) => void;
     isValidDimensions: boolean;
-  }) => (
-    <>
-      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-        <FormControl isRequired>
-          <FormLabel>Cell Size</FormLabel>
-          <Select
-            value={cellSize}
-            onChange={(event) => onCellSizeChange(event.target.value)}
-          >
-            {MAP_CELL_SIZE_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </Select>
-        </FormControl>
-        <FormControl isRequired>
-          <FormLabel>Map Size</FormLabel>
-          <Select
-            value={sizePreset}
-            onChange={(event) =>
-              onSizePresetChange(event.target.value as DesignerMapSizePreset)
-            }
-          >
-            {MAP_SIZE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </Select>
-        </FormControl>
-      </SimpleGrid>
-      {sizePreset === "custom" ? (
+  }) => {
+    const previewBackgroundStyle = getPlayableMapBackgroundStyle({
+      backgroundColor,
+      backgroundImageSrc,
+      backgroundImageMode,
+    });
+
+    return (
+      <>
         <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-          <FormControl isRequired isInvalid={customWidth !== "" && parseMapDimension(customWidth) === null}>
-            <FormLabel>Custom Width</FormLabel>
+          <FormControl isRequired>
+            <FormLabel>Cell Size</FormLabel>
+            <Select
+              value={cellSize}
+              onChange={(event) => onCellSizeChange(event.target.value)}
+            >
+              {MAP_CELL_SIZE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl isRequired>
+            <FormLabel>Map Size</FormLabel>
+            <Select
+              value={sizePreset}
+              onChange={(event) =>
+                onSizePresetChange(event.target.value as DesignerMapSizePreset)
+              }
+            >
+              {MAP_SIZE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </FormControl>
+        </SimpleGrid>
+        {sizePreset === "custom" ? (
+          <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+            <FormControl
+              isRequired
+              isInvalid={customWidth !== "" && parseMapDimension(customWidth) === null}
+            >
+              <FormLabel>Custom Width</FormLabel>
+              <Input
+                type="number"
+                min={1}
+                step={1}
+                value={customWidth}
+                onChange={(event) =>
+                  onCustomWidthChange(normalizeMapDimension(event.target.value))
+                }
+                placeholder="Map width"
+              />
+            </FormControl>
+            <FormControl
+              isRequired
+              isInvalid={customHeight !== "" && parseMapDimension(customHeight) === null}
+            >
+              <FormLabel>Custom Height</FormLabel>
+              <Input
+                type="number"
+                min={1}
+                step={1}
+                value={customHeight}
+                onChange={(event) =>
+                  onCustomHeightChange(normalizeMapDimension(event.target.value))
+                }
+                placeholder="Map height"
+              />
+            </FormControl>
+          </SimpleGrid>
+        ) : null}
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+          <FormControl isRequired>
+            <FormLabel>Region</FormLabel>
+            <Select
+              value={regionName}
+              onChange={(event) => onRegionChange(event.target.value)}
+              isDisabled={regionNames.length === 0}
+            >
+              {regionNames.map((region) => (
+                <option key={region} value={region}>
+                  {region}
+                </option>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl isRequired>
+            <FormLabel>Map Type</FormLabel>
+            <Select
+              value={mapType}
+              onChange={(event) =>
+                onMapTypeChange(event.target.value as DesignerPlayableMapType)
+              }
+            >
+              {MAP_TYPES.map((option) => (
+                <option key={option} value={option}>
+                  {formatMapTypeLabel(option)}
+                </option>
+              ))}
+            </Select>
+          </FormControl>
+        </SimpleGrid>
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+          <FormControl>
+            <FormLabel>Region X Position</FormLabel>
             <Input
               type="number"
-              min={1}
               step={1}
-              value={customWidth}
-              onChange={(event) => onCustomWidthChange(normalizeMapDimension(event.target.value))}
-              placeholder="Map width"
+              value={regionX}
+              onChange={(event) => onRegionXChange(event.target.value)}
+              placeholder="Region X position"
             />
           </FormControl>
-          <FormControl isRequired isInvalid={customHeight !== "" && parseMapDimension(customHeight) === null}>
-            <FormLabel>Custom Height</FormLabel>
+          <FormControl>
+            <FormLabel>Region Y Position</FormLabel>
             <Input
               type="number"
-              min={1}
               step={1}
-              value={customHeight}
-              onChange={(event) => onCustomHeightChange(normalizeMapDimension(event.target.value))}
-              placeholder="Map height"
+              value={regionY}
+              onChange={(event) => onRegionYChange(event.target.value)}
+              placeholder="Region Y position"
             />
           </FormControl>
         </SimpleGrid>
-      ) : null}
-      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-        <FormControl isRequired>
-          <FormLabel>Region</FormLabel>
-          <Select
-            value={regionName}
-            onChange={(event) => onRegionChange(event.target.value)}
-            isDisabled={regionNames.length === 0}
-          >
-            {regionNames.map((region) => (
-              <option key={region} value={region}>
-                {region}
-              </option>
-            ))}
-          </Select>
-        </FormControl>
-        <FormControl isRequired>
-          <FormLabel>Map Type</FormLabel>
-          <Select
-            value={mapType}
-            onChange={(event) =>
-              onMapTypeChange(event.target.value as DesignerPlayableMapType)
-            }
-          >
-            {MAP_TYPES.map((option) => (
-              <option key={option} value={option}>
-                {formatMapTypeLabel(option)}
-              </option>
-            ))}
-          </Select>
-        </FormControl>
-      </SimpleGrid>
-      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-        <FormControl>
-          <FormLabel>Region X Position</FormLabel>
-          <Input
-            type="number"
-            step={1}
-            value={regionX}
-            onChange={(event) => onRegionXChange(event.target.value)}
-            placeholder="Region X position"
-          />
-        </FormControl>
-        <FormControl>
-          <FormLabel>Region Y Position</FormLabel>
-          <Input
-            type="number"
-            step={1}
-            value={regionY}
-            onChange={(event) => onRegionYChange(event.target.value)}
-            placeholder="Region Y position"
-          />
-        </FormControl>
-      </SimpleGrid>
-      <Text fontSize="sm" color="#55645a">
-        Region X/Y will be used for automatic region map generation later. That generation flow is not implemented yet.
-      </Text>
-      <Box
-        p={4}
-        borderRadius="20px"
-        border="1px solid rgba(43, 66, 47, 0.12)"
-        bg="linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(241,246,238,0.95) 100%)"
-      >
-        <Text
-          fontSize="sm"
-          fontWeight="700"
-          textTransform="uppercase"
-          letterSpacing="0.14em"
-          color="#5e7a61"
-          mb={3}
-        >
-          Map Summary
-        </Text>
-        <Text color="#55645a" fontSize="sm">
-          Cell size: {cellSize || "--"} px
-        </Text>
-        <Text color="#55645a" fontSize="sm">
-          Map size:{" "}
-          {sizePreset === "custom"
-            ? `${customWidth || "--"} x ${customHeight || "--"}`
-            : getMapSizePresetOption(sizePreset).label.replace(/[^(]*\((.*)\)/, "$1")}
-        </Text>
-        <Text color="#55645a" fontSize="sm">
-          Region: {regionName || "No regions available"}
-        </Text>
-        <Text color="#55645a" fontSize="sm">
-          Region position: {parseMapCoordinate(regionX)}, {parseMapCoordinate(regionY)}
-        </Text>
-        <Text color="#55645a" fontSize="sm">
-          Map type: {formatMapTypeLabel(mapType)}
-        </Text>
-        {!isValidDimensions ? (
-          <Text mt={2} color="#914335" fontSize="sm">
-            Enter a valid custom width and height to continue.
-          </Text>
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+          <FormControl isRequired>
+            <FormLabel>Background Color</FormLabel>
+            <Input
+              type="color"
+              value={normalizeBackgroundColor(backgroundColor)}
+              onChange={(event) => onBackgroundColorChange(event.target.value)}
+              p={1}
+              h="44px"
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel>Background Image</FormLabel>
+            <Input
+              type="file"
+              accept="image/*"
+              p={1}
+              onChange={(event) =>
+                handleMapBackgroundImageChange(event, onBackgroundImageChange)
+              }
+            />
+          </FormControl>
+        </SimpleGrid>
+        {backgroundImageSrc ? (
+          <FormControl>
+            <FormLabel>Background Image Mode</FormLabel>
+            <Select
+              value={backgroundImageMode}
+              onChange={(event) =>
+                onBackgroundImageModeChange(
+                  event.target.value as DesignerPlayableMapBackgroundImageMode
+                )
+              }
+            >
+              {MAP_BACKGROUND_IMAGE_MODES.map((option) => (
+                <option key={option} value={option}>
+                  {option === "centered"
+                    ? "Centered"
+                    : option === "stretched"
+                      ? "Stretched"
+                      : "Repeat"}
+                </option>
+              ))}
+            </Select>
+          </FormControl>
         ) : null}
-      </Box>
-    </>
-  );
+        <Flex justify="space-between" align={{ base: "flex-start", md: "center" }} gap={3} wrap="wrap">
+          <Text fontSize="sm" color="#55645a">
+            Region X/Y will be used for automatic region map generation later. That generation flow is not implemented yet.
+          </Text>
+          {backgroundImageSrc ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onBackgroundImageChange("")}
+            >
+              Remove Background Image
+            </Button>
+          ) : null}
+        </Flex>
+        <Box
+          p={4}
+          borderRadius="20px"
+          border="1px solid rgba(43, 66, 47, 0.12)"
+          bg="linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(241,246,238,0.95) 100%)"
+        >
+          <Text
+            fontSize="sm"
+            fontWeight="700"
+            textTransform="uppercase"
+            letterSpacing="0.14em"
+            color="#5e7a61"
+            mb={3}
+          >
+            Map Summary
+          </Text>
+          <Text color="#55645a" fontSize="sm">
+            Cell size: {cellSize || "--"} px
+          </Text>
+          <Text color="#55645a" fontSize="sm">
+            Map size:{" "}
+            {sizePreset === "custom"
+              ? `${customWidth || "--"} x ${customHeight || "--"}`
+              : getMapSizePresetOption(sizePreset).label.replace(/[^(]*\((.*)\)/, "$1")}
+          </Text>
+          <Text color="#55645a" fontSize="sm">
+            Region: {regionName || "No regions available"}
+          </Text>
+          <Text color="#55645a" fontSize="sm">
+            Region position: {parseMapCoordinate(regionX)}, {parseMapCoordinate(regionY)}
+          </Text>
+          <Text color="#55645a" fontSize="sm">
+            Map type: {formatMapTypeLabel(mapType)}
+          </Text>
+          <Text color="#55645a" fontSize="sm">
+            Background color: {normalizeBackgroundColor(backgroundColor)}
+          </Text>
+          <Text color="#55645a" fontSize="sm">
+            Background image: {backgroundImageSrc ? backgroundImageMode : "None"}
+          </Text>
+          <Box
+            mt={4}
+            minH="120px"
+            borderRadius="16px"
+            border="1px solid rgba(43, 66, 47, 0.14)"
+            sx={previewBackgroundStyle}
+          />
+          {!isValidDimensions ? (
+            <Text mt={2} color="#914335" fontSize="sm">
+              Enter a valid custom width and height to continue.
+            </Text>
+          ) : null}
+        </Box>
+      </>
+    );
+  };
 
   return (
     <Box
@@ -1427,7 +1801,30 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             >
               Move Multiple Elements
             </Button>
+            <Button
+              variant="outline"
+              borderColor="rgba(43, 66, 47, 0.24)"
+              onClick={openImportPicker}
+              isDisabled={!isObjectsSyncReady}
+            >
+              Import JSON
+            </Button>
+            <Button
+              variant="outline"
+              borderColor="rgba(43, 66, 47, 0.24)"
+              onClick={handleExportItems}
+              isDisabled={!isObjectsSyncReady}
+            >
+              Export JSON
+            </Button>
           </Flex>
+          <Input
+            ref={importInputRef}
+            type="file"
+            accept=".json,application/json"
+            display="none"
+            onChange={handleImportItems}
+          />
           <Text mt={4} color="#55645a" fontSize="sm">
             {isObjectsSection
               ? !authReady
@@ -1956,6 +2353,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   onRegionYChange: setNewMapRegionY,
                   mapType: newMapType,
                   onMapTypeChange: setNewMapType,
+                  backgroundColor: newMapBackgroundColor,
+                  onBackgroundColorChange: setNewMapBackgroundColor,
+                  backgroundImageSrc: newMapBackgroundImage,
+                  onBackgroundImageChange: setNewMapBackgroundImage,
+                  backgroundImageMode: newMapBackgroundImageMode,
+                  onBackgroundImageModeChange: setNewMapBackgroundImageMode,
                   isValidDimensions: hasValidNewMapDimensions,
                 })
               ) : null}
@@ -2167,6 +2570,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   onRegionYChange: setEditMapRegionY,
                   mapType: editMapType,
                   onMapTypeChange: setEditMapType,
+                  backgroundColor: editMapBackgroundColor,
+                  onBackgroundColorChange: setEditMapBackgroundColor,
+                  backgroundImageSrc: editMapBackgroundImage,
+                  onBackgroundImageChange: setEditMapBackgroundImage,
+                  backgroundImageMode: editMapBackgroundImageMode,
+                  onBackgroundImageModeChange: setEditMapBackgroundImageMode,
                   isValidDimensions: hasValidEditMapDimensions,
                 })
               ) : null}

@@ -24,3 +24,6 @@ yarn-error.log*
 
 # config
 public/config.json
+
+# agents
+contracts.json

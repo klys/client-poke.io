@@ -2,6 +2,18 @@
 
 This file is a quick guide for coding agents working in this repository.
 
+## Client-Server Contract
+
+In case of changes that require server side refactor use contracts.json to find the other side that require to be updated.
+- if contracts.json dont exists request to be created before doing any work that require server side refactor.
+- validate contracts.json to have the following format example:
+
+```
+{
+    "backend_location": "<file/system/path>"
+}
+```
+
 ## Project Summary
 
 - React 18 + TypeScript client for a multiplayer browser game

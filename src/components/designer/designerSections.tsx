@@ -48,6 +48,11 @@ export type DesignerPlayableMapType =
   | "ruins"
   | "city";
 
+export type DesignerPlayableMapBackgroundImageMode =
+  | "repeat"
+  | "centered"
+  | "stretched";
+
 export interface DesignerMapObjectAsset {
   imageSrc: string;
   width: number;
@@ -78,6 +83,9 @@ export interface DesignerPlayableMapConfig {
   regionX: number;
   regionY: number;
   mapType: DesignerPlayableMapType;
+  backgroundColor: string;
+  backgroundImageSrc: string;
+  backgroundImageMode: DesignerPlayableMapBackgroundImageMode;
 }
 
 export interface DesignerSectionDefinition {
@@ -338,6 +346,9 @@ export const designerSections: DesignerSectionDefinition[] = [
           regionX: 0,
           regionY: 0,
           mapType: "grassland",
+          backgroundColor: "#8bc17f",
+          backgroundImageSrc: "",
+          backgroundImageMode: "repeat",
         },
       },
       {
@@ -360,6 +371,9 @@ export const designerSections: DesignerSectionDefinition[] = [
           regionX: 1,
           regionY: 2,
           mapType: "cave",
+          backgroundColor: "#8f8169",
+          backgroundImageSrc: "",
+          backgroundImageMode: "repeat",
         },
       },
       {
@@ -382,6 +396,9 @@ export const designerSections: DesignerSectionDefinition[] = [
           regionX: 3,
           regionY: 1,
           mapType: "city",
+          backgroundColor: "#c8d0db",
+          backgroundImageSrc: "",
+          backgroundImageMode: "repeat",
         },
       },
     ],
@@ -397,6 +414,13 @@ export const designerSections: DesignerSectionDefinition[] = [
         `${options?.playableMapConfig?.regionX ?? 0}, ${options?.playableMapConfig?.regionY ?? 0}`
       ),
       detail("Map Type", options?.playableMapConfig?.mapType ?? "grassland"),
+      detail("Background Color", options?.playableMapConfig?.backgroundColor ?? "#8bc17f"),
+      detail(
+        "Background Image",
+        options?.playableMapConfig?.backgroundImageSrc
+          ? options?.playableMapConfig?.backgroundImageMode ?? "repeat"
+          : "None"
+      ),
     ],
   },
   {
