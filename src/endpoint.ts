@@ -9,6 +9,7 @@ import RequireAuth from './components/ux/auth/RequireAuth';
 import ValidateEmail from './components/ux/auth/ValidateEmail';
 import Frame from './components/gameFrame/Frame';
 import Main from './components/designer/Main';
+import MapEditorPage from './components/designer/MapEditorPage';
 import Section from './components/designer/Section';
 
 const withAuth = (element: ReactNode) =>
@@ -54,6 +55,10 @@ export const createEndpoints = (config: RuntimeConfig): RouteObject[] => [
   {
     path: "/designer/maps-editor",
     element: withAuth(createElement(Section, { sectionKey: "mapsEditor" }))
+  },
+  {
+    path: "/designer/maps-editor/:mapId",
+    element: withAuth(createElement(MapEditorPage))
   },
   {
     path: "/designer/skills-gfx",

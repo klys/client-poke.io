@@ -27,8 +27,11 @@ import { Link as RouterLink } from "react-router-dom";
 import { useAuth } from "../../context/authContext";
 import {
   DesignerIcon,
+  type DesignerMapSizePreset,
   type DesignerMapObjectAsset,
   type DesignerMapObjectType,
+  type DesignerPlayableMapConfig,
+  type DesignerPlayableMapType,
   designerSectionsByKey,
   type DesignerItemSeed,
   type DesignerSectionKey,
@@ -58,11 +61,115 @@ const MAP_OBJECT_TYPES: DesignerMapObjectType[] = [
   "floor",
   "water",
 ];
+const MAP_CELL_SIZE_OPTIONS = [8, 16, 32, 64, 128] as const;
+const MAP_SIZE_OPTIONS: Array<{
+  value: DesignerMapSizePreset;
+  label: string;
+  width: number | null;
+  height: number | null;
+}> = [
+  { value: "small", label: "Small (30 x 30)", width: 30, height: 30 },
+  { value: "medium", label: "Medium (500 x 500)", width: 500, height: 500 },
+  { value: "large", label: "Large (2000 x 2000)", width: 2000, height: 2000 },
+  { value: "custom", label: "Custom Size", width: null, height: null },
+];
+const MAP_TYPES: DesignerPlayableMapType[] = [
+  "grassland",
+  "sea",
+  "undersea",
+  "cave",
+  "interior",
+  "desert",
+  "forest",
+  "snow",
+  "island",
+  "mountain",
+  "swamp",
+  "volcanic",
+  "ruins",
+  "city",
+];
 const DEFAULT_MAP_OBJECT_TYPE: DesignerMapObjectType = "obstacle";
 const DEFAULT_MAP_OBJECT_SIZE = 64;
+const DEFAULT_MAP_CELL_SIZE = 32;
+const DEFAULT_MAP_SIZE_PRESET: DesignerMapSizePreset = "medium";
+const DEFAULT_MAP_TYPE: DesignerPlayableMapType = "grassland";
+
+function createUniqueMapId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `map-${crypto.randomUUID()}`;
+  }
+
+  return `map-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 function normalizeCategoryName(value: string) {
   return value.trim().replace(/\s+/g, " ");
+}
+
+function normalizeMapDimension(value: string) {
+  const parsedValue = Number.parseInt(value, 10);
+
+  return Number.isFinite(parsedValue) && parsedValue > 0
+    ? String(Math.max(1, Math.round(parsedValue)))
+    : "";
+}
+
+function parseMapDimension(value: string) {
+  const parsedValue = Number.parseInt(value, 10);
+
+  return Number.isFinite(parsedValue) && parsedValue > 0
+    ? Math.max(1, Math.round(parsedValue))
+    : null;
+}
+
+function parseMapCoordinate(value: string) {
+  const parsedValue = Number.parseInt(value, 10);
+
+  return Number.isFinite(parsedValue) ? Math.round(parsedValue) : 0;
+}
+
+function getMapSizePresetOption(sizePreset: DesignerMapSizePreset) {
+  return MAP_SIZE_OPTIONS.find((option) => option.value === sizePreset) ?? MAP_SIZE_OPTIONS[1];
+}
+
+function resolveMapDimensions(
+  sizePreset: DesignerMapSizePreset,
+  customWidth: string,
+  customHeight: string
+) {
+  const presetOption = getMapSizePresetOption(sizePreset);
+
+  if (sizePreset !== "custom") {
+    return {
+      width: presetOption.width ?? 500,
+      height: presetOption.height ?? 500,
+    };
+  }
+
+  return {
+    width: parseMapDimension(customWidth),
+    height: parseMapDimension(customHeight),
+  };
+}
+
+function isValidMapSizePreset(value: unknown): value is DesignerMapSizePreset {
+  return MAP_SIZE_OPTIONS.some((option) => option.value === value);
+}
+
+function isValidPlayableMapType(value: unknown): value is DesignerPlayableMapType {
+  return typeof value === "string" && MAP_TYPES.includes(value as DesignerPlayableMapType);
+}
+
+function formatMapTypeLabel(value: DesignerPlayableMapType) {
+  return value
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function getMapEditorPath(mapId: string) {
+  return `/designer/maps-editor/${mapId}`;
 }
 
 function findCategoryName(categories: string[], target: string) {
@@ -117,6 +224,87 @@ function sanitizeMapObjectAsset(value: unknown): DesignerMapObjectAsset | undefi
   };
 }
 
+function sanitizePlayableMapConfig(
+  value: unknown,
+  regionNames: string[]
+): DesignerPlayableMapConfig | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const candidate = value as Partial<DesignerPlayableMapConfig>;
+  const cellSize =
+    typeof candidate.cellSize === "number" && MAP_CELL_SIZE_OPTIONS.includes(candidate.cellSize as 8 | 16 | 32 | 64 | 128)
+      ? candidate.cellSize
+      : null;
+  const width =
+    typeof candidate.width === "number" && Number.isFinite(candidate.width) && candidate.width > 0
+      ? Math.max(1, Math.round(candidate.width))
+      : null;
+  const height =
+    typeof candidate.height === "number" && Number.isFinite(candidate.height) && candidate.height > 0
+      ? Math.max(1, Math.round(candidate.height))
+      : null;
+  const regionName =
+    typeof candidate.regionName === "string" && candidate.regionName.trim().length > 0
+      ? candidate.regionName.trim()
+      : regionNames[0] ?? "";
+
+  if (
+    cellSize === null ||
+    width === null ||
+    height === null ||
+    !isValidMapSizePreset(candidate.sizePreset) ||
+    !isValidPlayableMapType(candidate.mapType)
+  ) {
+    return undefined;
+  }
+
+  return {
+    cellSize,
+    sizePreset: candidate.sizePreset,
+    width,
+    height,
+    regionName,
+    regionX:
+      typeof candidate.regionX === "number" && Number.isFinite(candidate.regionX)
+        ? Math.round(candidate.regionX)
+        : 0,
+    regionY:
+      typeof candidate.regionY === "number" && Number.isFinite(candidate.regionY)
+        ? Math.round(candidate.regionY)
+        : 0,
+    mapType: candidate.mapType,
+  };
+}
+
+function loadRegionNames() {
+  const fallbackRegions =
+    buildInitialState("regions").items.map((item) => item.name).filter(Boolean);
+
+  if (typeof window === "undefined") {
+    return fallbackRegions;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(getStorageKey("regions"));
+    if (!raw) {
+      return fallbackRegions;
+    }
+
+    const parsed = JSON.parse(raw) as Partial<DesignerSectionState>;
+    const regionNames = Array.isArray(parsed.items)
+      ? parsed.items
+          .map((item) => (typeof item?.name === "string" ? item.name.trim() : ""))
+          .filter(Boolean)
+      : [];
+
+    return regionNames.length > 0 ? regionNames : fallbackRegions;
+  } catch {
+    return fallbackRegions;
+  }
+}
+
 function buildInitialState(sectionKey: DesignerSectionKey): DesignerSectionState {
   const section = designerSectionsByKey[sectionKey];
   const categorySet = new Set([UNCATEGORIZED, ...section.defaultCategories]);
@@ -136,6 +324,7 @@ function sanitizeSectionState(
   value: unknown
 ): DesignerSectionState {
   const fallback = buildInitialState(sectionKey);
+  const regionNames = loadRegionNames();
 
   if (!value || typeof value !== "object") {
     return fallback;
@@ -166,6 +355,7 @@ function sanitizeSectionState(
       ...item,
       category: normalizeCategoryName(item.category) || UNCATEGORIZED,
       mapObjectAsset: sanitizeMapObjectAsset(item.mapObjectAsset),
+      playableMapConfig: sanitizePlayableMapConfig(item.playableMapConfig, regionNames),
     }));
 
   items.forEach((item) => categories.push(item.category));
@@ -198,8 +388,10 @@ function loadStoredState(sectionKey: DesignerSectionKey): DesignerSectionState {
 export default function Section({ sectionKey }: DesignerSectionProps) {
   const section = designerSectionsByKey[sectionKey];
   const isObjectsSection = sectionKey === "objects";
+  const isMapsSection = sectionKey === "mapsEditor";
   const toast = useToast();
   const { authReady, authenticated, socket } = useAuth();
+  const regionNames = useMemo(() => loadRegionNames(), []);
   const [sectionState, setSectionState] = useState<DesignerSectionState>(() =>
     loadStoredState(sectionKey)
   );
@@ -256,6 +448,24 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   );
   const [editMapObjectType, setEditMapObjectType] =
     useState<DesignerMapObjectType>(DEFAULT_MAP_OBJECT_TYPE);
+  const [newMapCellSize, setNewMapCellSize] = useState(String(DEFAULT_MAP_CELL_SIZE));
+  const [newMapSizePreset, setNewMapSizePreset] =
+    useState<DesignerMapSizePreset>(DEFAULT_MAP_SIZE_PRESET);
+  const [newMapCustomWidth, setNewMapCustomWidth] = useState("500");
+  const [newMapCustomHeight, setNewMapCustomHeight] = useState("500");
+  const [newMapRegion, setNewMapRegion] = useState(regionNames[0] || "");
+  const [newMapRegionX, setNewMapRegionX] = useState("0");
+  const [newMapRegionY, setNewMapRegionY] = useState("0");
+  const [newMapType, setNewMapType] = useState<DesignerPlayableMapType>(DEFAULT_MAP_TYPE);
+  const [editMapCellSize, setEditMapCellSize] = useState(String(DEFAULT_MAP_CELL_SIZE));
+  const [editMapSizePreset, setEditMapSizePreset] =
+    useState<DesignerMapSizePreset>(DEFAULT_MAP_SIZE_PRESET);
+  const [editMapCustomWidth, setEditMapCustomWidth] = useState("500");
+  const [editMapCustomHeight, setEditMapCustomHeight] = useState("500");
+  const [editMapRegion, setEditMapRegion] = useState(regionNames[0] || "");
+  const [editMapRegionX, setEditMapRegionX] = useState("0");
+  const [editMapRegionY, setEditMapRegionY] = useState("0");
+  const [editMapType, setEditMapType] = useState<DesignerPlayableMapType>(DEFAULT_MAP_TYPE);
   const shouldBroadcastRef = useRef(false);
   const latestSectionStateRef = useRef(sectionState);
 
@@ -416,6 +626,16 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     sectionState.categories,
   ]);
 
+  useEffect(() => {
+    if (!regionNames.includes(newMapRegion)) {
+      setNewMapRegion(regionNames[0] || "");
+    }
+
+    if (!regionNames.includes(editMapRegion)) {
+      setEditMapRegion(regionNames[0] || "");
+    }
+  }, [editMapRegion, newMapRegion, regionNames]);
+
   const selectedCount = selectedIds.length;
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const isObjectsSyncReady =
@@ -436,6 +656,16 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const parsedMapObjectHeight = Number.parseInt(newMapObjectHeight, 10);
   const parsedEditMapObjectWidth = Number.parseInt(editMapObjectWidth, 10);
   const parsedEditMapObjectHeight = Number.parseInt(editMapObjectHeight, 10);
+  const resolvedNewMapDimensions = resolveMapDimensions(
+    newMapSizePreset,
+    newMapCustomWidth,
+    newMapCustomHeight
+  );
+  const resolvedEditMapDimensions = resolveMapDimensions(
+    editMapSizePreset,
+    editMapCustomWidth,
+    editMapCustomHeight
+  );
   const hasValidMapObjectWidth =
     Number.isFinite(parsedMapObjectWidth) && parsedMapObjectWidth > 0;
   const hasValidMapObjectHeight =
@@ -444,6 +674,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     Number.isFinite(parsedEditMapObjectWidth) && parsedEditMapObjectWidth > 0;
   const hasValidEditMapObjectHeight =
     Number.isFinite(parsedEditMapObjectHeight) && parsedEditMapObjectHeight > 0;
+  const hasValidNewMapDimensions =
+    resolvedNewMapDimensions.width !== null && resolvedNewMapDimensions.height !== null;
+  const hasValidEditMapDimensions =
+    resolvedEditMapDimensions.width !== null && resolvedEditMapDimensions.height !== null;
   const isMapObjectFormValid =
     !isObjectsSection ||
     (!!newMapObjectImage && hasValidMapObjectWidth && hasValidMapObjectHeight);
@@ -452,6 +686,16 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     (!!editMapObjectImage &&
       hasValidEditMapObjectWidth &&
       hasValidEditMapObjectHeight);
+  const isPlayableMapFormValid =
+    !isMapsSection ||
+    (!!newMapRegion &&
+      MAP_CELL_SIZE_OPTIONS.includes(Number.parseInt(newMapCellSize, 10) as 8 | 16 | 32 | 64 | 128) &&
+      hasValidNewMapDimensions);
+  const isEditPlayableMapFormValid =
+    !isMapsSection ||
+    (!!editMapRegion &&
+      MAP_CELL_SIZE_OPTIONS.includes(Number.parseInt(editMapCellSize, 10) as 8 | 16 | 32 | 64 | 128) &&
+      hasValidEditMapDimensions);
 
   const categorySummary = useMemo(
     () =>
@@ -495,6 +739,14 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setNewMapObjectWidth(String(DEFAULT_MAP_OBJECT_SIZE));
     setNewMapObjectHeight(String(DEFAULT_MAP_OBJECT_SIZE));
     setNewMapObjectType(DEFAULT_MAP_OBJECT_TYPE);
+    setNewMapCellSize(String(DEFAULT_MAP_CELL_SIZE));
+    setNewMapSizePreset(DEFAULT_MAP_SIZE_PRESET);
+    setNewMapCustomWidth("500");
+    setNewMapCustomHeight("500");
+    setNewMapRegion(regionNames[0] || "");
+    setNewMapRegionX("0");
+    setNewMapRegionY("0");
+    setNewMapType(DEFAULT_MAP_TYPE);
     setIsAddOpen(true);
   };
 
@@ -505,6 +757,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
 
   const openEditModal = (item: DesignerItemSeed) => {
     const mapObjectAsset = sanitizeMapObjectAsset(item.mapObjectAsset);
+    const playableMapConfig = sanitizePlayableMapConfig(item.playableMapConfig, regionNames);
 
     setEditingItemId(item.id);
     setEditItemName(item.name);
@@ -513,6 +766,14 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setEditMapObjectWidth(String(mapObjectAsset?.width || DEFAULT_MAP_OBJECT_SIZE));
     setEditMapObjectHeight(String(mapObjectAsset?.height || DEFAULT_MAP_OBJECT_SIZE));
     setEditMapObjectType(mapObjectAsset?.objectType || DEFAULT_MAP_OBJECT_TYPE);
+    setEditMapCellSize(String(playableMapConfig?.cellSize || DEFAULT_MAP_CELL_SIZE));
+    setEditMapSizePreset(playableMapConfig?.sizePreset || DEFAULT_MAP_SIZE_PRESET);
+    setEditMapCustomWidth(String(playableMapConfig?.width || 500));
+    setEditMapCustomHeight(String(playableMapConfig?.height || 500));
+    setEditMapRegion(playableMapConfig?.regionName || regionNames[0] || "");
+    setEditMapRegionX(String(playableMapConfig?.regionX || 0));
+    setEditMapRegionY(String(playableMapConfig?.regionY || 0));
+    setEditMapType(playableMapConfig?.mapType || DEFAULT_MAP_TYPE);
     setIsEditOpen(true);
   };
 
@@ -701,7 +962,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     const name = newItemName.trim();
     const category = normalizeCategoryName(newItemCategory) || UNCATEGORIZED;
 
-    if (!name || (isObjectsSection && !isMapObjectFormValid)) {
+    if (
+      !name ||
+      (isObjectsSection && !isMapObjectFormValid) ||
+      (isMapsSection && !isPlayableMapFormValid)
+    ) {
       return;
     }
 
@@ -716,14 +981,31 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               objectType: newMapObjectType,
             }
           : undefined;
+      const playableMapConfig =
+        isMapsSection && resolvedNewMapDimensions.width !== null && resolvedNewMapDimensions.height !== null
+          ? {
+              cellSize: Number.parseInt(newMapCellSize, 10),
+              sizePreset: newMapSizePreset,
+              width: resolvedNewMapDimensions.width,
+              height: resolvedNewMapDimensions.height,
+              regionName: newMapRegion,
+              regionX: parseMapCoordinate(newMapRegionX),
+              regionY: parseMapCoordinate(newMapRegionY),
+              mapType: newMapType,
+            }
+          : undefined;
       const item: DesignerItemSeed = {
-        id: `${section.key}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`,
+        id: isMapsSection
+          ? createUniqueMapId()
+          : `${section.key}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`,
         name,
         category,
         details: section.createDetails(name, category, nextIndex, {
           mapObjectAsset,
+          playableMapConfig,
         }),
         mapObjectAsset,
+        playableMapConfig,
       };
 
       return {
@@ -741,7 +1023,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     const name = editItemName.trim();
     const category = normalizeCategoryName(editItemCategory) || UNCATEGORIZED;
 
-    if (!editingItemId || !name || (isObjectsSection && !isEditMapObjectFormValid)) {
+    if (
+      !editingItemId ||
+      !name ||
+      (isObjectsSection && !isEditMapObjectFormValid) ||
+      (isMapsSection && !isEditPlayableMapFormValid)
+    ) {
       return;
     }
 
@@ -753,6 +1040,19 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               width: parsedEditMapObjectWidth,
               height: parsedEditMapObjectHeight,
               objectType: editMapObjectType,
+            }
+          : undefined;
+      const playableMapConfig =
+        isMapsSection && resolvedEditMapDimensions.width !== null && resolvedEditMapDimensions.height !== null
+          ? {
+              cellSize: Number.parseInt(editMapCellSize, 10),
+              sizePreset: editMapSizePreset,
+              width: resolvedEditMapDimensions.width,
+              height: resolvedEditMapDimensions.height,
+              regionName: editMapRegion,
+              regionX: parseMapCoordinate(editMapRegionX),
+              regionY: parseMapCoordinate(editMapRegionY),
+              mapType: editMapType,
             }
           : undefined;
 
@@ -768,8 +1068,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 category,
                 details: section.createDetails(name, category, index + 1, {
                   mapObjectAsset,
+                  playableMapConfig,
                 }),
                 mapObjectAsset,
+                playableMapConfig,
               }
             : item
         ),
@@ -827,6 +1129,199 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setSelectedIds([]);
     setIsMoveOpen(false);
   };
+
+  const renderPlayableMapFields = ({
+    cellSize,
+    onCellSizeChange,
+    sizePreset,
+    onSizePresetChange,
+    customWidth,
+    onCustomWidthChange,
+    customHeight,
+    onCustomHeightChange,
+    regionName,
+    onRegionChange,
+    regionX,
+    onRegionXChange,
+    regionY,
+    onRegionYChange,
+    mapType,
+    onMapTypeChange,
+    isValidDimensions,
+  }: {
+    cellSize: string;
+    onCellSizeChange: (value: string) => void;
+    sizePreset: DesignerMapSizePreset;
+    onSizePresetChange: (value: DesignerMapSizePreset) => void;
+    customWidth: string;
+    onCustomWidthChange: (value: string) => void;
+    customHeight: string;
+    onCustomHeightChange: (value: string) => void;
+    regionName: string;
+    onRegionChange: (value: string) => void;
+    regionX: string;
+    onRegionXChange: (value: string) => void;
+    regionY: string;
+    onRegionYChange: (value: string) => void;
+    mapType: DesignerPlayableMapType;
+    onMapTypeChange: (value: DesignerPlayableMapType) => void;
+    isValidDimensions: boolean;
+  }) => (
+    <>
+      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+        <FormControl isRequired>
+          <FormLabel>Cell Size</FormLabel>
+          <Select
+            value={cellSize}
+            onChange={(event) => onCellSizeChange(event.target.value)}
+          >
+            {MAP_CELL_SIZE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </Select>
+        </FormControl>
+        <FormControl isRequired>
+          <FormLabel>Map Size</FormLabel>
+          <Select
+            value={sizePreset}
+            onChange={(event) =>
+              onSizePresetChange(event.target.value as DesignerMapSizePreset)
+            }
+          >
+            {MAP_SIZE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+        </FormControl>
+      </SimpleGrid>
+      {sizePreset === "custom" ? (
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+          <FormControl isRequired isInvalid={customWidth !== "" && parseMapDimension(customWidth) === null}>
+            <FormLabel>Custom Width</FormLabel>
+            <Input
+              type="number"
+              min={1}
+              step={1}
+              value={customWidth}
+              onChange={(event) => onCustomWidthChange(normalizeMapDimension(event.target.value))}
+              placeholder="Map width"
+            />
+          </FormControl>
+          <FormControl isRequired isInvalid={customHeight !== "" && parseMapDimension(customHeight) === null}>
+            <FormLabel>Custom Height</FormLabel>
+            <Input
+              type="number"
+              min={1}
+              step={1}
+              value={customHeight}
+              onChange={(event) => onCustomHeightChange(normalizeMapDimension(event.target.value))}
+              placeholder="Map height"
+            />
+          </FormControl>
+        </SimpleGrid>
+      ) : null}
+      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+        <FormControl isRequired>
+          <FormLabel>Region</FormLabel>
+          <Select
+            value={regionName}
+            onChange={(event) => onRegionChange(event.target.value)}
+            isDisabled={regionNames.length === 0}
+          >
+            {regionNames.map((region) => (
+              <option key={region} value={region}>
+                {region}
+              </option>
+            ))}
+          </Select>
+        </FormControl>
+        <FormControl isRequired>
+          <FormLabel>Map Type</FormLabel>
+          <Select
+            value={mapType}
+            onChange={(event) =>
+              onMapTypeChange(event.target.value as DesignerPlayableMapType)
+            }
+          >
+            {MAP_TYPES.map((option) => (
+              <option key={option} value={option}>
+                {formatMapTypeLabel(option)}
+              </option>
+            ))}
+          </Select>
+        </FormControl>
+      </SimpleGrid>
+      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+        <FormControl>
+          <FormLabel>Region X Position</FormLabel>
+          <Input
+            type="number"
+            step={1}
+            value={regionX}
+            onChange={(event) => onRegionXChange(event.target.value)}
+            placeholder="Region X position"
+          />
+        </FormControl>
+        <FormControl>
+          <FormLabel>Region Y Position</FormLabel>
+          <Input
+            type="number"
+            step={1}
+            value={regionY}
+            onChange={(event) => onRegionYChange(event.target.value)}
+            placeholder="Region Y position"
+          />
+        </FormControl>
+      </SimpleGrid>
+      <Text fontSize="sm" color="#55645a">
+        Region X/Y will be used for automatic region map generation later. That generation flow is not implemented yet.
+      </Text>
+      <Box
+        p={4}
+        borderRadius="20px"
+        border="1px solid rgba(43, 66, 47, 0.12)"
+        bg="linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(241,246,238,0.95) 100%)"
+      >
+        <Text
+          fontSize="sm"
+          fontWeight="700"
+          textTransform="uppercase"
+          letterSpacing="0.14em"
+          color="#5e7a61"
+          mb={3}
+        >
+          Map Summary
+        </Text>
+        <Text color="#55645a" fontSize="sm">
+          Cell size: {cellSize || "--"} px
+        </Text>
+        <Text color="#55645a" fontSize="sm">
+          Map size:{" "}
+          {sizePreset === "custom"
+            ? `${customWidth || "--"} x ${customHeight || "--"}`
+            : getMapSizePresetOption(sizePreset).label.replace(/[^(]*\((.*)\)/, "$1")}
+        </Text>
+        <Text color="#55645a" fontSize="sm">
+          Region: {regionName || "No regions available"}
+        </Text>
+        <Text color="#55645a" fontSize="sm">
+          Region position: {parseMapCoordinate(regionX)}, {parseMapCoordinate(regionY)}
+        </Text>
+        <Text color="#55645a" fontSize="sm">
+          Map type: {formatMapTypeLabel(mapType)}
+        </Text>
+        {!isValidDimensions ? (
+          <Text mt={2} color="#914335" fontSize="sm">
+            Enter a valid custom width and height to continue.
+          </Text>
+        ) : null}
+      </Box>
+    </>
+  );
 
   return (
     <Box
@@ -1056,6 +1551,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 const mapObjectAsset = isObjectsSection
                   ? sanitizeMapObjectAsset(item.mapObjectAsset)
                   : undefined;
+                const playableMapConfig = isMapsSection
+                  ? sanitizePlayableMapConfig(item.playableMapConfig, regionNames)
+                  : undefined;
 
                 return (
                   <Box
@@ -1171,7 +1669,21 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                         </Flex>
                       ))}
                     </Stack>
-                    <Flex mt={4} justify="flex-end">
+                    <Flex mt={4} justify="space-between" align="center" gap={3}>
+                      {playableMapConfig ? (
+                        <Button
+                          as={RouterLink}
+                          to={getMapEditorPath(item.id)}
+                          size="sm"
+                          colorScheme="green"
+                          variant="outline"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          Map Editor
+                        </Button>
+                      ) : (
+                        <Box />
+                      )}
                       <Flex gap={2}>
                         <IconButton
                           aria-label={`Delete ${item.name}`}
@@ -1270,7 +1782,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       <Modal
         isOpen={isAddOpen}
         onClose={() => setIsAddOpen(false)}
-        size={isObjectsSection ? "3xl" : "md"}
+        size={isObjectsSection || isMapsSection ? "3xl" : "md"}
       >
         <ModalOverlay bg="blackAlpha.400" />
         <ModalContent borderRadius="24px">
@@ -1417,6 +1929,27 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   </Box>
                 </>
               ) : null}
+              {isMapsSection ? (
+                renderPlayableMapFields({
+                  cellSize: newMapCellSize,
+                  onCellSizeChange: setNewMapCellSize,
+                  sizePreset: newMapSizePreset,
+                  onSizePresetChange: setNewMapSizePreset,
+                  customWidth: newMapCustomWidth,
+                  onCustomWidthChange: setNewMapCustomWidth,
+                  customHeight: newMapCustomHeight,
+                  onCustomHeightChange: setNewMapCustomHeight,
+                  regionName: newMapRegion,
+                  onRegionChange: setNewMapRegion,
+                  regionX: newMapRegionX,
+                  onRegionXChange: setNewMapRegionX,
+                  regionY: newMapRegionY,
+                  onRegionYChange: setNewMapRegionY,
+                  mapType: newMapType,
+                  onMapTypeChange: setNewMapType,
+                  isValidDimensions: hasValidNewMapDimensions,
+                })
+              ) : null}
             </Stack>
           </ModalBody>
           <ModalFooter gap={3}>
@@ -1426,7 +1959,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             <Button
               colorScheme="green"
               onClick={handleAddItem}
-              isDisabled={!newItemName.trim() || !isMapObjectFormValid}
+              isDisabled={
+                !newItemName.trim() ||
+                !isMapObjectFormValid ||
+                !isPlayableMapFormValid
+              }
             >
               Create
             </Button>
@@ -1437,7 +1974,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       <Modal
         isOpen={isEditOpen}
         onClose={closeEditModal}
-        size={isObjectsSection ? "3xl" : "md"}
+        size={isObjectsSection || isMapsSection ? "3xl" : "md"}
       >
         <ModalOverlay bg="blackAlpha.400" />
         <ModalContent borderRadius="24px">
@@ -1590,6 +2127,27 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   </Box>
                 </>
               ) : null}
+              {isMapsSection ? (
+                renderPlayableMapFields({
+                  cellSize: editMapCellSize,
+                  onCellSizeChange: setEditMapCellSize,
+                  sizePreset: editMapSizePreset,
+                  onSizePresetChange: setEditMapSizePreset,
+                  customWidth: editMapCustomWidth,
+                  onCustomWidthChange: setEditMapCustomWidth,
+                  customHeight: editMapCustomHeight,
+                  onCustomHeightChange: setEditMapCustomHeight,
+                  regionName: editMapRegion,
+                  onRegionChange: setEditMapRegion,
+                  regionX: editMapRegionX,
+                  onRegionXChange: setEditMapRegionX,
+                  regionY: editMapRegionY,
+                  onRegionYChange: setEditMapRegionY,
+                  mapType: editMapType,
+                  onMapTypeChange: setEditMapType,
+                  isValidDimensions: hasValidEditMapDimensions,
+                })
+              ) : null}
             </Stack>
           </ModalBody>
           <ModalFooter gap={3}>
@@ -1609,10 +2167,25 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             <Button variant="ghost" onClick={closeEditModal}>
               Cancel
             </Button>
+            {isMapsSection && editingItemId ? (
+              <Button
+                as={RouterLink}
+                to={getMapEditorPath(editingItemId)}
+                variant="outline"
+                borderColor="rgba(43, 66, 47, 0.24)"
+                color="#2e5b37"
+              >
+                Map Editor
+              </Button>
+            ) : null}
             <Button
               colorScheme="green"
               onClick={handleEditItem}
-              isDisabled={!editItemName.trim() || !isEditMapObjectFormValid}
+              isDisabled={
+                !editItemName.trim() ||
+                !isEditMapObjectFormValid ||
+                !isEditPlayableMapFormValid
+              }
             >
               Save Changes
             </Button>

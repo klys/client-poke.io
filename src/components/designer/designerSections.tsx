@@ -30,6 +30,24 @@ export interface DesignerItemDetail {
 
 export type DesignerMapObjectType = "obstacle" | "mob area" | "floor" | "water";
 
+export type DesignerMapSizePreset = "small" | "medium" | "large" | "custom";
+
+export type DesignerPlayableMapType =
+  | "grassland"
+  | "sea"
+  | "undersea"
+  | "cave"
+  | "interior"
+  | "desert"
+  | "forest"
+  | "snow"
+  | "island"
+  | "mountain"
+  | "swamp"
+  | "volcanic"
+  | "ruins"
+  | "city";
+
 export interface DesignerMapObjectAsset {
   imageSrc: string;
   width: number;
@@ -39,6 +57,7 @@ export interface DesignerMapObjectAsset {
 
 export interface DesignerItemCreateOptions {
   mapObjectAsset?: DesignerMapObjectAsset;
+  playableMapConfig?: DesignerPlayableMapConfig;
 }
 
 export interface DesignerItemSeed {
@@ -47,6 +66,18 @@ export interface DesignerItemSeed {
   category: string;
   details: DesignerItemDetail[];
   mapObjectAsset?: DesignerMapObjectAsset;
+  playableMapConfig?: DesignerPlayableMapConfig;
+}
+
+export interface DesignerPlayableMapConfig {
+  cellSize: number;
+  sizePreset: DesignerMapSizePreset;
+  width: number;
+  height: number;
+  regionName: string;
+  regionX: number;
+  regionY: number;
+  mapType: DesignerPlayableMapType;
 }
 
 export interface DesignerSectionDefinition {
@@ -291,25 +322,81 @@ export const designerSections: DesignerSectionDefinition[] = [
         id: "map-sungrass-plains",
         name: "Sungrass Plains",
         category: "Starter Routes",
-        details: [detail("Size", "128 x 128"), detail("Biome", "Grassland"), detail("Portals", "3")],
+        details: [
+          detail("Cell Size", "32 px"),
+          detail("Map Size", "500 x 500"),
+          detail("Region", "Ash Coast"),
+          detail("Region Position", "0, 0"),
+          detail("Map Type", "grassland"),
+        ],
+        playableMapConfig: {
+          cellSize: 32,
+          sizePreset: "medium",
+          width: 500,
+          height: 500,
+          regionName: "Ash Coast",
+          regionX: 0,
+          regionY: 0,
+          mapType: "grassland",
+        },
       },
       {
         id: "map-amber-cavern",
         name: "Amber Cavern",
         category: "Dungeons",
-        details: [detail("Size", "96 x 96"), detail("Biome", "Cave"), detail("Portals", "1")],
+        details: [
+          detail("Cell Size", "16 px"),
+          detail("Map Size", "30 x 30"),
+          detail("Region", "Fernwild"),
+          detail("Region Position", "1, 2"),
+          detail("Map Type", "cave"),
+        ],
+        playableMapConfig: {
+          cellSize: 16,
+          sizePreset: "small",
+          width: 30,
+          height: 30,
+          regionName: "Fernwild",
+          regionX: 1,
+          regionY: 2,
+          mapType: "cave",
+        },
       },
       {
         id: "map-bloomharbor",
         name: "Bloomharbor",
         category: "Cities",
-        details: [detail("Size", "144 x 144"), detail("Biome", "Town"), detail("Portals", "5")],
+        details: [
+          detail("Cell Size", "64 px"),
+          detail("Map Size", "500 x 500"),
+          detail("Region", "Moon Bay"),
+          detail("Region Position", "3, 1"),
+          detail("Map Type", "city"),
+        ],
+        playableMapConfig: {
+          cellSize: 64,
+          sizePreset: "medium",
+          width: 500,
+          height: 500,
+          regionName: "Moon Bay",
+          regionX: 3,
+          regionY: 1,
+          mapType: "city",
+        },
       },
     ],
-    createDetails: (name, category, index) => [
-      detail("Size", `${96 + index * 16} x ${96 + index * 16}`),
-      detail("Biome", category),
-      detail("Portals", `${(index % 4) + 1}`),
+    createDetails: (_name, _category, _index, options) => [
+      detail("Cell Size", `${options?.playableMapConfig?.cellSize ?? 32} px`),
+      detail(
+        "Map Size",
+        `${options?.playableMapConfig?.width ?? 500} x ${options?.playableMapConfig?.height ?? 500}`
+      ),
+      detail("Region", options?.playableMapConfig?.regionName ?? "Ash Coast"),
+      detail(
+        "Region Position",
+        `${options?.playableMapConfig?.regionX ?? 0}, ${options?.playableMapConfig?.regionY ?? 0}`
+      ),
+      detail("Map Type", options?.playableMapConfig?.mapType ?? "grassland"),
     ],
   },
   {
