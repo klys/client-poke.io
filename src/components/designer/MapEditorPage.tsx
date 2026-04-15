@@ -382,12 +382,25 @@ export default function MapEditorPage() {
         />
       </Box>
 
-      <Modal isOpen={isPropertiesOpen} onClose={() => setIsPropertiesOpen(false)} size="3xl">
+      <Modal
+        isOpen={isPropertiesOpen}
+        onClose={() => setIsPropertiesOpen(false)}
+        size="3xl"
+        scrollBehavior="inside"
+      >
         <ModalOverlay bg="blackAlpha.400" />
-        <ModalContent borderRadius="24px">
-          <ModalHeader>Edit Map Properties</ModalHeader>
+        <ModalContent
+          borderRadius="24px"
+          bg="#fffdf8"
+          overflow="hidden"
+          maxH="calc(100vh - 2rem)"
+          boxShadow="0 28px 70px rgba(24, 34, 20, 0.24)"
+        >
+          <ModalHeader bg="#fffdf8" borderBottom="1px solid rgba(43, 66, 47, 0.08)">
+            Edit Map Properties
+          </ModalHeader>
           <ModalCloseButton />
-          <ModalBody>
+          <ModalBody bg="#fffdf8" overflowY="auto">
             <Stack spacing={4}>
               <FormControl isRequired>
                 <FormLabel>Name</FormLabel>
@@ -500,7 +513,11 @@ export default function MapEditorPage() {
               </SimpleGrid>
             </Stack>
           </ModalBody>
-          <ModalFooter gap={3}>
+          <ModalFooter
+            gap={3}
+            bg="#fffdf8"
+            borderTop="1px solid rgba(43, 66, 47, 0.08)"
+          >
             <Button variant="ghost" onClick={() => setIsPropertiesOpen(false)}>
               Cancel
             </Button>

@@ -1783,12 +1783,21 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         isOpen={isAddOpen}
         onClose={() => setIsAddOpen(false)}
         size={isObjectsSection || isMapsSection ? "3xl" : "md"}
+        scrollBehavior="inside"
       >
         <ModalOverlay bg="blackAlpha.400" />
-        <ModalContent borderRadius="24px">
-          <ModalHeader>Add New {section.itemLabel}</ModalHeader>
+        <ModalContent
+          borderRadius="24px"
+          bg="#fffdf8"
+          overflow="hidden"
+          maxH="calc(100vh - 2rem)"
+          boxShadow="0 28px 70px rgba(24, 34, 20, 0.24)"
+        >
+          <ModalHeader bg="#fffdf8" borderBottom="1px solid rgba(43, 66, 47, 0.08)">
+            Add New {section.itemLabel}
+          </ModalHeader>
           <ModalCloseButton />
-          <ModalBody>
+          <ModalBody bg="#fffdf8" overflowY="auto">
             <Stack spacing={4}>
               <FormControl>
                 <FormLabel>Name</FormLabel>
@@ -1952,7 +1961,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               ) : null}
             </Stack>
           </ModalBody>
-          <ModalFooter gap={3}>
+          <ModalFooter
+            gap={3}
+            bg="#fffdf8"
+            borderTop="1px solid rgba(43, 66, 47, 0.08)"
+          >
             <Button variant="ghost" onClick={() => setIsAddOpen(false)}>
               Cancel
             </Button>
@@ -1975,12 +1988,21 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         isOpen={isEditOpen}
         onClose={closeEditModal}
         size={isObjectsSection || isMapsSection ? "3xl" : "md"}
+        scrollBehavior="inside"
       >
         <ModalOverlay bg="blackAlpha.400" />
-        <ModalContent borderRadius="24px">
-          <ModalHeader>Edit {section.itemLabel}</ModalHeader>
+        <ModalContent
+          borderRadius="24px"
+          bg="#fffdf8"
+          overflow="hidden"
+          maxH="calc(100vh - 2rem)"
+          boxShadow="0 28px 70px rgba(24, 34, 20, 0.24)"
+        >
+          <ModalHeader bg="#fffdf8" borderBottom="1px solid rgba(43, 66, 47, 0.08)">
+            Edit {section.itemLabel}
+          </ModalHeader>
           <ModalCloseButton />
-          <ModalBody>
+          <ModalBody bg="#fffdf8" overflowY="auto">
             <Stack spacing={4}>
               <FormControl>
                 <FormLabel>Name</FormLabel>
@@ -2150,7 +2172,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               ) : null}
             </Stack>
           </ModalBody>
-          <ModalFooter gap={3}>
+          <ModalFooter
+            gap={3}
+            bg="#fffdf8"
+            borderTop="1px solid rgba(43, 66, 47, 0.08)"
+          >
             <Button
               colorScheme="red"
               variant="outline"
@@ -2193,17 +2219,38 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         </ModalContent>
       </Modal>
 
-      <Modal isOpen={Boolean(deletingItemId)} onClose={closeDeleteItemConfirm} size="md">
+      <Modal
+        isOpen={Boolean(deletingItemId)}
+        onClose={closeDeleteItemConfirm}
+        size="md"
+        scrollBehavior="inside"
+      >
         <ModalOverlay bg="blackAlpha.400" />
-        <ModalContent borderRadius="24px">
-          <ModalHeader color="#914335">Delete {section.itemLabel}</ModalHeader>
+        <ModalContent
+          borderRadius="24px"
+          bg="#fffdf8"
+          overflow="hidden"
+          maxH="calc(100vh - 2rem)"
+          boxShadow="0 28px 70px rgba(24, 34, 20, 0.24)"
+        >
+          <ModalHeader
+            color="#914335"
+            bg="#fffdf8"
+            borderBottom="1px solid rgba(145, 67, 53, 0.08)"
+          >
+            Delete {section.itemLabel}
+          </ModalHeader>
           <ModalCloseButton />
-          <ModalBody>
+          <ModalBody bg="#fffdf8" overflowY="auto">
             <Text color="#6e2f24">
               Are you sure you want to delete this {section.itemLabel}?
             </Text>
           </ModalBody>
-          <ModalFooter gap={3}>
+          <ModalFooter
+            gap={3}
+            bg="#fffdf8"
+            borderTop="1px solid rgba(145, 67, 53, 0.08)"
+          >
             <Button variant="ghost" onClick={closeDeleteItemConfirm}>
               No
             </Button>
@@ -2214,12 +2261,25 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         </ModalContent>
       </Modal>
 
-      <Modal isOpen={isCategoriesOpen} onClose={() => setIsCategoriesOpen(false)} size="2xl">
+      <Modal
+        isOpen={isCategoriesOpen}
+        onClose={() => setIsCategoriesOpen(false)}
+        size="2xl"
+        scrollBehavior="inside"
+      >
         <ModalOverlay bg="blackAlpha.400" />
-        <ModalContent borderRadius="24px">
-          <ModalHeader>Categories</ModalHeader>
+        <ModalContent
+          borderRadius="24px"
+          bg="#fffdf8"
+          overflow="hidden"
+          maxH="calc(100vh - 2rem)"
+          boxShadow="0 28px 70px rgba(24, 34, 20, 0.24)"
+        >
+          <ModalHeader bg="#fffdf8" borderBottom="1px solid rgba(43, 66, 47, 0.08)">
+            Categories
+          </ModalHeader>
           <ModalCloseButton />
-          <ModalBody>
+          <ModalBody bg="#fffdf8" overflowY="auto">
             <Stack spacing={6}>
               <Box
                 p={4}
@@ -2385,7 +2445,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               </Box>
             </Stack>
           </ModalBody>
-          <ModalFooter>
+          <ModalFooter bg="#fffdf8" borderTop="1px solid rgba(43, 66, 47, 0.08)">
             <Button variant="ghost" onClick={() => setIsCategoriesOpen(false)}>
               Close
             </Button>
@@ -2393,12 +2453,20 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         </ModalContent>
       </Modal>
 
-      <Modal isOpen={isMoveOpen} onClose={() => setIsMoveOpen(false)}>
+      <Modal isOpen={isMoveOpen} onClose={() => setIsMoveOpen(false)} scrollBehavior="inside">
         <ModalOverlay bg="blackAlpha.400" />
-        <ModalContent borderRadius="24px">
-          <ModalHeader>Move Selected Elements</ModalHeader>
+        <ModalContent
+          borderRadius="24px"
+          bg="#fffdf8"
+          overflow="hidden"
+          maxH="calc(100vh - 2rem)"
+          boxShadow="0 28px 70px rgba(24, 34, 20, 0.24)"
+        >
+          <ModalHeader bg="#fffdf8" borderBottom="1px solid rgba(43, 66, 47, 0.08)">
+            Move Selected Elements
+          </ModalHeader>
           <ModalCloseButton />
-          <ModalBody>
+          <ModalBody bg="#fffdf8" overflowY="auto">
             <Stack spacing={4}>
               <Text color="#55645a">
                 Move {selectedCount} selected{" "}
@@ -2420,7 +2488,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               </FormControl>
             </Stack>
           </ModalBody>
-          <ModalFooter gap={3}>
+          <ModalFooter
+            gap={3}
+            bg="#fffdf8"
+            borderTop="1px solid rgba(43, 66, 47, 0.08)"
+          >
             <Button variant="ghost" onClick={() => setIsMoveOpen(false)}>
               Cancel
             </Button>
