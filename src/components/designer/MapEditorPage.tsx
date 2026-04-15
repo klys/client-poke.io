@@ -21,9 +21,16 @@ import {
   useToast,
 } from "@chakra-ui/react";
 import { Link as RouterLink, useParams } from "react-router-dom";
+import PlayableMapEditorCanvas, {
+  type MapEditorMapSummary,
+  type MapEditorObjectCatalogItem,
+  type PlayableMapEditorData,
+  sanitizePlayableMapEditorData,
+} from "./PlayableMapEditorCanvas";
 import {
   designerSectionsByKey,
   type DesignerItemSeed,
+  type DesignerMapObjectType,
   type DesignerMapSizePreset,
   type DesignerPlayableMapBackgroundImageMode,
   type DesignerPlayableMapConfig,
@@ -36,7 +43,9 @@ type DesignerSectionState = {
 };
 
 const STORAGE_KEY = "designer-demo:mapsEditor";
+const OBJECTS_STORAGE_KEY = "designer-demo:objects";
 const REGION_STORAGE_KEY = "designer-demo:regions";
+const MAP_EDITOR_STORAGE_PREFIX = "designer-demo:mapEditor:";
 const MAP_CELL_SIZE_OPTIONS = [8, 16, 32, 64, 128] as const;
 const MAP_BACKGROUND_IMAGE_MODES: DesignerPlayableMapBackgroundImageMode[] = [
   "repeat",
@@ -195,6 +204,104 @@ function getMapSurfaceBackgroundStyle(config: DesignerPlayableMapConfig): React.
   };
 }
 
+function getMapEditorStorageKey(mapId: string) {
+  return `${MAP_EDITOR_STORAGE_PREFIX}${mapId}`;
+}
+
+function parseNumericDetail(details: DesignerItemSeed["details"], label: string, fallback: number) {
+  const match = details.find((item) => item.label === label)?.value ?? "";
+  const parsed = Number.parseInt(match, 10);
+
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : fallback;
+}
+
+function parseObjectTypeDetail(
+  details: DesignerItemSeed["details"]
+): DesignerMapObjectType {
+  const typeValue = details.find((item) => item.label === "Type")?.value;
+
+  if (
+    typeValue === "obstacle" ||
+    typeValue === "mob area" ||
+    typeValue === "floor" ||
+    typeValue === "water"
+  ) {
+    return typeValue;
+  }
+
+  return "obstacle";
+}
+
+function normalizeObjectCatalogItem(item: DesignerItemSeed): MapEditorObjectCatalogItem {
+  return {
+    id: item.id,
+    name: item.name,
+    category: item.category,
+    imageSrc: item.mapObjectAsset?.imageSrc ?? "",
+    width: item.mapObjectAsset?.width ?? parseNumericDetail(item.details, "Width", 64),
+    height: item.mapObjectAsset?.height ?? parseNumericDetail(item.details, "Height", 64),
+    objectType: item.mapObjectAsset?.objectType ?? parseObjectTypeDetail(item.details),
+  };
+}
+
+function loadObjectCatalog() {
+  const fallback = designerSectionsByKey.objects.demoItems.map(normalizeObjectCatalogItem);
+
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(OBJECTS_STORAGE_KEY);
+
+    if (!raw) {
+      return fallback;
+    }
+
+    const parsed = JSON.parse(raw) as Partial<DesignerSectionState>;
+
+    if (!Array.isArray(parsed.items)) {
+      return fallback;
+    }
+
+    const items = parsed.items
+      .filter(
+        (item): item is DesignerItemSeed =>
+          typeof item?.id === "string" &&
+          typeof item?.name === "string" &&
+          typeof item?.category === "string" &&
+          Array.isArray(item?.details)
+      )
+      .map(normalizeObjectCatalogItem);
+
+    return items.length > 0 ? items : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function loadMapEditorData(mapId: string) {
+  if (typeof window === "undefined" || !mapId) {
+    return sanitizePlayableMapEditorData(undefined);
+  }
+
+  try {
+    const raw = window.localStorage.getItem(getMapEditorStorageKey(mapId));
+
+    return raw ? sanitizePlayableMapEditorData(JSON.parse(raw)) : sanitizePlayableMapEditorData(undefined);
+  } catch {
+    return sanitizePlayableMapEditorData(undefined);
+  }
+}
+
+function saveMapEditorData(mapId: string, data: PlayableMapEditorData) {
+  if (typeof window === "undefined" || !mapId) {
+    return;
+  }
+
+  window.localStorage.setItem(getMapEditorStorageKey(mapId), JSON.stringify(data));
+}
+
 function readBackgroundImage(
   event: React.ChangeEvent<HTMLInputElement>,
   onImageChange: (value: string) => void
@@ -221,106 +328,6 @@ function readBackgroundImage(
   };
 
   reader.readAsDataURL(file);
-}
-
-type MapEditorCursorOverlayProps = {
-  cellSize: number;
-  width: number;
-  height: number;
-};
-
-function MapEditorCursorOverlay({
-  cellSize,
-  width,
-  height,
-}: MapEditorCursorOverlayProps) {
-  const [cursorPosition, setCursorPosition] = useState<{
-    left: number;
-    top: number;
-    visible: boolean;
-  }>({
-    left: 0,
-    top: 0,
-    visible: false,
-  });
-
-  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const localX = Math.max(0, Math.min(event.clientX - bounds.left, width - 1));
-    const localY = Math.max(0, Math.min(event.clientY - bounds.top, height - 1));
-    const snappedX = Math.floor(localX / cellSize) * cellSize;
-    const snappedY = Math.floor(localY / cellSize) * cellSize;
-
-    setCursorPosition({
-      left: snappedX,
-      top: snappedY,
-      visible: true,
-    });
-  };
-
-  return (
-    <Box
-      position="absolute"
-      inset={0}
-      onPointerMove={handlePointerMove}
-      onPointerLeave={() =>
-        setCursorPosition((currentPosition) => ({
-          ...currentPosition,
-          visible: false,
-        }))
-      }
-      cursor="crosshair"
-      zIndex={1}
-    >
-      {cursorPosition.visible ? (
-        <>
-          <style>
-            {`
-              @keyframes map-editor-cursor-blink {
-                0%, 100% {
-                  border-color: #ffffff;
-                  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.85);
-                }
-                50% {
-                  border-color: #000000;
-                  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.9);
-                }
-              }
-            `}
-          </style>
-          <Box
-            position="absolute"
-            left={`${cursorPosition.left}px`}
-            top={`${cursorPosition.top}px`}
-            width={`${cellSize}px`}
-            height={`${cellSize}px`}
-            border="2px solid #ffffff"
-            boxSizing="border-box"
-            bg="rgba(255, 255, 255, 0.08)"
-            pointerEvents="none"
-            animation="map-editor-cursor-blink 0.8s steps(1, end) infinite"
-          />
-          <Box
-            position="absolute"
-            left={`${Math.min(cursorPosition.left + 8, Math.max(8, width - 184))}px`}
-            top={`${Math.max(8, cursorPosition.top - 38)}px`}
-            px={2.5}
-            py={1}
-            borderRadius="full"
-            bg="rgba(15, 23, 12, 0.86)"
-            color="white"
-            fontSize="xs"
-            fontWeight="700"
-            lineHeight="shorter"
-            pointerEvents="none"
-            whiteSpace="nowrap"
-          >
-            X {cursorPosition.left / cellSize}, Y {cursorPosition.top / cellSize}
-          </Box>
-        </>
-      ) : null}
-    </Box>
-  );
 }
 
 function loadRegionNames() {
@@ -400,8 +407,15 @@ export default function MapEditorPage() {
   const { mapId = "" } = useParams();
   const toast = useToast();
   const regionNames = useMemo(() => loadRegionNames(), []);
+  const objectCatalog = useMemo(() => loadObjectCatalog(), []);
   const [mapsState, setMapsState] = useState<DesignerSectionState>(() => loadMapsState());
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
+  const [editorData, setEditorData] = useState<PlayableMapEditorData>(() =>
+    loadMapEditorData(mapId)
+  );
+  const [savedEditorData, setSavedEditorData] = useState<PlayableMapEditorData>(() =>
+    loadMapEditorData(mapId)
+  );
 
   const mapItem = useMemo(
     () =>
@@ -415,6 +429,14 @@ export default function MapEditorPage() {
     () =>
       normalizePlayableMapConfig(mapItem?.playableMapConfig, regionNames),
     [mapItem, regionNames]
+  );
+  const mapSummaries = useMemo<MapEditorMapSummary[]>(
+    () =>
+      mapsState.items.map((item) => ({
+        id: item.id,
+        name: item.name,
+      })),
+    [mapsState.items]
   );
 
   const editorFrameSrc = useMemo(() => buildMapFrameSrc(), []);
@@ -452,6 +474,13 @@ export default function MapEditorPage() {
     setBackgroundImageMode(nextConfig.backgroundImageMode);
   }, [initialConfig, mapItem, regionNames]);
 
+  useEffect(() => {
+    const nextEditorData = loadMapEditorData(mapId);
+
+    setEditorData(nextEditorData);
+    setSavedEditorData(nextEditorData);
+  }, [mapId]);
+
   const resolvedDimensions = useMemo(() => {
     const selectedPreset = MAP_SIZE_OPTIONS.find((option) => option.value === sizePreset);
 
@@ -472,6 +501,8 @@ export default function MapEditorPage() {
   const mapPixelWidth = previewConfig.width * previewConfig.cellSize;
   const mapPixelHeight = previewConfig.height * previewConfig.cellSize;
   const mapSurfaceBackgroundStyle = getMapSurfaceBackgroundStyle(previewConfig);
+  const isEditorDirty =
+    JSON.stringify(editorData) !== JSON.stringify(savedEditorData);
 
   const isValidProperties =
     MAP_CELL_SIZE_OPTIONS.includes(Number.parseInt(cellSize, 10) as 8 | 16 | 32 | 64 | 128) &&
@@ -480,9 +511,16 @@ export default function MapEditorPage() {
     resolvedDimensions.height !== null;
 
   const handleToolbarSave = () => {
+    if (!mapId) {
+      return;
+    }
+
+    saveMapEditorData(mapId, editorData);
+    setSavedEditorData(editorData);
     toast({
-      title: "Map tile save will be added with the editor canvas.",
-      status: "info",
+      title: "Map editor changes saved.",
+      description: `${editorData.objects.length} objects and ${editorData.portals.length} portals stored for this map.`,
+      status: "success",
       duration: 3000,
       isClosable: true,
       position: "top",
@@ -587,9 +625,12 @@ export default function MapEditorPage() {
           <Heading size="md" color="#233127">
             {mapName || mapItem.name}
           </Heading>
+          <Text mt={1} fontSize="sm" color={isEditorDirty ? "#8b5a20" : "#5f6d61"}>
+            {isEditorDirty ? "Unsaved editor changes" : "Editor changes saved"}
+          </Text>
         </Box>
         <Flex wrap="wrap" gap={3}>
-          <Button onClick={handleToolbarSave} colorScheme="green">
+          <Button onClick={handleToolbarSave} colorScheme="green" isDisabled={!isEditorDirty}>
             Save
           </Button>
           <Button
@@ -647,46 +688,26 @@ export default function MapEditorPage() {
               </Text>
             </Box>
             <Text fontSize="sm" color="#4d6652">
-              Tile tool preview snaps to the active cell size. Background uses saved map properties.
+              Selector, object placement, and portal tools all edit the saved map editor data.
             </Text>
           </Flex>
 
           <Box p={{ base: 4, md: 5 }}>
-            <Box
-              borderRadius="20px"
-              border="1px solid rgba(35, 49, 39, 0.12)"
-              bg="#eef3ec"
-              p={3}
-              overflow="auto"
-              maxH="calc(100vh - 240px)"
-            >
-              <Box
-                position="relative"
-                width={`${mapPixelWidth}px`}
-                height={`${mapPixelHeight}px`}
-                minWidth="100%"
-                sx={mapSurfaceBackgroundStyle}
-                boxShadow="0 18px 50px rgba(24, 34, 20, 0.18)"
-                overflow="hidden"
-              >
-                <Box
-                  as="iframe"
-                  title={`${mapName || mapItem.name} map preview`}
-                  src={editorFrameSrc}
-                  width={`${mapPixelWidth}px`}
-                  height={`${mapPixelHeight}px`}
-                  border="0"
-                  display="block"
-                  loading="lazy"
-                  bg="transparent"
-                />
-                <MapEditorCursorOverlay
-                  cellSize={previewConfig.cellSize}
-                  width={mapPixelWidth}
-                  height={mapPixelHeight}
-                />
-              </Box>
-            </Box>
+            <PlayableMapEditorCanvas
+              cellSize={previewConfig.cellSize}
+              mapWidth={previewConfig.width}
+              mapHeight={previewConfig.height}
+              pixelWidth={mapPixelWidth}
+              pixelHeight={mapPixelHeight}
+              iframeSrc={editorFrameSrc}
+              backgroundStyle={mapSurfaceBackgroundStyle}
+              objectCatalog={objectCatalog}
+              maps={mapSummaries}
+              currentMapId={mapId}
+              value={editorData}
+              onChange={setEditorData}
+              isDirty={isEditorDirty}
+            />
           </Box>
         </Box>
       </Box>
