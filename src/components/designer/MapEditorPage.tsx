@@ -24,6 +24,7 @@ import { Link as RouterLink, useParams } from "react-router-dom";
 import PlayableMapEditorCanvas, {
   type MapEditorMapSummary,
   type MapEditorObjectCatalogItem,
+  type MapEditorPokemonCatalogItem,
   type PlayableMapEditorData,
   sanitizePlayableMapEditorData,
 } from "./PlayableMapEditorCanvas";
@@ -44,6 +45,7 @@ type DesignerSectionState = {
 
 const STORAGE_KEY = "designer-demo:mapsEditor";
 const OBJECTS_STORAGE_KEY = "designer-demo:objects";
+const POKEMONS_STORAGE_KEY = "designer-demo:pokemons";
 const REGION_STORAGE_KEY = "designer-demo:regions";
 const MAP_EDITOR_STORAGE_PREFIX = "designer-demo:mapEditor:";
 const MAP_CELL_SIZE_OPTIONS = [8, 16, 32, 64, 128] as const;
@@ -244,6 +246,14 @@ function normalizeObjectCatalogItem(item: DesignerItemSeed): MapEditorObjectCata
   };
 }
 
+function normalizePokemonCatalogItem(item: DesignerItemSeed): MapEditorPokemonCatalogItem {
+  return {
+    id: item.id,
+    name: item.name,
+    category: item.category,
+  };
+}
+
 function loadObjectCatalog() {
   const fallback = designerSectionsByKey.objects.demoItems.map(normalizeObjectCatalogItem);
 
@@ -273,6 +283,42 @@ function loadObjectCatalog() {
           Array.isArray(item?.details)
       )
       .map(normalizeObjectCatalogItem);
+
+    return items.length > 0 ? items : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function loadPokemonCatalog() {
+  const fallback = designerSectionsByKey.pokemons.demoItems.map(normalizePokemonCatalogItem);
+
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(POKEMONS_STORAGE_KEY);
+
+    if (!raw) {
+      return fallback;
+    }
+
+    const parsed = JSON.parse(raw) as Partial<DesignerSectionState>;
+
+    if (!Array.isArray(parsed.items)) {
+      return fallback;
+    }
+
+    const items = parsed.items
+      .filter(
+        (item): item is DesignerItemSeed =>
+          typeof item?.id === "string" &&
+          typeof item?.name === "string" &&
+          typeof item?.category === "string" &&
+          Array.isArray(item?.details)
+      )
+      .map(normalizePokemonCatalogItem);
 
     return items.length > 0 ? items : fallback;
   } catch {
@@ -408,6 +454,7 @@ export default function MapEditorPage() {
   const toast = useToast();
   const regionNames = useMemo(() => loadRegionNames(), []);
   const objectCatalog = useMemo(() => loadObjectCatalog(), []);
+  const pokemonCatalog = useMemo(() => loadPokemonCatalog(), []);
   const [mapsState, setMapsState] = useState<DesignerSectionState>(() => loadMapsState());
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
   const [editorData, setEditorData] = useState<PlayableMapEditorData>(() =>
@@ -688,7 +735,7 @@ export default function MapEditorPage() {
               </Text>
             </Box>
             <Text fontSize="sm" color="#4d6652">
-              Selector, object placement, and portal tools all edit the saved map editor data.
+              Selector, grass, object placement, and portal tools all edit the saved map editor data.
             </Text>
           </Flex>
 
@@ -702,6 +749,7 @@ export default function MapEditorPage() {
               iframeSrc={editorFrameSrc}
               backgroundStyle={mapSurfaceBackgroundStyle}
               objectCatalog={objectCatalog}
+              pokemonCatalog={pokemonCatalog}
               maps={mapSummaries}
               currentMapId={mapId}
               value={editorData}

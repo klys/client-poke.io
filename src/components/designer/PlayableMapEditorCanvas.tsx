@@ -32,6 +32,12 @@ export interface MapEditorMapSummary {
   name: string;
 }
 
+export interface MapEditorPokemonCatalogItem {
+  id: string;
+  name: string;
+  category: string;
+}
+
 export interface MapEditorObjectPlacement {
   id: string;
   objectId: string;
@@ -63,10 +69,21 @@ export interface MapEditorPortalPlacement {
   eventScript: string;
 }
 
+export interface MapEditorGrassPlacement {
+  id: string;
+  x: number;
+  y: number;
+  pokemonIds: string[];
+  minLevel: number;
+  maxLevel: number;
+  encounterRate: number;
+}
+
 export interface PlayableMapEditorData {
   version: 1;
   objects: MapEditorObjectPlacement[];
   portals: MapEditorPortalPlacement[];
+  grass: MapEditorGrassPlacement[];
 }
 
 interface PlayableMapEditorCanvasProps {
@@ -78,6 +95,7 @@ interface PlayableMapEditorCanvasProps {
   iframeSrc: string;
   backgroundStyle: React.CSSProperties;
   objectCatalog: MapEditorObjectCatalogItem[];
+  pokemonCatalog: MapEditorPokemonCatalogItem[];
   maps: MapEditorMapSummary[];
   currentMapId: string;
   value: PlayableMapEditorData;
@@ -85,7 +103,7 @@ interface PlayableMapEditorCanvasProps {
   isDirty: boolean;
 }
 
-type EditorTool = "selector" | "object" | "portal";
+type EditorTool = "selector" | "object" | "portal" | "grass";
 
 interface GridCell {
   x: number;
@@ -114,11 +132,17 @@ interface ClipboardPortalPlacement extends MapEditorPortalPlacement {
   offsetY: number;
 }
 
+interface ClipboardGrassPlacement extends MapEditorGrassPlacement {
+  offsetX: number;
+  offsetY: number;
+}
+
 interface MapEditorClipboard {
   width: number;
   height: number;
   objects: ClipboardObjectPlacement[];
   portals: ClipboardPortalPlacement[];
+  grass: ClipboardGrassPlacement[];
 }
 
 interface PendingTransform {
@@ -174,6 +198,14 @@ function sanitizeCoordinate(value: string) {
   return Number.isFinite(parsed) ? Math.round(parsed) : 0;
 }
 
+function clampEncounterRate(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function clampLevel(value: number) {
+  return Math.max(1, Math.round(value));
+}
+
 function createEmptyPortal(targetMapId: string, cell: GridCell): MapEditorPortalPlacement {
   return {
     id: createEditorId("portal"),
@@ -194,6 +226,7 @@ function createEmptyEditorData(): PlayableMapEditorData {
     version: 1,
     objects: [],
     portals: [],
+    grass: [],
   };
 }
 
@@ -220,6 +253,13 @@ function buildClipboardFromBounds(
         offsetX: item.x - bounds.startX,
         offsetY: item.y - bounds.startY,
       })),
+    grass: data.grass
+      .filter((item) => isCellInsideBounds({ x: item.x, y: item.y }, bounds))
+      .map((item) => ({
+        ...item,
+        offsetX: item.x - bounds.startX,
+        offsetY: item.y - bounds.startY,
+      })),
   };
 }
 
@@ -233,6 +273,9 @@ function removeItemsInsideBounds(
       (item) => !isCellInsideBounds({ x: item.x, y: item.y }, bounds)
     ),
     portals: data.portals.filter(
+      (item) => !isCellInsideBounds({ x: item.x, y: item.y }, bounds)
+    ),
+    grass: data.grass.filter(
       (item) => !isCellInsideBounds({ x: item.x, y: item.y }, bounds)
     ),
   };
@@ -279,6 +322,15 @@ function getPortalLabel(portal: MapEditorPortalPlacement, maps: MapEditorMapSumm
   }
 
   return `X ${portal.sameMapX}, Y ${portal.sameMapY}`;
+}
+
+function getPokemonNames(
+  ids: string[],
+  pokemonCatalog: MapEditorPokemonCatalogItem[]
+) {
+  return ids
+    .map((id) => pokemonCatalog.find((pokemon) => pokemon.id === id)?.name ?? null)
+    .filter((name): name is string => Boolean(name));
 }
 
 export function sanitizePlayableMapEditorData(value: unknown): PlayableMapEditorData {
@@ -335,11 +387,34 @@ export function sanitizePlayableMapEditorData(value: unknown): PlayableMapEditor
           targetMapY: Math.round(item.targetMapY),
         }))
     : [];
+  const grass = Array.isArray(candidate.grass)
+    ? candidate.grass
+        .filter(
+          (item): item is MapEditorGrassPlacement =>
+            typeof item?.id === "string" &&
+            typeof item?.x === "number" &&
+            typeof item?.y === "number" &&
+            Array.isArray(item?.pokemonIds) &&
+            typeof item?.minLevel === "number" &&
+            typeof item?.maxLevel === "number" &&
+            typeof item?.encounterRate === "number"
+        )
+        .map((item) => ({
+          ...item,
+          x: Math.max(0, Math.round(item.x)),
+          y: Math.max(0, Math.round(item.y)),
+          pokemonIds: item.pokemonIds.filter((pokemonId): pokemonId is string => typeof pokemonId === "string"),
+          minLevel: clampLevel(item.minLevel),
+          maxLevel: Math.max(clampLevel(item.minLevel), clampLevel(item.maxLevel)),
+          encounterRate: clampEncounterRate(item.encounterRate),
+        }))
+    : [];
 
   return {
     version: 1,
     objects,
     portals,
+    grass,
   };
 }
 
@@ -352,6 +427,7 @@ export default function PlayableMapEditorCanvas({
   iframeSrc,
   backgroundStyle,
   objectCatalog,
+  pokemonCatalog,
   maps,
   currentMapId,
   value,
@@ -361,10 +437,12 @@ export default function PlayableMapEditorCanvas({
   const [activeTool, setActiveTool] = useState<EditorTool>("selector");
   const [hoverCell, setHoverCell] = useState<GridCell | null>(null);
   const [selectionDraft, setSelectionDraft] = useState<SelectionDraft | null>(null);
+  const [grassPaintDraft, setGrassPaintDraft] = useState<SelectionDraft | null>(null);
   const [selectionBounds, setSelectionBounds] = useState<GridBounds | null>(null);
   const [clipboard, setClipboard] = useState<MapEditorClipboard | null>(null);
   const [pendingTransform, setPendingTransform] = useState<PendingTransform | null>(null);
   const [selectedPortalId, setSelectedPortalId] = useState<string | null>(null);
+  const [selectedGrassId, setSelectedGrassId] = useState<string | null>(null);
   const objectCategories = useMemo(
     () => Array.from(new Set(objectCatalog.map((item) => item.category))).sort(),
     [objectCatalog]
@@ -380,6 +458,18 @@ export default function PlayableMapEditorCanvas({
     [activeObjectCategory, objectCatalog]
   );
   const [activeObjectId, setActiveObjectId] = useState(availableObjects[0]?.id ?? "");
+  const [activeGrassPokemonIds, setActiveGrassPokemonIds] = useState<string[]>(
+    pokemonCatalog[0] ? [pokemonCatalog[0].id] : []
+  );
+  const [activeGrassMinLevel, setActiveGrassMinLevel] = useState("5");
+  const [activeGrassMaxLevel, setActiveGrassMaxLevel] = useState("8");
+  const [activeGrassEncounterRate, setActiveGrassEncounterRate] = useState("30");
+  const pokemonCategories = useMemo(
+    () => Array.from(new Set(pokemonCatalog.map((pokemon) => pokemon.category))).sort(),
+    [pokemonCatalog]
+  );
+  const [activePokemonCategoryFilter, setActivePokemonCategoryFilter] = useState("");
+  const [pokemonSearchTerm, setPokemonSearchTerm] = useState("");
 
   useEffect(() => {
     if (!objectCategories.includes(activeObjectCategory)) {
@@ -402,16 +492,67 @@ export default function PlayableMapEditorCanvas({
     }
   }, [selectedPortalId, value.portals]);
 
+  useEffect(() => {
+    if (
+      selectedGrassId &&
+      !value.grass.some((grassCell) => grassCell.id === selectedGrassId)
+    ) {
+      setSelectedGrassId(null);
+    }
+  }, [selectedGrassId, value.grass]);
+
+  useEffect(() => {
+    if (pokemonCatalog.length === 0) {
+      setActiveGrassPokemonIds([]);
+      return;
+    }
+
+    setActiveGrassPokemonIds((current) => {
+      const nextIds = current.filter((id) =>
+        pokemonCatalog.some((pokemon) => pokemon.id === id)
+      );
+
+      return nextIds.length > 0 ? nextIds : [pokemonCatalog[0].id];
+    });
+  }, [pokemonCatalog]);
+
+  useEffect(() => {
+    if (
+      activePokemonCategoryFilter &&
+      !pokemonCategories.includes(activePokemonCategoryFilter)
+    ) {
+      setActivePokemonCategoryFilter("");
+    }
+  }, [activePokemonCategoryFilter, pokemonCategories]);
+
   const selectedObject = useMemo(
     () => objectCatalog.find((item) => item.id === activeObjectId) ?? null,
     [activeObjectId, objectCatalog]
   );
+  const filteredPokemonCatalog = useMemo(() => {
+    const normalizedSearch = pokemonSearchTerm.trim().toLowerCase();
+
+    return pokemonCatalog.filter((pokemon) => {
+      const matchesCategory =
+        activePokemonCategoryFilter === "" ||
+        pokemon.category === activePokemonCategoryFilter;
+      const matchesSearch =
+        normalizedSearch.length === 0 ||
+        pokemon.name.toLowerCase().includes(normalizedSearch);
+
+      return matchesCategory && matchesSearch;
+    });
+  }, [activePokemonCategoryFilter, pokemonCatalog, pokemonSearchTerm]);
   const activeSelectionBounds = selectionDraft
     ? normalizeBounds(selectionDraft.anchor, selectionDraft.current)
     : selectionBounds;
   const selectedPortal = useMemo(
     () => value.portals.find((portal) => portal.id === selectedPortalId) ?? null,
     [selectedPortalId, value.portals]
+  );
+  const selectedGrass = useMemo(
+    () => value.grass.find((grassCell) => grassCell.id === selectedGrassId) ?? null,
+    [selectedGrassId, value.grass]
   );
   const selectedContents = useMemo(
     () =>
@@ -435,6 +576,18 @@ export default function PlayableMapEditorCanvas({
       ...nextValue,
       version: 1,
     });
+  };
+
+  const activeGrassSettings = {
+    pokemonIds: activeGrassPokemonIds,
+    minLevel: clampLevel(sanitizeCoordinate(activeGrassMinLevel || "1")),
+    maxLevel: Math.max(
+      clampLevel(sanitizeCoordinate(activeGrassMinLevel || "1")),
+      clampLevel(sanitizeCoordinate(activeGrassMaxLevel || activeGrassMinLevel || "1"))
+    ),
+    encounterRate: clampEncounterRate(
+      sanitizeCoordinate(activeGrassEncounterRate || "0")
+    ),
   };
 
   const handleCopySelection = () => {
@@ -518,8 +671,18 @@ export default function PlayableMapEditorCanvas({
       }))
       .filter((item) => item.x >= 0 && item.y >= 0 && item.x < mapWidth && item.y < mapHeight)
       .map(({ offsetX: _offsetX, offsetY: _offsetY, ...item }) => item);
+    const nextGrass = pendingTransform.clipboard.grass
+      .map((item) => ({
+        ...item,
+        id: pendingTransform.type === "move" ? item.id : createEditorId("grass"),
+        x: targetCell.x + item.offsetX,
+        y: targetCell.y + item.offsetY,
+      }))
+      .filter((item) => item.x >= 0 && item.y >= 0 && item.x < mapWidth && item.y < mapHeight)
+      .map(({ offsetX: _offsetX, offsetY: _offsetY, ...item }) => item);
     const objectTargetKeys = new Set(nextObjects.map((item) => getCellKey(item.x, item.y)));
     const portalTargetKeys = new Set(nextPortals.map((item) => getCellKey(item.x, item.y)));
+    const grassTargetKeys = new Set(nextGrass.map((item) => getCellKey(item.x, item.y)));
 
     setNextValue({
       ...baseValue,
@@ -534,6 +697,12 @@ export default function PlayableMapEditorCanvas({
           (item) => !portalTargetKeys.has(getCellKey(item.x, item.y))
         ),
         ...nextPortals,
+      ],
+      grass: [
+        ...baseValue.grass.filter(
+          (item) => !grassTargetKeys.has(getCellKey(item.x, item.y))
+        ),
+        ...nextGrass,
       ],
     });
     setSelectionBounds({
@@ -609,6 +778,47 @@ export default function PlayableMapEditorCanvas({
     });
   };
 
+  const paintGrassInBounds = (bounds: GridBounds) => {
+    const nextGrassCells: MapEditorGrassPlacement[] = [];
+
+    for (let x = bounds.startX; x <= bounds.endX; x += 1) {
+      for (let y = bounds.startY; y <= bounds.endY; y += 1) {
+        nextGrassCells.push({
+          id: createEditorId("grass"),
+          x,
+          y,
+          pokemonIds: [...activeGrassSettings.pokemonIds],
+          minLevel: activeGrassSettings.minLevel,
+          maxLevel: activeGrassSettings.maxLevel,
+          encounterRate: activeGrassSettings.encounterRate,
+        });
+      }
+    }
+
+    const occupiedKeys = new Set(nextGrassCells.map((item) => getCellKey(item.x, item.y)));
+
+    setNextValue({
+      ...value,
+      grass: [
+        ...value.grass.filter((item) => !occupiedKeys.has(getCellKey(item.x, item.y))),
+        ...nextGrassCells,
+      ],
+    });
+
+    if (nextGrassCells.length === 1) {
+      setSelectedGrassId(nextGrassCells[0].id);
+      setSelectionBounds({
+        startX: nextGrassCells[0].x,
+        startY: nextGrassCells[0].y,
+        endX: nextGrassCells[0].x,
+        endY: nextGrassCells[0].y,
+      });
+    } else {
+      setSelectionBounds(bounds);
+      setSelectedGrassId(null);
+    }
+  };
+
   const updateSelectedPortal = (
     updater: (portal: MapEditorPortalPlacement) => MapEditorPortalPlacement
   ) => {
@@ -636,6 +846,33 @@ export default function PlayableMapEditorCanvas({
     setSelectedPortalId(null);
   };
 
+  const updateSelectedGrass = (
+    updater: (grassCell: MapEditorGrassPlacement) => MapEditorGrassPlacement
+  ) => {
+    if (!selectedGrassId) {
+      return;
+    }
+
+    setNextValue({
+      ...value,
+      grass: value.grass.map((grassCell) =>
+        grassCell.id === selectedGrassId ? updater(grassCell) : grassCell
+      ),
+    });
+  };
+
+  const removeSelectedGrass = () => {
+    if (!selectedGrassId) {
+      return;
+    }
+
+    setNextValue({
+      ...value,
+      grass: value.grass.filter((grassCell) => grassCell.id !== selectedGrassId),
+    });
+    setSelectedGrassId(null);
+  };
+
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
       return;
@@ -660,6 +897,16 @@ export default function PlayableMapEditorCanvas({
       return;
     }
 
+    if (activeTool === "grass") {
+      setGrassPaintDraft({
+        anchor: cell,
+        current: cell,
+      });
+      setSelectedPortalId(null);
+      event.currentTarget.setPointerCapture(event.pointerId);
+      return;
+    }
+
     setSelectionDraft({
       anchor: cell,
       current: cell,
@@ -679,9 +926,24 @@ export default function PlayableMapEditorCanvas({
         current: cell,
       });
     }
+
+    if (grassPaintDraft) {
+      setGrassPaintDraft({
+        ...grassPaintDraft,
+        current: cell,
+      });
+    }
   };
 
   const handlePointerUp = () => {
+    if (grassPaintDraft) {
+      const nextBounds = normalizeBounds(grassPaintDraft.anchor, grassPaintDraft.current);
+
+      paintGrassInBounds(nextBounds);
+      setGrassPaintDraft(null);
+      return;
+    }
+
     if (!selectionDraft) {
       return;
     }
@@ -697,8 +959,16 @@ export default function PlayableMapEditorCanvas({
             (portal) => portal.x === nextBounds.startX && portal.y === nextBounds.startY
           ) ?? null
         : null;
+    const grassAtSelection =
+      nextBounds.startX === nextBounds.endX && nextBounds.startY === nextBounds.endY
+        ? value.grass.find(
+            (grassCell) =>
+              grassCell.x === nextBounds.startX && grassCell.y === nextBounds.startY
+          ) ?? null
+        : null;
 
     setSelectedPortalId(portalAtSelection?.id ?? null);
+    setSelectedGrassId(grassAtSelection?.id ?? null);
   };
 
   const toolLabel =
@@ -712,7 +982,9 @@ export default function PlayableMapEditorCanvas({
         ? selectedObject
           ? `Click to place ${selectedObject.name}.`
           : "Select an object to place."
-        : "Click a cell to place or select a portal cell.";
+        : activeTool === "portal"
+          ? "Click a cell to place or select a portal cell."
+          : "Drag to paint grass cells with the active encounter setup.";
 
   return (
     <Flex direction={{ base: "column", xl: "row" }} gap={5}>
@@ -735,7 +1007,7 @@ export default function PlayableMapEditorCanvas({
             >
               Tools
             </Text>
-            <SimpleGrid columns={3} spacing={2}>
+            <SimpleGrid columns={4} spacing={2}>
               <Button
                 size="sm"
                 colorScheme={activeTool === "selector" ? "green" : undefined}
@@ -759,6 +1031,14 @@ export default function PlayableMapEditorCanvas({
                 onClick={() => setActiveTool("portal")}
               >
                 Portals
+              </Button>
+              <Button
+                size="sm"
+                colorScheme={activeTool === "grass" ? "green" : undefined}
+                variant={activeTool === "grass" ? "solid" : "outline"}
+                onClick={() => setActiveTool("grass")}
+              >
+                Grass
               </Button>
             </SimpleGrid>
             <Text mt={3} fontSize="sm" color="#55645a">
@@ -827,8 +1107,10 @@ export default function PlayableMapEditorCanvas({
                 onClick={() => {
                   setSelectionBounds(null);
                   setSelectionDraft(null);
+                  setGrassPaintDraft(null);
                   setPendingTransform(null);
                   setSelectedPortalId(null);
+                  setSelectedGrassId(null);
                 }}
               >
                 Clear
@@ -836,7 +1118,7 @@ export default function PlayableMapEditorCanvas({
             </SimpleGrid>
             <Text mt={3} fontSize="sm" color="#55645a">
               {activeSelectionBounds
-                ? `${getBoundsSize(activeSelectionBounds).width} x ${getBoundsSize(activeSelectionBounds).height} cells selected • ${selectedContents?.objects.length ?? 0} objects • ${selectedContents?.portals.length ?? 0} portals`
+                ? `${getBoundsSize(activeSelectionBounds).width} x ${getBoundsSize(activeSelectionBounds).height} cells selected • ${selectedContents?.objects.length ?? 0} objects • ${selectedContents?.portals.length ?? 0} portals • ${selectedContents?.grass.length ?? 0} grass`
                 : "No selection yet."}
             </Text>
           </Box>
@@ -926,6 +1208,142 @@ export default function PlayableMapEditorCanvas({
                       </Box>
                     </Flex>
                   ))}
+                </Stack>
+              </Box>
+            </>
+          ) : null}
+
+          {activeTool === "grass" ? (
+            <>
+              <Divider />
+              <Box>
+                <Text
+                  fontSize="xs"
+                  fontWeight="700"
+                  textTransform="uppercase"
+                  letterSpacing="0.14em"
+                  color="#5e7a61"
+                  mb={2}
+                >
+                  Grass Tool
+                </Text>
+                <Text fontSize="sm" color="#55645a" mb={3}>
+                  Drag to paint multiple grass cells using this encounter setup.
+                </Text>
+                <Stack spacing={3}>
+                  <SimpleGrid columns={2} spacing={3}>
+                    <FormControl>
+                      <FormLabel>Pokemon Category</FormLabel>
+                      <Select
+                        value={activePokemonCategoryFilter}
+                        onChange={(event) =>
+                          setActivePokemonCategoryFilter(event.target.value)
+                        }
+                      >
+                        <option value="">All Categories</option>
+                        {pokemonCategories.map((category) => (
+                          <option key={category} value={category}>
+                            {category}
+                          </option>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>Search Name</FormLabel>
+                      <Input
+                        value={pokemonSearchTerm}
+                        onChange={(event) => setPokemonSearchTerm(event.target.value)}
+                        placeholder="Search pokemon"
+                      />
+                    </FormControl>
+                  </SimpleGrid>
+                  <Box>
+                    <Text fontSize="sm" fontWeight="700" color="#233127" mb={2}>
+                      Pokemon Encounters
+                    </Text>
+                    <Stack spacing={2} maxH="220px" overflowY="auto">
+                      {filteredPokemonCatalog.map((pokemon) => {
+                        const isSelected = activeGrassPokemonIds.includes(pokemon.id);
+
+                        return (
+                          <Flex
+                            key={pokemon.id}
+                            align="center"
+                            justify="space-between"
+                            gap={3}
+                            p={2.5}
+                            borderRadius="14px"
+                            borderWidth="1px"
+                            borderColor={
+                              isSelected
+                                ? "rgba(46, 91, 55, 0.44)"
+                                : "rgba(35, 49, 39, 0.12)"
+                            }
+                            bg={
+                              isSelected
+                                ? "rgba(232, 244, 228, 0.96)"
+                                : "rgba(255,255,255,0.78)"
+                            }
+                            cursor="pointer"
+                            onClick={() =>
+                              setActiveGrassPokemonIds((current) => {
+                                if (current.includes(pokemon.id)) {
+                                  return current.length === 1
+                                    ? current
+                                    : current.filter((id) => id !== pokemon.id);
+                                }
+
+                                return [...current, pokemon.id];
+                              })
+                            }
+                          >
+                            <Box minW={0}>
+                              <Text fontWeight="700" color="#233127" noOfLines={1}>
+                                {pokemon.name}
+                              </Text>
+                              <Text fontSize="sm" color="#55645a">
+                                {pokemon.category}
+                              </Text>
+                            </Box>
+                            <Text fontSize="xs" fontWeight="700" color="#2e5b37">
+                              {isSelected ? "On" : "Off"}
+                            </Text>
+                          </Flex>
+                        );
+                      })}
+                      {filteredPokemonCatalog.length === 0 ? (
+                        <Text fontSize="sm" color="#55645a">
+                          No Pokemon match this category/search.
+                        </Text>
+                      ) : null}
+                    </Stack>
+                  </Box>
+                  <SimpleGrid columns={2} spacing={3}>
+                    <FormControl>
+                      <FormLabel>Min Level</FormLabel>
+                      <Input
+                        value={activeGrassMinLevel}
+                        onChange={(event) => setActiveGrassMinLevel(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>Max Level</FormLabel>
+                      <Input
+                        value={activeGrassMaxLevel}
+                        onChange={(event) => setActiveGrassMaxLevel(event.target.value)}
+                      />
+                    </FormControl>
+                  </SimpleGrid>
+                  <FormControl>
+                    <FormLabel>Encounter Ratio %</FormLabel>
+                    <Input
+                      value={activeGrassEncounterRate}
+                      onChange={(event) => setActiveGrassEncounterRate(event.target.value)}
+                    />
+                  </FormControl>
+                  <Text fontSize="sm" color="#55645a">
+                    Selected Pokemon: {getPokemonNames(activeGrassPokemonIds, pokemonCatalog).join(", ") || "None"}
+                  </Text>
                 </Stack>
               </Box>
             </>
@@ -1071,6 +1489,168 @@ export default function PlayableMapEditorCanvas({
             </>
           ) : null}
 
+          {selectedGrass ? (
+            <>
+              <Divider />
+              <Box>
+                <Text
+                  fontSize="xs"
+                  fontWeight="700"
+                  textTransform="uppercase"
+                  letterSpacing="0.14em"
+                  color="#5e7a61"
+                  mb={2}
+                >
+                  Grass Cell
+                </Text>
+                <Text fontSize="sm" color="#55645a" mb={3}>
+                  Cell X {selectedGrass.x}, Y {selectedGrass.y}
+                </Text>
+                <Stack spacing={3}>
+                  <SimpleGrid columns={2} spacing={3}>
+                    <FormControl>
+                      <FormLabel>Pokemon Category</FormLabel>
+                      <Select
+                        value={activePokemonCategoryFilter}
+                        onChange={(event) =>
+                          setActivePokemonCategoryFilter(event.target.value)
+                        }
+                      >
+                        <option value="">All Categories</option>
+                        {pokemonCategories.map((category) => (
+                          <option key={category} value={category}>
+                            {category}
+                          </option>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>Search Name</FormLabel>
+                      <Input
+                        value={pokemonSearchTerm}
+                        onChange={(event) => setPokemonSearchTerm(event.target.value)}
+                        placeholder="Search pokemon"
+                      />
+                    </FormControl>
+                  </SimpleGrid>
+                  <Box>
+                    <Text fontSize="sm" fontWeight="700" color="#233127" mb={2}>
+                      Pokemon Encounters
+                    </Text>
+                    <Stack spacing={2} maxH="220px" overflowY="auto">
+                      {filteredPokemonCatalog.map((pokemon) => {
+                        const isSelected = selectedGrass.pokemonIds.includes(pokemon.id);
+
+                        return (
+                          <Flex
+                            key={pokemon.id}
+                            align="center"
+                            justify="space-between"
+                            gap={3}
+                            p={2.5}
+                            borderRadius="14px"
+                            borderWidth="1px"
+                            borderColor={
+                              isSelected
+                                ? "rgba(46, 91, 55, 0.44)"
+                                : "rgba(35, 49, 39, 0.12)"
+                            }
+                            bg={
+                              isSelected
+                                ? "rgba(232, 244, 228, 0.96)"
+                                : "rgba(255,255,255,0.78)"
+                            }
+                            cursor="pointer"
+                            onClick={() =>
+                              updateSelectedGrass((grassCell) => ({
+                                ...grassCell,
+                                pokemonIds: grassCell.pokemonIds.includes(pokemon.id)
+                                  ? grassCell.pokemonIds.length === 1
+                                    ? grassCell.pokemonIds
+                                    : grassCell.pokemonIds.filter((id) => id !== pokemon.id)
+                                  : [...grassCell.pokemonIds, pokemon.id],
+                              }))
+                            }
+                          >
+                            <Box minW={0}>
+                              <Text fontWeight="700" color="#233127" noOfLines={1}>
+                                {pokemon.name}
+                              </Text>
+                              <Text fontSize="sm" color="#55645a">
+                                {pokemon.category}
+                              </Text>
+                            </Box>
+                            <Text fontSize="xs" fontWeight="700" color="#2e5b37">
+                              {isSelected ? "On" : "Off"}
+                            </Text>
+                          </Flex>
+                        );
+                      })}
+                      {filteredPokemonCatalog.length === 0 ? (
+                        <Text fontSize="sm" color="#55645a">
+                          No Pokemon match this category/search.
+                        </Text>
+                      ) : null}
+                    </Stack>
+                  </Box>
+                  <SimpleGrid columns={2} spacing={3}>
+                    <FormControl>
+                      <FormLabel>Min Level</FormLabel>
+                      <Input
+                        value={String(selectedGrass.minLevel)}
+                        onChange={(event) =>
+                          updateSelectedGrass((grassCell) => ({
+                            ...grassCell,
+                            minLevel: clampLevel(sanitizeCoordinate(event.target.value)),
+                            maxLevel: Math.max(
+                              clampLevel(sanitizeCoordinate(event.target.value)),
+                              grassCell.maxLevel
+                            ),
+                          }))
+                        }
+                      />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>Max Level</FormLabel>
+                      <Input
+                        value={String(selectedGrass.maxLevel)}
+                        onChange={(event) =>
+                          updateSelectedGrass((grassCell) => ({
+                            ...grassCell,
+                            maxLevel: Math.max(
+                              grassCell.minLevel,
+                              clampLevel(sanitizeCoordinate(event.target.value))
+                            ),
+                          }))
+                        }
+                      />
+                    </FormControl>
+                  </SimpleGrid>
+                  <FormControl>
+                    <FormLabel>Encounter Ratio %</FormLabel>
+                    <Input
+                      value={String(selectedGrass.encounterRate)}
+                      onChange={(event) =>
+                        updateSelectedGrass((grassCell) => ({
+                          ...grassCell,
+                          encounterRate: clampEncounterRate(
+                            sanitizeCoordinate(event.target.value)
+                          ),
+                        }))
+                      }
+                    />
+                  </FormControl>
+                  <Text fontSize="sm" color="#55645a">
+                    Pokemon: {getPokemonNames(selectedGrass.pokemonIds, pokemonCatalog).join(", ") || "None"}
+                  </Text>
+                  <Button colorScheme="red" variant="outline" onClick={removeSelectedGrass}>
+                    Remove Grass
+                  </Button>
+                </Stack>
+              </Box>
+            </>
+          ) : null}
+
           <Divider />
 
           <Box>
@@ -1089,6 +1669,9 @@ export default function PlayableMapEditorCanvas({
             </Text>
             <Text fontSize="sm" color="#55645a">
               Portals: {value.portals.length}
+            </Text>
+            <Text fontSize="sm" color="#55645a">
+              Grass cells: {value.grass.length}
             </Text>
             <Text fontSize="sm" color={isDirty ? "#8b5a20" : "#55645a"}>
               {isDirty ? "Unsaved changes" : "All changes saved"}
@@ -1168,6 +1751,33 @@ export default function PlayableMapEditorCanvas({
               </Box>
             ))}
 
+            {value.grass.map((grassCell) => (
+              <Box
+                key={grassCell.id}
+                position="absolute"
+                left={`${grassCell.x * cellSize}px`}
+                top={`${grassCell.y * cellSize}px`}
+                width={`${cellSize}px`}
+                height={`${cellSize}px`}
+                border={
+                  grassCell.id === selectedGrassId
+                    ? "2px solid rgba(34, 197, 94, 0.95)"
+                    : "1px solid rgba(20, 83, 45, 0.45)"
+                }
+                bg={
+                  grassCell.id === selectedGrassId
+                    ? "rgba(34, 197, 94, 0.38)"
+                    : "rgba(34, 197, 94, 0.22)"
+                }
+                pointerEvents="none"
+                zIndex={2}
+                sx={{
+                  backgroundImage:
+                    "repeating-linear-gradient(45deg, rgba(20, 83, 45, 0.36) 0 4px, rgba(74, 222, 128, 0.08) 4px 8px)",
+                }}
+              />
+            ))}
+
             {value.portals.map((portal) => (
               <Flex
                 key={portal.id}
@@ -1229,6 +1839,7 @@ export default function PlayableMapEditorCanvas({
               onPointerUp={handlePointerUp}
               onPointerLeave={() => {
                 setHoverCell(null);
+                setGrassPaintDraft(null);
               }}
             >
               <style>
@@ -1278,6 +1889,18 @@ export default function PlayableMapEditorCanvas({
                     X {hoverCell.x}, Y {hoverCell.y}
                   </Box>
                 </>
+              ) : null}
+
+              {grassPaintDraft ? (
+                <Box
+                  sx={getSelectionBoxStyle(
+                    normalizeBounds(grassPaintDraft.anchor, grassPaintDraft.current),
+                    cellSize
+                  )}
+                  border="2px dashed rgba(34, 197, 94, 0.95)"
+                  bg="rgba(34, 197, 94, 0.18)"
+                  pointerEvents="none"
+                />
               ) : null}
 
               {pendingPreviewBounds ? (
