@@ -1,4 +1,4 @@
-import { createContext, useEffect, useReducer, useState } from "react"
+import { createContext, useReducer, useState } from "react"
 import io, { Socket } from "socket.io-client"
 import Ship from "../components/game/Ship"
 
@@ -112,7 +112,7 @@ const reducer = (state:any, action:any) => {
                 }
             */
            console.log("appContext->action.playerData",action.playerData)
-            if (typeof state.players[action.playerData.id] !== undefined) {
+            if (typeof state.players[action.playerData.id] !== "undefined") {
                 state.players[action.playerData.id] = {
                                     ...state.players[action.playerData.id],
                                     ...action.playerData

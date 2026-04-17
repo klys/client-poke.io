@@ -1,5 +1,4 @@
-import React, { useState, useContext } from "react";
-import { AppContext } from "../../context/appContext";
+import React from "react";
 /**
  * 
  * @param props {
@@ -11,14 +10,10 @@ import { AppContext } from "../../context/appContext";
  * @returns 
  */
 const Object = (props:any) => {
-  //const { socket } = useContext(AppContext)
-
-  //const [pos, setPos] = useState({x:props.x,y:props.y,angle:0})
-
-
-
-
-
+  const imageSrc = props.imageSrc ?? "/objects/Rock.png";
+  const width = props.width ?? 32;
+  const height = props.height ?? 32;
+  const alt = props.alt ?? "Rock";
 
   return (<>
     <div
@@ -32,11 +27,10 @@ const Object = (props:any) => {
     >
 
       <img
-        
-        src="/objects/Rock.png"
-        alt="Picture of a Rock"
-        width={32}
-        height={32}
+        src={imageSrc}
+        alt={alt}
+        width={width}
+        height={height}
         style={{ 
           imageRendering: "pixelated",
           objectPosition: "center",
@@ -47,5 +41,4 @@ const Object = (props:any) => {
 }
 
 export default Object;
-
 

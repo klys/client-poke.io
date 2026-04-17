@@ -17,6 +17,7 @@ import {
   Select,
   SimpleGrid,
   Stack,
+  Switch,
   Text,
   useToast,
 } from "@chakra-ui/react";
@@ -106,6 +107,26 @@ function parseMapCoordinate(value: string) {
   return Number.isFinite(parsedValue) ? Math.round(parsedValue) : 0;
 }
 
+function parseOptionalMapCoordinate(value: string) {
+  if (value.trim() === "") {
+    return null;
+  }
+
+  const parsedValue = Number.parseInt(value, 10);
+
+  return Number.isFinite(parsedValue) ? Math.round(parsedValue) : null;
+}
+
+function hasValidOptionalCoordinatePair(x: string, y: string) {
+  const parsedX = parseOptionalMapCoordinate(x);
+  const parsedY = parseOptionalMapCoordinate(y);
+
+  return (
+    (parsedX === null && parsedY === null) ||
+    (parsedX !== null && parsedY !== null)
+  );
+}
+
 function formatMapTypeLabel(value: DesignerPlayableMapType) {
   return value
     .split("-")
@@ -144,6 +165,15 @@ function normalizePlayableMapConfig(
       typeof config?.height === "number" && Number.isFinite(config.height) && config.height > 0
         ? Math.max(1, Math.round(config.height))
         : 500,
+    isInitialMap: config?.isInitialMap === true,
+    initialPositionX:
+      typeof config?.initialPositionX === "number" && Number.isFinite(config.initialPositionX)
+        ? Math.round(config.initialPositionX)
+        : null,
+    initialPositionY:
+      typeof config?.initialPositionY === "number" && Number.isFinite(config.initialPositionY)
+        ? Math.round(config.initialPositionY)
+        : null,
     regionName:
       typeof config?.regionName === "string" && config.regionName.trim()
         ? config.regionName.trim()
@@ -166,6 +196,48 @@ function normalizePlayableMapConfig(
       ? (config?.backgroundImageMode as DesignerPlayableMapBackgroundImageMode)
       : DEFAULT_MAP_BACKGROUND_IMAGE_MODE,
   };
+}
+
+function normalizeInitialPlayableMapItems(items: DesignerItemSeed[]) {
+  let hasInitialMap = false;
+
+  return items.map((item) => {
+    if (!item.playableMapConfig) {
+      return item;
+    }
+
+    const isInitialMap = item.playableMapConfig.isInitialMap === true && !hasInitialMap;
+
+    if (isInitialMap) {
+      hasInitialMap = true;
+    }
+
+    return {
+      ...item,
+      playableMapConfig: {
+        ...item.playableMapConfig,
+        isInitialMap,
+      },
+    };
+  });
+}
+
+function syncPlayableMapItems(items: DesignerItemSeed[]) {
+  const normalizedItems = normalizeInitialPlayableMapItems(items);
+
+  return normalizedItems.map((item, index) =>
+    item.playableMapConfig
+      ? {
+          ...item,
+          details: designerSectionsByKey.mapsEditor.createDetails(
+            item.name,
+            item.category,
+            index + 1,
+            { playableMapConfig: item.playableMapConfig }
+          ),
+        }
+      : item
+  );
 }
 
 function getMapSurfaceBackgroundStyle(config: DesignerPlayableMapConfig): React.CSSProperties {
@@ -428,12 +500,14 @@ function loadMapsState() {
       categories: parsed.categories.filter(
         (category): category is string => typeof category === "string"
       ),
-      items: parsed.items.filter(
-        (item): item is DesignerItemSeed =>
-          typeof item?.id === "string" &&
-          typeof item?.name === "string" &&
-          typeof item?.category === "string" &&
-          Array.isArray(item?.details)
+      items: syncPlayableMapItems(
+        parsed.items.filter(
+          (item): item is DesignerItemSeed =>
+            typeof item?.id === "string" &&
+            typeof item?.name === "string" &&
+            typeof item?.category === "string" &&
+            Array.isArray(item?.details)
+        )
       ),
     };
   } catch {
@@ -496,6 +570,12 @@ export default function MapEditorPage() {
   const [regionName, setRegionName] = useState(initialConfig.regionName);
   const [regionX, setRegionX] = useState(String(initialConfig.regionX));
   const [regionY, setRegionY] = useState(String(initialConfig.regionY));
+  const [initialPositionX, setInitialPositionX] = useState(
+    initialConfig.initialPositionX === null ? "" : String(initialConfig.initialPositionX)
+  );
+  const [initialPositionY, setInitialPositionY] = useState(
+    initialConfig.initialPositionY === null ? "" : String(initialConfig.initialPositionY)
+  );
   const [mapType, setMapType] = useState<DesignerPlayableMapType>(initialConfig.mapType);
   const [backgroundColor, setBackgroundColor] = useState(initialConfig.backgroundColor);
   const [backgroundImageSrc, setBackgroundImageSrc] = useState(
@@ -503,6 +583,7 @@ export default function MapEditorPage() {
   );
   const [backgroundImageMode, setBackgroundImageMode] =
     useState<DesignerPlayableMapBackgroundImageMode>(initialConfig.backgroundImageMode);
+  const [isInitialMap, setIsInitialMap] = useState(initialConfig.isInitialMap);
 
   useEffect(() => {
     const nextConfig = normalizePlayableMapConfig(mapItem?.playableMapConfig, regionNames);
@@ -515,10 +596,17 @@ export default function MapEditorPage() {
     setRegionName(nextConfig.regionName);
     setRegionX(String(nextConfig.regionX));
     setRegionY(String(nextConfig.regionY));
+    setInitialPositionX(
+      nextConfig.initialPositionX === null ? "" : String(nextConfig.initialPositionX)
+    );
+    setInitialPositionY(
+      nextConfig.initialPositionY === null ? "" : String(nextConfig.initialPositionY)
+    );
     setMapType(nextConfig.mapType);
     setBackgroundColor(nextConfig.backgroundColor);
     setBackgroundImageSrc(nextConfig.backgroundImageSrc);
     setBackgroundImageMode(nextConfig.backgroundImageMode);
+    setIsInitialMap(nextConfig.isInitialMap);
   }, [initialConfig, mapItem, regionNames]);
 
   useEffect(() => {
@@ -555,7 +643,8 @@ export default function MapEditorPage() {
     MAP_CELL_SIZE_OPTIONS.includes(Number.parseInt(cellSize, 10) as 8 | 16 | 32 | 64 | 128) &&
     !!regionName &&
     resolvedDimensions.width !== null &&
-    resolvedDimensions.height !== null;
+    resolvedDimensions.height !== null &&
+    hasValidOptionalCoordinatePair(initialPositionX, initialPositionY);
 
   const handleToolbarSave = () => {
     if (!mapId) {
@@ -590,6 +679,9 @@ export default function MapEditorPage() {
       sizePreset,
       width: resolvedDimensions.width,
       height: resolvedDimensions.height,
+      isInitialMap,
+      initialPositionX: parseOptionalMapCoordinate(initialPositionX),
+      initialPositionY: parseOptionalMapCoordinate(initialPositionY),
       regionName,
       regionX: parseMapCoordinate(regionX),
       regionY: parseMapCoordinate(regionY),
@@ -599,23 +691,25 @@ export default function MapEditorPage() {
       backgroundImageMode,
     };
 
+    const nextItems = mapsState.items.map((item) =>
+      item.id === mapItem.id
+        ? {
+            ...item,
+            name: mapName.trim(),
+            details: designerSectionsByKey.mapsEditor.createDetails(
+              mapName.trim(),
+              item.category,
+              1,
+              { playableMapConfig: nextConfig }
+            ),
+            playableMapConfig: nextConfig,
+          }
+        : item
+    );
+
     const nextState: DesignerSectionState = {
       ...mapsState,
-      items: mapsState.items.map((item) =>
-        item.id === mapItem.id
-          ? {
-              ...item,
-              name: mapName.trim(),
-              details: designerSectionsByKey.mapsEditor.createDetails(
-                mapName.trim(),
-                item.category,
-                1,
-                { playableMapConfig: nextConfig }
-              ),
-              playableMapConfig: nextConfig,
-            }
-          : item
-      ),
+      items: isInitialMap ? syncPlayableMapItems(nextItems) : nextItems,
     };
 
     setMapsState(nextState);
@@ -840,6 +934,19 @@ export default function MapEditorPage() {
                 </SimpleGrid>
               ) : null}
               <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                <FormControl display="flex" alignItems="center" justifyContent="space-between">
+                  <Box>
+                    <FormLabel mb={1}>Initial Game Map</FormLabel>
+                    <Text fontSize="sm" color="#55645a">
+                      New players start on this map unless the server restores a saved location.
+                    </Text>
+                  </Box>
+                  <Switch
+                    colorScheme="green"
+                    isChecked={isInitialMap}
+                    onChange={(event) => setIsInitialMap(event.target.checked)}
+                  />
+                </FormControl>
                 <FormControl isRequired>
                   <FormLabel>Region</FormLabel>
                   <Select
@@ -886,6 +993,38 @@ export default function MapEditorPage() {
                     step={1}
                     value={regionY}
                     onChange={(event) => setRegionY(event.target.value)}
+                  />
+                </FormControl>
+              </SimpleGrid>
+              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                <FormControl
+                  isInvalid={
+                    initialPositionX.trim() !== "" &&
+                    parseOptionalMapCoordinate(initialPositionX) === null
+                  }
+                >
+                  <FormLabel>Initial Position X</FormLabel>
+                  <Input
+                    type="number"
+                    step={1}
+                    value={initialPositionX}
+                    onChange={(event) => setInitialPositionX(event.target.value)}
+                    placeholder="Leave blank to use center"
+                  />
+                </FormControl>
+                <FormControl
+                  isInvalid={
+                    initialPositionY.trim() !== "" &&
+                    parseOptionalMapCoordinate(initialPositionY) === null
+                  }
+                >
+                  <FormLabel>Initial Position Y</FormLabel>
+                  <Input
+                    type="number"
+                    step={1}
+                    value={initialPositionY}
+                    onChange={(event) => setInitialPositionY(event.target.value)}
+                    placeholder="Leave blank to use center"
                   />
                 </FormControl>
               </SimpleGrid>
@@ -958,6 +1097,21 @@ export default function MapEditorPage() {
                   backgroundImageMode,
                 })}
               />
+              <Text fontSize="sm" color="#55645a">
+                Initial game map: {isInitialMap ? "Yes" : "No"}
+              </Text>
+              <Text fontSize="sm" color="#55645a">
+                Initial position:{" "}
+                {parseOptionalMapCoordinate(initialPositionX) !== null &&
+                parseOptionalMapCoordinate(initialPositionY) !== null
+                  ? `${parseOptionalMapCoordinate(initialPositionX)}, ${parseOptionalMapCoordinate(initialPositionY)}`
+                  : "Center"}
+              </Text>
+              {!hasValidOptionalCoordinatePair(initialPositionX, initialPositionY) ? (
+                <Text fontSize="sm" color="#914335">
+                  Enter both initial position coordinates or leave both empty to use the map center.
+                </Text>
+              ) : null}
             </Stack>
           </ModalBody>
           <ModalFooter

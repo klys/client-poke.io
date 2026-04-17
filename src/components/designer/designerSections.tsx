@@ -79,6 +79,9 @@ export interface DesignerPlayableMapConfig {
   sizePreset: DesignerMapSizePreset;
   width: number;
   height: number;
+  isInitialMap: boolean;
+  initialPositionX: number | null;
+  initialPositionY: number | null;
   regionName: string;
   regionX: number;
   regionY: number;
@@ -333,6 +336,8 @@ export const designerSections: DesignerSectionDefinition[] = [
         details: [
           detail("Cell Size", "32 px"),
           detail("Map Size", "500 x 500"),
+          detail("Initial Game Map", "Yes"),
+          detail("Initial Position", "Center"),
           detail("Region", "Ash Coast"),
           detail("Region Position", "0, 0"),
           detail("Map Type", "grassland"),
@@ -342,6 +347,9 @@ export const designerSections: DesignerSectionDefinition[] = [
           sizePreset: "medium",
           width: 500,
           height: 500,
+          isInitialMap: true,
+          initialPositionX: null,
+          initialPositionY: null,
           regionName: "Ash Coast",
           regionX: 0,
           regionY: 0,
@@ -358,6 +366,8 @@ export const designerSections: DesignerSectionDefinition[] = [
         details: [
           detail("Cell Size", "16 px"),
           detail("Map Size", "30 x 30"),
+          detail("Initial Game Map", "No"),
+          detail("Initial Position", "Center"),
           detail("Region", "Fernwild"),
           detail("Region Position", "1, 2"),
           detail("Map Type", "cave"),
@@ -367,6 +377,9 @@ export const designerSections: DesignerSectionDefinition[] = [
           sizePreset: "small",
           width: 30,
           height: 30,
+          isInitialMap: false,
+          initialPositionX: null,
+          initialPositionY: null,
           regionName: "Fernwild",
           regionX: 1,
           regionY: 2,
@@ -383,6 +396,8 @@ export const designerSections: DesignerSectionDefinition[] = [
         details: [
           detail("Cell Size", "64 px"),
           detail("Map Size", "500 x 500"),
+          detail("Initial Game Map", "No"),
+          detail("Initial Position", "Center"),
           detail("Region", "Moon Bay"),
           detail("Region Position", "3, 1"),
           detail("Map Type", "city"),
@@ -392,6 +407,9 @@ export const designerSections: DesignerSectionDefinition[] = [
           sizePreset: "medium",
           width: 500,
           height: 500,
+          isInitialMap: false,
+          initialPositionX: null,
+          initialPositionY: null,
           regionName: "Moon Bay",
           regionX: 3,
           regionY: 1,
@@ -407,6 +425,17 @@ export const designerSections: DesignerSectionDefinition[] = [
       detail(
         "Map Size",
         `${options?.playableMapConfig?.width ?? 500} x ${options?.playableMapConfig?.height ?? 500}`
+      ),
+      detail(
+        "Initial Game Map",
+        options?.playableMapConfig?.isInitialMap ? "Yes" : "No"
+      ),
+      detail(
+        "Initial Position",
+        typeof options?.playableMapConfig?.initialPositionX === "number" &&
+          typeof options?.playableMapConfig?.initialPositionY === "number"
+          ? `${options.playableMapConfig.initialPositionX}, ${options.playableMapConfig.initialPositionY}`
+          : "Center"
       ),
       detail("Region", options?.playableMapConfig?.regionName ?? "Ash Coast"),
       detail(

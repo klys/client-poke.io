@@ -20,6 +20,7 @@ import {
   Select,
   SimpleGrid,
   Stack,
+  Switch,
   Text,
   useToast,
 } from "@chakra-ui/react";
@@ -102,6 +103,7 @@ const MAP_BACKGROUND_IMAGE_MODES: DesignerPlayableMapBackgroundImageMode[] = [
 ];
 const DEFAULT_MAP_BACKGROUND_COLOR = "#8bc17f";
 const DEFAULT_MAP_BACKGROUND_IMAGE_MODE: DesignerPlayableMapBackgroundImageMode = "repeat";
+const DEFAULT_IS_INITIAL_MAP = false;
 
 function createUniqueMapId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -135,6 +137,26 @@ function parseMapCoordinate(value: string) {
   const parsedValue = Number.parseInt(value, 10);
 
   return Number.isFinite(parsedValue) ? Math.round(parsedValue) : 0;
+}
+
+function parseOptionalMapCoordinate(value: string) {
+  if (value.trim() === "") {
+    return null;
+  }
+
+  const parsedValue = Number.parseInt(value, 10);
+
+  return Number.isFinite(parsedValue) ? Math.round(parsedValue) : null;
+}
+
+function hasValidOptionalCoordinatePair(x: string, y: string) {
+  const parsedX = parseOptionalMapCoordinate(x);
+  const parsedY = parseOptionalMapCoordinate(y);
+
+  return (
+    (parsedX === null && parsedY === null) ||
+    (parsedX !== null && parsedY !== null)
+  );
 }
 
 function getMapSizePresetOption(sizePreset: DesignerMapSizePreset) {
@@ -328,6 +350,15 @@ function sanitizePlayableMapConfig(
     sizePreset: candidate.sizePreset,
     width,
     height,
+    isInitialMap: candidate.isInitialMap === true,
+    initialPositionX:
+      typeof candidate.initialPositionX === "number" && Number.isFinite(candidate.initialPositionX)
+        ? Math.round(candidate.initialPositionX)
+        : null,
+    initialPositionY:
+      typeof candidate.initialPositionY === "number" && Number.isFinite(candidate.initialPositionY)
+        ? Math.round(candidate.initialPositionY)
+        : null,
     regionName,
     regionX:
       typeof candidate.regionX === "number" && Number.isFinite(candidate.regionX)
@@ -347,6 +378,48 @@ function sanitizePlayableMapConfig(
       ? candidate.backgroundImageMode
       : DEFAULT_MAP_BACKGROUND_IMAGE_MODE,
   };
+}
+
+function normalizeInitialPlayableMapItems(items: DesignerItemSeed[]) {
+  let hasInitialMap = false;
+
+  return items.map((item) => {
+    if (!item.playableMapConfig) {
+      return item;
+    }
+
+    const isInitialMap = item.playableMapConfig.isInitialMap === true && !hasInitialMap;
+
+    if (isInitialMap) {
+      hasInitialMap = true;
+    }
+
+    return {
+      ...item,
+      playableMapConfig: {
+        ...item.playableMapConfig,
+        isInitialMap,
+      },
+    };
+  });
+}
+
+function syncPlayableMapItems(items: DesignerItemSeed[]) {
+  const normalizedItems = normalizeInitialPlayableMapItems(items);
+
+  return normalizedItems.map((item, index) =>
+    item.playableMapConfig
+      ? {
+          ...item,
+          details: designerSectionsByKey.mapsEditor.createDetails(
+            item.name,
+            item.category,
+            index + 1,
+            { playableMapConfig: item.playableMapConfig }
+          ),
+        }
+      : item
+  );
 }
 
 function loadRegionNames() {
@@ -379,14 +452,18 @@ function loadRegionNames() {
 function buildInitialState(sectionKey: DesignerSectionKey): DesignerSectionState {
   const section = designerSectionsByKey[sectionKey];
   const categorySet = new Set([UNCATEGORIZED, ...section.defaultCategories]);
+  const items =
+    sectionKey === "mapsEditor"
+      ? syncPlayableMapItems(section.demoItems)
+      : section.demoItems;
 
-  section.demoItems.forEach((item) => {
+  items.forEach((item) => {
     categorySet.add(item.category || UNCATEGORIZED);
   });
 
   return {
     categories: Array.from(categorySet),
-    items: section.demoItems,
+    items,
   };
 }
 
@@ -428,12 +505,14 @@ function sanitizeSectionState(
       mapObjectAsset: sanitizeMapObjectAsset(item.mapObjectAsset),
       playableMapConfig: sanitizePlayableMapConfig(item.playableMapConfig, regionNames),
     }));
+  const normalizedItems =
+    sectionKey === "mapsEditor" ? syncPlayableMapItems(items) : items;
 
-  items.forEach((item) => categories.push(item.category));
+  normalizedItems.forEach((item) => categories.push(item.category));
 
   return {
     categories: Array.from(new Set(categories)),
-    items,
+    items: normalizedItems,
   };
 }
 
@@ -564,6 +643,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const [newMapRegion, setNewMapRegion] = useState(regionNames[0] || "");
   const [newMapRegionX, setNewMapRegionX] = useState("0");
   const [newMapRegionY, setNewMapRegionY] = useState("0");
+  const [newMapInitialPositionX, setNewMapInitialPositionX] = useState("");
+  const [newMapInitialPositionY, setNewMapInitialPositionY] = useState("");
   const [newMapType, setNewMapType] = useState<DesignerPlayableMapType>(DEFAULT_MAP_TYPE);
   const [newMapBackgroundColor, setNewMapBackgroundColor] = useState(
     DEFAULT_MAP_BACKGROUND_COLOR
@@ -571,6 +652,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const [newMapBackgroundImage, setNewMapBackgroundImage] = useState("");
   const [newMapBackgroundImageMode, setNewMapBackgroundImageMode] =
     useState<DesignerPlayableMapBackgroundImageMode>(DEFAULT_MAP_BACKGROUND_IMAGE_MODE);
+  const [newMapIsInitial, setNewMapIsInitial] = useState(DEFAULT_IS_INITIAL_MAP);
   const [editMapCellSize, setEditMapCellSize] = useState(String(DEFAULT_MAP_CELL_SIZE));
   const [editMapSizePreset, setEditMapSizePreset] =
     useState<DesignerMapSizePreset>(DEFAULT_MAP_SIZE_PRESET);
@@ -579,6 +661,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const [editMapRegion, setEditMapRegion] = useState(regionNames[0] || "");
   const [editMapRegionX, setEditMapRegionX] = useState("0");
   const [editMapRegionY, setEditMapRegionY] = useState("0");
+  const [editMapInitialPositionX, setEditMapInitialPositionX] = useState("");
+  const [editMapInitialPositionY, setEditMapInitialPositionY] = useState("");
   const [editMapType, setEditMapType] = useState<DesignerPlayableMapType>(DEFAULT_MAP_TYPE);
   const [editMapBackgroundColor, setEditMapBackgroundColor] = useState(
     DEFAULT_MAP_BACKGROUND_COLOR
@@ -586,6 +670,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const [editMapBackgroundImage, setEditMapBackgroundImage] = useState("");
   const [editMapBackgroundImageMode, setEditMapBackgroundImageMode] =
     useState<DesignerPlayableMapBackgroundImageMode>(DEFAULT_MAP_BACKGROUND_IMAGE_MODE);
+  const [editMapIsInitial, setEditMapIsInitial] = useState(DEFAULT_IS_INITIAL_MAP);
   const shouldBroadcastRef = useRef(false);
   const latestSectionStateRef = useRef(sectionState);
   const importInputRef = useRef<HTMLInputElement | null>(null);
@@ -799,6 +884,14 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     resolvedNewMapDimensions.width !== null && resolvedNewMapDimensions.height !== null;
   const hasValidEditMapDimensions =
     resolvedEditMapDimensions.width !== null && resolvedEditMapDimensions.height !== null;
+  const hasValidNewInitialPosition = hasValidOptionalCoordinatePair(
+    newMapInitialPositionX,
+    newMapInitialPositionY
+  );
+  const hasValidEditInitialPosition = hasValidOptionalCoordinatePair(
+    editMapInitialPositionX,
+    editMapInitialPositionY
+  );
   const isMapObjectFormValid =
     !isObjectsSection ||
     (!!newMapObjectImage && hasValidMapObjectWidth && hasValidMapObjectHeight);
@@ -811,12 +904,14 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     !isMapsSection ||
     (!!newMapRegion &&
       MAP_CELL_SIZE_OPTIONS.includes(Number.parseInt(newMapCellSize, 10) as 8 | 16 | 32 | 64 | 128) &&
-      hasValidNewMapDimensions);
+      hasValidNewMapDimensions &&
+      hasValidNewInitialPosition);
   const isEditPlayableMapFormValid =
     !isMapsSection ||
     (!!editMapRegion &&
       MAP_CELL_SIZE_OPTIONS.includes(Number.parseInt(editMapCellSize, 10) as 8 | 16 | 32 | 64 | 128) &&
-      hasValidEditMapDimensions);
+      hasValidEditMapDimensions &&
+      hasValidEditInitialPosition);
 
   const categorySummary = useMemo(
     () =>
@@ -867,10 +962,13 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setNewMapRegion(regionNames[0] || "");
     setNewMapRegionX("0");
     setNewMapRegionY("0");
+    setNewMapInitialPositionX("");
+    setNewMapInitialPositionY("");
     setNewMapType(DEFAULT_MAP_TYPE);
     setNewMapBackgroundColor(DEFAULT_MAP_BACKGROUND_COLOR);
     setNewMapBackgroundImage("");
     setNewMapBackgroundImageMode(DEFAULT_MAP_BACKGROUND_IMAGE_MODE);
+    setNewMapIsInitial(DEFAULT_IS_INITIAL_MAP);
     setIsAddOpen(true);
   };
 
@@ -897,6 +995,16 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setEditMapRegion(playableMapConfig?.regionName || regionNames[0] || "");
     setEditMapRegionX(String(playableMapConfig?.regionX || 0));
     setEditMapRegionY(String(playableMapConfig?.regionY || 0));
+    setEditMapInitialPositionX(
+      playableMapConfig?.initialPositionX === null || typeof playableMapConfig?.initialPositionX === "undefined"
+        ? ""
+        : String(playableMapConfig.initialPositionX)
+    );
+    setEditMapInitialPositionY(
+      playableMapConfig?.initialPositionY === null || typeof playableMapConfig?.initialPositionY === "undefined"
+        ? ""
+        : String(playableMapConfig.initialPositionY)
+    );
     setEditMapType(playableMapConfig?.mapType || DEFAULT_MAP_TYPE);
     setEditMapBackgroundColor(
       playableMapConfig?.backgroundColor || DEFAULT_MAP_BACKGROUND_COLOR
@@ -905,6 +1013,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setEditMapBackgroundImageMode(
       playableMapConfig?.backgroundImageMode || DEFAULT_MAP_BACKGROUND_IMAGE_MODE
     );
+    setEditMapIsInitial(playableMapConfig?.isInitialMap === true);
     setIsEditOpen(true);
   };
 
@@ -1058,7 +1167,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
 
   const handleMapObjectImageChange = (
     event: React.ChangeEvent<HTMLInputElement>,
-    onImageChange: (value: string) => void
+    onImageChange: (value: string) => void,
+    onWidthChange: (value: string) => void,
+    onHeightChange: (value: string) => void
   ) => {
     const file = event.target.files?.[0];
 
@@ -1082,7 +1193,15 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
 
     reader.onload = () => {
       if (typeof reader.result === "string") {
-        onImageChange(reader.result);
+        const image = new Image();
+
+        image.onload = () => {
+          onImageChange(reader.result as string);
+          onWidthChange(String(Math.max(1, Math.round(image.naturalWidth))));
+          onHeightChange(String(Math.max(1, Math.round(image.naturalHeight))));
+        };
+
+        image.src = reader.result;
       }
     };
 
@@ -1147,6 +1266,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               sizePreset: newMapSizePreset,
               width: resolvedNewMapDimensions.width,
               height: resolvedNewMapDimensions.height,
+              isInitialMap: newMapIsInitial,
+              initialPositionX: parseOptionalMapCoordinate(newMapInitialPositionX),
+              initialPositionY: parseOptionalMapCoordinate(newMapInitialPositionY),
               regionName: newMapRegion,
               regionX: parseMapCoordinate(newMapRegionX),
               regionY: parseMapCoordinate(newMapRegionY),
@@ -1170,11 +1292,16 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         playableMapConfig,
       };
 
+      const nextItems = [item, ...current.items];
+
       return {
         categories: current.categories.includes(category)
           ? current.categories
           : [...current.categories, category],
-        items: [item, ...current.items],
+        items:
+          isMapsSection && playableMapConfig?.isInitialMap
+            ? syncPlayableMapItems(nextItems)
+            : nextItems,
       };
     });
 
@@ -1211,6 +1338,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               sizePreset: editMapSizePreset,
               width: resolvedEditMapDimensions.width,
               height: resolvedEditMapDimensions.height,
+              isInitialMap: editMapIsInitial,
+              initialPositionX: parseOptionalMapCoordinate(editMapInitialPositionX),
+              initialPositionY: parseOptionalMapCoordinate(editMapInitialPositionY),
               regionName: editMapRegion,
               regionX: parseMapCoordinate(editMapRegionX),
               regionY: parseMapCoordinate(editMapRegionY),
@@ -1221,25 +1351,30 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             }
           : undefined;
 
+      const nextItems = current.items.map((item, index) =>
+        item.id === editingItemId
+          ? {
+              ...item,
+              name,
+              category,
+              details: section.createDetails(name, category, index + 1, {
+                mapObjectAsset,
+                playableMapConfig,
+              }),
+              mapObjectAsset,
+              playableMapConfig,
+            }
+          : item
+      );
+
       return {
         categories: current.categories.includes(category)
           ? current.categories
           : [...current.categories, category],
-        items: current.items.map((item, index) =>
-          item.id === editingItemId
-            ? {
-                ...item,
-                name,
-                category,
-                details: section.createDetails(name, category, index + 1, {
-                  mapObjectAsset,
-                  playableMapConfig,
-                }),
-                mapObjectAsset,
-                playableMapConfig,
-              }
-            : item
-        ),
+        items:
+          isMapsSection && playableMapConfig?.isInitialMap
+            ? syncPlayableMapItems(nextItems)
+            : nextItems,
       };
     });
 
@@ -1419,6 +1554,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     onRegionXChange,
     regionY,
     onRegionYChange,
+    initialPositionX,
+    onInitialPositionXChange,
+    initialPositionY,
+    onInitialPositionYChange,
     mapType,
     onMapTypeChange,
     backgroundColor,
@@ -1427,6 +1566,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     onBackgroundImageChange,
     backgroundImageMode,
     onBackgroundImageModeChange,
+    isInitialMap,
+    onInitialMapChange,
     isValidDimensions,
   }: {
     cellSize: string;
@@ -1443,6 +1584,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     onRegionXChange: (value: string) => void;
     regionY: string;
     onRegionYChange: (value: string) => void;
+    initialPositionX: string;
+    onInitialPositionXChange: (value: string) => void;
+    initialPositionY: string;
+    onInitialPositionYChange: (value: string) => void;
     mapType: DesignerPlayableMapType;
     onMapTypeChange: (value: DesignerPlayableMapType) => void;
     backgroundColor: string;
@@ -1451,6 +1596,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     onBackgroundImageChange: (value: string) => void;
     backgroundImageMode: DesignerPlayableMapBackgroundImageMode;
     onBackgroundImageModeChange: (value: DesignerPlayableMapBackgroundImageMode) => void;
+    isInitialMap: boolean;
+    onInitialMapChange: (value: boolean) => void;
     isValidDimensions: boolean;
   }) => {
     const previewBackgroundStyle = getPlayableMapBackgroundStyle({
@@ -1528,6 +1675,19 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           </SimpleGrid>
         ) : null}
         <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+          <FormControl display="flex" alignItems="center" justifyContent="space-between">
+            <Box>
+              <FormLabel mb={1}>Initial Game Map</FormLabel>
+              <Text fontSize="sm" color="#55645a">
+                New players start on this map unless they already have a saved location.
+              </Text>
+            </Box>
+            <Switch
+              colorScheme="green"
+              isChecked={isInitialMap}
+              onChange={(event) => onInitialMapChange(event.target.checked)}
+            />
+          </FormControl>
           <FormControl isRequired>
             <FormLabel>Region</FormLabel>
             <Select
@@ -1577,6 +1737,38 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               value={regionY}
               onChange={(event) => onRegionYChange(event.target.value)}
               placeholder="Region Y position"
+            />
+          </FormControl>
+        </SimpleGrid>
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+          <FormControl
+            isInvalid={
+              initialPositionX.trim() !== "" &&
+              parseOptionalMapCoordinate(initialPositionX) === null
+            }
+          >
+            <FormLabel>Initial Position X</FormLabel>
+            <Input
+              type="number"
+              step={1}
+              value={initialPositionX}
+              onChange={(event) => onInitialPositionXChange(event.target.value)}
+              placeholder="Leave blank to use center"
+            />
+          </FormControl>
+          <FormControl
+            isInvalid={
+              initialPositionY.trim() !== "" &&
+              parseOptionalMapCoordinate(initialPositionY) === null
+            }
+          >
+            <FormLabel>Initial Position Y</FormLabel>
+            <Input
+              type="number"
+              step={1}
+              value={initialPositionY}
+              onChange={(event) => onInitialPositionYChange(event.target.value)}
+              placeholder="Leave blank to use center"
             />
           </FormControl>
         </SimpleGrid>
@@ -1666,6 +1858,16 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               : getMapSizePresetOption(sizePreset).label.replace(/[^(]*\((.*)\)/, "$1")}
           </Text>
           <Text color="#55645a" fontSize="sm">
+            Initial game map: {isInitialMap ? "Yes" : "No"}
+          </Text>
+          <Text color="#55645a" fontSize="sm">
+            Initial position:{" "}
+            {parseOptionalMapCoordinate(initialPositionX) !== null &&
+            parseOptionalMapCoordinate(initialPositionY) !== null
+              ? `${parseOptionalMapCoordinate(initialPositionX)}, ${parseOptionalMapCoordinate(initialPositionY)}`
+              : "Center"}
+          </Text>
+          <Text color="#55645a" fontSize="sm">
             Region: {regionName || "No regions available"}
           </Text>
           <Text color="#55645a" fontSize="sm">
@@ -1690,6 +1892,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           {!isValidDimensions ? (
             <Text mt={2} color="#914335" fontSize="sm">
               Enter a valid custom width and height to continue.
+            </Text>
+          ) : null}
+          {!hasValidOptionalCoordinatePair(initialPositionX, initialPositionY) ? (
+            <Text mt={2} color="#914335" fontSize="sm">
+              Enter both initial position coordinates or leave both empty to use the map center.
             </Text>
           ) : null}
         </Box>
@@ -2225,7 +2432,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                       type="file"
                       accept=".png,.gif,image/png,image/gif"
                       onChange={(event) =>
-                        handleMapObjectImageChange(event, setNewMapObjectImage)
+                        handleMapObjectImageChange(
+                          event,
+                          setNewMapObjectImage,
+                          setNewMapObjectWidth,
+                          setNewMapObjectHeight
+                        )
                       }
                       p={1.5}
                     />
@@ -2351,6 +2563,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   onRegionXChange: setNewMapRegionX,
                   regionY: newMapRegionY,
                   onRegionYChange: setNewMapRegionY,
+                  initialPositionX: newMapInitialPositionX,
+                  onInitialPositionXChange: setNewMapInitialPositionX,
+                  initialPositionY: newMapInitialPositionY,
+                  onInitialPositionYChange: setNewMapInitialPositionY,
                   mapType: newMapType,
                   onMapTypeChange: setNewMapType,
                   backgroundColor: newMapBackgroundColor,
@@ -2359,6 +2575,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   onBackgroundImageChange: setNewMapBackgroundImage,
                   backgroundImageMode: newMapBackgroundImageMode,
                   onBackgroundImageModeChange: setNewMapBackgroundImageMode,
+                  isInitialMap: newMapIsInitial,
+                  onInitialMapChange: setNewMapIsInitial,
                   isValidDimensions: hasValidNewMapDimensions,
                 })
               ) : null}
@@ -2436,7 +2654,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                       type="file"
                       accept=".png,.gif,image/png,image/gif"
                       onChange={(event) =>
-                        handleMapObjectImageChange(event, setEditMapObjectImage)
+                        handleMapObjectImageChange(
+                          event,
+                          setEditMapObjectImage,
+                          setEditMapObjectWidth,
+                          setEditMapObjectHeight
+                        )
                       }
                       p={1.5}
                     />
@@ -2568,6 +2791,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   onRegionXChange: setEditMapRegionX,
                   regionY: editMapRegionY,
                   onRegionYChange: setEditMapRegionY,
+                  initialPositionX: editMapInitialPositionX,
+                  onInitialPositionXChange: setEditMapInitialPositionX,
+                  initialPositionY: editMapInitialPositionY,
+                  onInitialPositionYChange: setEditMapInitialPositionY,
                   mapType: editMapType,
                   onMapTypeChange: setEditMapType,
                   backgroundColor: editMapBackgroundColor,
@@ -2576,6 +2803,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   onBackgroundImageChange: setEditMapBackgroundImage,
                   backgroundImageMode: editMapBackgroundImageMode,
                   onBackgroundImageModeChange: setEditMapBackgroundImageMode,
+                  isInitialMap: editMapIsInitial,
+                  onInitialMapChange: setEditMapIsInitial,
                   isValidDimensions: hasValidEditMapDimensions,
                 })
               ) : null}

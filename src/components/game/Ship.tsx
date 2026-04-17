@@ -5,6 +5,9 @@ type Position = {
   x: number
   y: number
   angle: number
+  currentMapId: string
+  teleported?: boolean
+  stopped?: boolean
 }
 
 type Direction = "up" | "down" | "left" | "right";
@@ -12,7 +15,8 @@ type Direction = "up" | "down" | "left" | "right";
 const DEFAULT_POSITION: Position = {
   x: 100,
   y: 100,
-  angle: 270
+  angle: 270,
+  currentMapId: "default-world"
 }
 
 /*
@@ -47,7 +51,7 @@ const getDirectionFromAngle = (angle: number): Direction => {
 }
 
 const sameCoordinates = (first: Position, second: Position) =>
-  first.x === second.x && first.y === second.y;
+  first.x === second.x && first.y === second.y && first.currentMapId === second.currentMapId;
 
 const samePosition = (first: Position, second: Position) =>
   sameCoordinates(first, second) && first.angle === second.angle;
@@ -59,14 +63,15 @@ const buildSpritePath = (direction: Direction, isWalking: boolean) =>
 
 const Ship = (props: any) => {
   const [death, setDeath] = useState(false);
-  const { socket, movePlayer } = useContext(AppContext);
+  const { socket, movePlayer, myplayer } = useContext(AppContext);
   const playerInfo = props.playerInfo ?? {};
   const playerId = playerInfo.playerId;
   const playerIndex = playerInfo.id;
   const initialPosition = {
     x: playerInfo.x ?? DEFAULT_POSITION.x,
     y: playerInfo.y ?? DEFAULT_POSITION.y,
-    angle: playerInfo.angle ?? DEFAULT_POSITION.angle
+    angle: playerInfo.angle ?? DEFAULT_POSITION.angle,
+    currentMapId: playerInfo.currentMapId ?? DEFAULT_POSITION.currentMapId
   };
 
   const [pos, setPos] = useState<Position>(() => initialPosition);
@@ -122,6 +127,19 @@ const Ship = (props: any) => {
 
     setDirection(nextDirection);
 
+    if (
+      nextPosition.teleported ||
+      nextPosition.stopped ||
+      startPosition.currentMapId !== nextPosition.currentMapId
+    ) {
+      currentTargetRef.current = null;
+      moveQueueRef.current = [];
+      posRef.current = nextPosition;
+      setPos(nextPosition);
+      setIsWalking(false);
+      return;
+    }
+
     if (samePosition(startPosition, nextPosition)) {
       currentTargetRef.current = null;
       posRef.current = nextPosition;
@@ -155,7 +173,8 @@ const Ship = (props: any) => {
       const animatedPosition = {
         x: Math.round(startPosition.x + (nextPosition.x - startPosition.x) * easedProgress),
         y: Math.round(startPosition.y + (nextPosition.y - startPosition.y) * easedProgress),
-        angle: nextPosition.angle
+        angle: nextPosition.angle,
+        currentMapId: nextPosition.currentMapId
       };
 
       posRef.current = animatedPosition;
@@ -187,6 +206,8 @@ const Ship = (props: any) => {
       return undefined;
     }
 
+    const isLocalPlayer = myplayer === playerId;
+
     const handlePlayerMove = (data: any) => {
       if (deathRef.current) {
         return;
@@ -195,8 +216,57 @@ const Ship = (props: any) => {
       const nextPosition = {
         x: data.x ?? posRef.current.x,
         y: data.y ?? posRef.current.y,
-        angle: data.angle ?? posRef.current.angle
+        angle: data.angle ?? posRef.current.angle,
+        currentMapId: data.currentMapId ?? posRef.current.currentMapId,
+        teleported: data.teleported === true,
+        stopped: data.stopped === true
       };
+
+      if (
+        nextPosition.teleported ||
+        nextPosition.stopped ||
+        nextPosition.currentMapId !== posRef.current.currentMapId
+      ) {
+        stopMovement();
+        posRef.current = nextPosition;
+        setDirection(getDirectionFromAngle(nextPosition.angle));
+        setPos(nextPosition);
+
+        if (typeof playerIndex !== "undefined") {
+          movePlayerRef.current({
+            id: playerIndex,
+            angle: nextPosition.angle,
+            x: nextPosition.x,
+            y: nextPosition.y,
+            currentMapId: nextPosition.currentMapId
+          });
+        }
+
+        return;
+      }
+
+      if (isLocalPlayer) {
+        const wasMoving = !sameCoordinates(posRef.current, nextPosition);
+
+        stopMovement();
+        posRef.current = nextPosition;
+        setDirection(getDirectionFromAngle(nextPosition.angle));
+        setPos(nextPosition);
+        setIsWalking(wasMoving);
+
+        if (typeof playerIndex !== "undefined") {
+          movePlayerRef.current({
+            id: playerIndex,
+            angle: nextPosition.angle,
+            x: nextPosition.x,
+            y: nextPosition.y,
+            currentMapId: nextPosition.currentMapId
+          });
+        }
+
+        return;
+      }
+
       const lastKnownTarget =
         moveQueueRef.current[moveQueueRef.current.length - 1] ??
         currentTargetRef.current ??
@@ -212,7 +282,8 @@ const Ship = (props: any) => {
           id: playerIndex,
           angle: nextPosition.angle,
           x: nextPosition.x,
-          y: nextPosition.y
+          y: nextPosition.y,
+          currentMapId: nextPosition.currentMapId
         });
       }
     };
@@ -236,10 +307,10 @@ const Ship = (props: any) => {
       socket.off(`playerReborn${playerId}`, handlePlayerReborn);
       stopMovement();
     };
-  }, [playerId, playerIndex, processMoveQueue, socket, stopMovement]);
+  }, [myplayer, playerId, playerIndex, processMoveQueue, socket, stopMovement]);
 
   useEffect(() => {
-    if (socket.id !== playerId) {
+    if (myplayer !== playerId) {
       return;
     }
 
@@ -247,7 +318,7 @@ const Ship = (props: any) => {
     const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
 
     window.scroll(pos.x - viewportWidth / 2, pos.y - viewportHeight / 2);
-  }, [playerId, pos, socket.id]);
+  }, [myplayer, playerId, pos]);
 
   const spritePath = buildSpritePath(direction, isWalking);
   const spriteLabel = `${isWalking ? "walking" : "standing"} ${direction}`;

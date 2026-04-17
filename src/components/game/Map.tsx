@@ -2,31 +2,66 @@ import { useContext, useRef } from "react";
 import { AppContext } from "../../context/appContext";
 import { useEventListener } from "usehooks-ts";
 import Cursor from "./Cursor";
+import GameObject from "./Object";
+import {
+    getInitialPlayableMap,
+    getPlayableMapById,
+    getPlayableMapBackgroundStyle,
+} from "./playableMapRuntime";
 //import { point_direction } from "./gameMath";
 
 const Map = ({children}:{children:any}) => {
-    const {setMouse} = useContext(AppContext);
+    const { setMouse, players, myplayer } = useContext(AppContext);
 
-    const mapRef = useRef(null);
+    const mapRef = useRef<HTMLDivElement | null>(null);
+    const currentPlayer: any =
+        Object.values(players ?? {}).find((player: any) => player?.playerId === myplayer) ?? null;
+    const activeMap = getPlayableMapById(currentPlayer?.currentMapId) ?? getInitialPlayableMap();
+    const activeMapConfig = activeMap?.config ?? null;
+    const activeMapEditorData = activeMap?.editorData ?? null;
+    const mapPixelWidth = activeMapConfig ? activeMapConfig.width * activeMapConfig.cellSize : 3200;
+    const mapPixelHeight = activeMapConfig ? activeMapConfig.height * activeMapConfig.cellSize : 3200;
+    const backgroundStyle = activeMapConfig
+        ? getPlayableMapBackgroundStyle(activeMapConfig)
+        : { background: "repeat center/1% url('/map0/Tile_Grass.png')" };
+
     // MOVE THE MOUSE OVER THE GAME
     const mapPointerMoveEvent = (event: MouseEvent) => {
-        let target = event.target as HTMLElement;
-        if (target == null) return; 
-        let rect = target.getBoundingClientRect();
+        const mapElement = mapRef.current;
+        const target = event.target as Node | null;
+        if (mapElement == null || target == null || !mapElement.contains(target)) return;
+        const rect = mapElement.getBoundingClientRect();
         let x = Math.round(event.clientX - rect.left); //x position within the element.
         let y = Math.round(event.clientY - rect.top);  //y position within the element.
-                //console.log("Left? : " + x + " ; Top? : " + y + ".");
-
-                //const myId = playersIds[socket.id];
-                //console.log("Angle: "+point_direction(players[myId].x,players[myId].y,x, y))
-                setMouse({x:x,y:y})
-                //setPointerAngle(point_direction(players[myId].x,players[myId].y,x, y))
+        setMouse({x:x,y:y})
     }
 
     useEventListener('pointermove',mapPointerMoveEvent, mapRef) 
     
     return(<>
-        <div id="map" ref ={mapRef} style={{height:'3200px', width:'3200px', background:"repeat center/1% url('/map0/Tile_Grass.png')"}}>
+        <div
+            id="map"
+            ref ={mapRef}
+            style={{
+                position: "relative",
+                height:`${mapPixelHeight}px`,
+                width:`${mapPixelWidth}px`,
+                ...backgroundStyle,
+            }}
+        >
+            {activeMapConfig && activeMapEditorData
+                ? activeMapEditorData.objects.map((object) => (
+                    <GameObject
+                        key={object.id}
+                        x={object.x * activeMapConfig.cellSize}
+                        y={object.y * activeMapConfig.cellSize}
+                        imageSrc={object.imageSrc}
+                        width={object.width}
+                        height={object.height}
+                        alt={object.name}
+                    />
+                ))
+                : null}
             {(children) ? children : null}
         </div>
         <Cursor

@@ -1,83 +1,108 @@
-
-import { useContext, useEffect, useCallback, useRef } from "react";
+import { useContext, useEffect, useRef } from "react";
 import { AppContext } from "../../context/appContext"
+import { getInitialGameSpawn, getPlayableMapDefinitions } from "./playableMapRuntime";
 
+const AUTH_TOKEN_STORAGE_KEY = "client-poke.io.auth.token";
+
+function getStoredAuthToken() {
+    if (typeof window === "undefined") {
+        return null;
+    }
+
+    return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+}
 
 const Network = () => {
-
-    const loadOnce = useRef(false)
-
-    const { socket, addPlayer, removePlayer, addProjectil, removeProjectil, addObject } = useContext(AppContext);
-    
-    const socketAddPlayer = useCallback((data:any) => {
-        console.log("addPlayer",data)
-        addPlayer(data)
-    }, [])
-
-    const socketRemovePlayer = useCallback((data:any) => {
-        console.log("removePlayer",data)
-        removePlayer(data)
-    },[])
-
-    const socketShotProjectil = useCallback((data:any) => {
-        console.log("shotProjectil",data)
-        addProjectil(data)
-    },[])
-
-    const socketExplodeProjectil = useCallback((data:any) => {
-        console.log("explodeProjectil",data)
-        removeProjectil(data)
-    },[])
-
-    const socketAddObject = useCallback((data:any) => {
-        console.log("addObject", data)
-        addObject(data)
-    },[])
-
-    
-
+    const { socket, addPlayer, removePlayer, addProjectil, removeProjectil, addObject, setMyPlayer } = useContext(AppContext);
+    const addPlayerRef = useRef(addPlayer);
+    const removePlayerRef = useRef(removePlayer);
+    const addProjectilRef = useRef(addProjectil);
+    const removeProjectilRef = useRef(removeProjectil);
+    const addObjectRef = useRef(addObject);
+    const setMyPlayerRef = useRef(setMyPlayer);
 
     useEffect(() => {
-        console.log("Network mounted!", loadOnce.current)
-        
+        addPlayerRef.current = addPlayer;
+        removePlayerRef.current = removePlayer;
+        addProjectilRef.current = addProjectil;
+        removeProjectilRef.current = removeProjectil;
+        addObjectRef.current = addObject;
+        setMyPlayerRef.current = setMyPlayer;
+    }, [addPlayer, removePlayer, addProjectil, removeProjectil, addObject, setMyPlayer]);
 
-        if (loadOnce.current == false) {
-            
-            socket.emit("addPlayer")
-            loadOnce.current = true;
-            console.log("Load Once is executed", loadOnce.current)
-        socket.on("addPlayer", socketAddPlayer)
+    useEffect(() => {
+        const joinGame = () => {
+            const initialSpawn = getInitialGameSpawn();
+            const mapDefinitions = getPlayableMapDefinitions();
+            const token = getStoredAuthToken();
 
-        socket.on("removePlayer", socketRemovePlayer)
+            socket.emit(
+                "addPlayer",
+                initialSpawn || token || mapDefinitions.length > 0
+                    ? {
+                        initialMapId: initialSpawn?.initialMapId,
+                        initialX: initialSpawn?.initialX,
+                        initialY: initialSpawn?.initialY,
+                        mapDefinitions,
+                        token: token ?? undefined
+                    }
+                    : undefined
+            );
+        };
 
-        socket.on("shotProjectil", socketShotProjectil)
+        const handleAddPlayer = (data:any) => {
+            console.log("addPlayer",data)
+            addPlayerRef.current(data)
+        };
 
-        // socket.on("moveProjectil", (data:any) => {
-        //     //console.log("moveProjectil", data)
-        //     moveProjectil(data)
-        // })
+        const handleRemovePlayer = (data:any) => {
+            console.log("removePlayer",data)
+            removePlayerRef.current(data)
+        };
 
-        socket.on("explodeProjectil", socketExplodeProjectil)
+        const handleShotProjectil = (data:any) => {
+            console.log("shotProjectil",data)
+            addProjectilRef.current(data)
+        };
 
-        socket.on("addObject", socketAddObject)
+        const handleExplodeProjectil = (data:any) => {
+            console.log("explodeProjectil",data)
+            removeProjectilRef.current(data)
+        };
 
-        //  socket.on("playerDeath", (data:any) => {
-        //      //console.log(`player:${data.playerId} has die!`)
-        //      if (data.playerId == socket.id) startWait()
+        const handleAddObject = (data:any) => {
+            console.log("addObject", data)
+            addObjectRef.current(data)
+        };
 
-        //  })
+        const handleMyPlayer = (data:any) => {
+            if (typeof data?.playerId === "string" && data.playerId.length > 0) {
+                setMyPlayerRef.current(data.playerId)
+            }
+        };
 
-        //  socket.on("playerReborn", (data:any) => {
-        //      //console.log("playerReborn")
-        //      if (data.playerId == socket.id) stopWait()
-        //  })
-        
-          
-    }
-        
+        if (socket.connected) {
+            joinGame();
+        }
 
-        
-    }, [])
+        socket.on("connect", joinGame)
+        socket.on("addPlayer", handleAddPlayer)
+        socket.on("myPlayer", handleMyPlayer)
+        socket.on("removePlayer", handleRemovePlayer)
+        socket.on("shotProjectil", handleShotProjectil)
+        socket.on("explodeProjectil", handleExplodeProjectil)
+        socket.on("addObject", handleAddObject)
+
+        return () => {
+            socket.off("connect", joinGame)
+            socket.off("addPlayer", handleAddPlayer)
+            socket.off("myPlayer", handleMyPlayer)
+            socket.off("removePlayer", handleRemovePlayer)
+            socket.off("shotProjectil", handleShotProjectil)
+            socket.off("explodeProjectil", handleExplodeProjectil)
+            socket.off("addObject", handleAddObject)
+        }
+    }, [socket])
 
 
     return (<></>)

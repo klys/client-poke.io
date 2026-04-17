@@ -3,14 +3,16 @@ import { AppContext } from "../../context/appContext"
 //import { point_direction } from "./gameMath";
 import { useEventListener } from 'usehooks-ts'
 
+const MOVEMENT_KEYS = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
 
+const isMovementKey = (key:string) => MOVEMENT_KEYS.includes(key);
 
 const UserControl = () => {
     //const [mouse, setMouse] = useState({x:-1,y:-1})
     
     //npconst map = useRef<>
 
-    const { socket,players,playersIds, mouse, pointerAngle, waiting } = useContext(AppContext);
+    const { socket,players,playersIds, mouse, pointerAngle, waiting, myplayer } = useContext(AppContext);
 
     // const mapRef = document.getElementById('map');
     // // MOVE THE MOUSE OVER THE GAME
@@ -31,9 +33,10 @@ const UserControl = () => {
     // CLICK OVER THE GAME
     const clickOverMap = (event:MouseEvent) => {
         if (waiting) return;
-        let target = event.target as HTMLElement;
-        if (target == null) return; 
-        let rect = target.getBoundingClientRect();
+        const map = document.getElementById("map");
+        const target = event.target as Node | null;
+        if (map == null || target == null || !map.contains(target)) return;
+        let rect = map.getBoundingClientRect();
         let x = Math.round(event.clientX - rect.left); //x position within the element.
         let y = Math.round(event.clientY - rect.top);  //y position within the element.
         //console.log("CLICK!! Left? : " + x + " ; Top? : " + y + ".");
@@ -43,13 +46,15 @@ const UserControl = () => {
     useEventListener('click', clickOverMap)
 
     const keyUpEvent = (event:KeyboardEvent) => {
-        event.preventDefault()
         if (waiting) return;
+        if (event.key == "q" || isMovementKey(event.key)) {
+            event.preventDefault()
+        }
         console.log("players", players)
         // const keys = Object.keys(players)
         /* let myId = undefined
         for(let i = 0; i < keys.length; i++) {
-            if (players[keys[i]].playerId === socket.id) {
+            if (players[keys[i]].playerId === myplayer) {
                 myId = keys[i]
                 break;
             }
@@ -68,6 +73,10 @@ const UserControl = () => {
             }
 
             socket.emit("shotProjectil", shotProjectileData)
+        }
+
+        if (isMovementKey(event.key)) {
+            socket.emit("stopMove")
         }
         
         /* if (typeof myId == 'undefined') return;
@@ -89,13 +98,14 @@ const UserControl = () => {
 
 
     const keyDownEvent = (event:KeyboardEvent) => {
-        event.preventDefault()
         if (waiting) return;
+        if (!isMovementKey(event.key)) return;
+        event.preventDefault()
         console.log("players", players)
         const keys = Object.keys(players)
         let myId = undefined
         for(let i = 0; i < keys.length; i++) {
-            if (players[keys[i]].playerId === socket.id) {
+            if (players[keys[i]].playerId === myplayer) {
                 myId = keys[i]
                 break;
             }
@@ -120,6 +130,11 @@ const UserControl = () => {
     useEventListener('keyup', keyUpEvent)
 
     useEventListener('keydown', keyDownEvent)
+
+    useEventListener('blur', () => {
+        if (waiting) return;
+        socket.emit("stopMove")
+    })
 
 
     // useEventListener('scroll',(event:Event) => {
@@ -234,4 +249,3 @@ const UserControl = () => {
 }
 
 export default UserControl;
-
