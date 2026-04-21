@@ -22,6 +22,12 @@ import {
   useToast,
 } from "@chakra-ui/react";
 import { Link as RouterLink, useParams } from "react-router-dom";
+import { useAuth } from "../../context/authContext";
+import {
+  buildPlayableMapsSnapshot,
+  persistPlayableMapsSyncPayload,
+  sanitizePlayableMapsSyncPayload,
+} from "../game/playableMapRuntime";
 import PlayableMapEditorCanvas, {
   type MapEditorMapSummary,
   type MapEditorObjectCatalogItem,
@@ -526,6 +532,7 @@ function saveMapsState(nextState: DesignerSectionState) {
 export default function MapEditorPage() {
   const { mapId = "" } = useParams();
   const toast = useToast();
+  const { authReady, authenticated, socket } = useAuth();
   const regionNames = useMemo(() => loadRegionNames(), []);
   const objectCatalog = useMemo(() => loadObjectCatalog(), []);
   const pokemonCatalog = useMemo(() => loadPokemonCatalog(), []);
@@ -646,6 +653,80 @@ export default function MapEditorPage() {
     resolvedDimensions.height !== null &&
     hasValidOptionalCoordinatePair(initialPositionX, initialPositionY);
 
+  useEffect(() => {
+    if (!authReady || !authenticated || !socket) {
+      return;
+    }
+
+    const joinMapsRoom = () => {
+      socket.emit("designer:maps:join", {
+        seedState: buildPlayableMapsSnapshot(loadMapsState()),
+      });
+    };
+
+    const handleMapsState = (payload: unknown) => {
+      const syncPayload = sanitizePlayableMapsSyncPayload(payload);
+
+      if (!syncPayload) {
+        return;
+      }
+
+      persistPlayableMapsSyncPayload(syncPayload);
+
+      const nextMapsState = {
+        categories: syncPayload.state.categories,
+        items: syncPayload.state.items,
+      };
+
+      setMapsState(nextMapsState);
+      saveMapsState(nextMapsState);
+
+      const nextEditorData = syncPayload.state.editorDataByMapId[mapId];
+
+      if (nextEditorData && !isEditorDirty) {
+        setEditorData(nextEditorData);
+        setSavedEditorData(nextEditorData);
+      }
+    };
+
+    const handleMapsError = ({ message }: { message: string }) => {
+      toast({
+        title: message,
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+        position: "top",
+      });
+    };
+
+    socket.on("playableMaps:state", handleMapsState);
+    socket.on("playableMaps:error", handleMapsError);
+    socket.on("connect", joinMapsRoom);
+
+    if (!socket.connected) {
+      socket.connect();
+    } else {
+      joinMapsRoom();
+    }
+
+    return () => {
+      socket.emit("designer:maps:leave");
+      socket.off("playableMaps:state", handleMapsState);
+      socket.off("playableMaps:error", handleMapsError);
+      socket.off("connect", joinMapsRoom);
+    };
+  }, [authReady, authenticated, isEditorDirty, mapId, socket, toast]);
+
+  const publishMapsState = (nextMapsState: DesignerSectionState) => {
+    if (!socket || !authenticated) {
+      return;
+    }
+
+    socket.emit("designer:maps:update", {
+      state: buildPlayableMapsSnapshot(nextMapsState),
+    });
+  };
+
   const handleToolbarSave = () => {
     if (!mapId) {
       return;
@@ -653,6 +734,7 @@ export default function MapEditorPage() {
 
     saveMapEditorData(mapId, editorData);
     setSavedEditorData(editorData);
+    publishMapsState(mapsState);
     toast({
       title: "Map editor changes saved.",
       description: `${editorData.objects.length} objects and ${editorData.portals.length} portals stored for this map.`,
@@ -714,6 +796,7 @@ export default function MapEditorPage() {
 
     setMapsState(nextState);
     saveMapsState(nextState);
+    publishMapsState(nextState);
     setIsPropertiesOpen(false);
     toast({
       title: "Map properties saved.",

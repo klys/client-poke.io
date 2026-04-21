@@ -27,6 +27,11 @@ import {
 import { Link as RouterLink } from "react-router-dom";
 import { useAuth } from "../../context/authContext";
 import {
+  buildPlayableMapsSnapshot,
+  persistPlayableMapsSyncPayload,
+  sanitizePlayableMapsSyncPayload,
+} from "../game/playableMapRuntime";
+import {
   DesignerIcon,
   type DesignerPlayableMapBackgroundImageMode,
   type DesignerMapSizePreset,
@@ -576,6 +581,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const section = designerSectionsByKey[sectionKey];
   const isObjectsSection = sectionKey === "objects";
   const isMapsSection = sectionKey === "mapsEditor";
+  const isRealtimeSection = isObjectsSection || isMapsSection;
   const toast = useToast();
   const { authReady, authenticated, socket } = useAuth();
   const regionNames = useMemo(() => loadRegionNames(), []);
@@ -583,7 +589,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     loadStoredState(sectionKey)
   );
   const [isObjectsStateHydrated, setIsObjectsStateHydrated] = useState(
-    !isObjectsSection
+    !isRealtimeSection
   );
   const [objectsSyncMeta, setObjectsSyncMeta] = useState<{
     updatedAt: string | null;
@@ -677,13 +683,13 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
 
   const updateSectionState = useCallback(
     (updater: React.SetStateAction<DesignerSectionState>) => {
-      if (isObjectsSection) {
+      if (isRealtimeSection) {
         shouldBroadcastRef.current = true;
       }
 
       setSectionState(updater);
     },
-    [isObjectsSection]
+    [isRealtimeSection]
   );
 
   useEffect(() => {
@@ -704,13 +710,13 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setEditingCategory(null);
     setDeletingCategory(null);
     setDeletingItemId(null);
-    setIsObjectsStateHydrated(!isObjectsSection);
+    setIsObjectsStateHydrated(!isRealtimeSection);
     setObjectsSyncMeta({
       updatedAt: null,
       updatedByUsername: null,
     });
     shouldBroadcastRef.current = false;
-  }, [isObjectsSection, sectionKey]);
+  }, [isRealtimeSection, sectionKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -724,7 +730,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   }, [sectionKey, sectionState]);
 
   useEffect(() => {
-    if (!isObjectsSection || !shouldBroadcastRef.current) {
+    if (!isRealtimeSection || !shouldBroadcastRef.current) {
       return;
     }
 
@@ -734,10 +740,17 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       return;
     }
 
-    socket.emit("designer:objects:update", {
-      state: sectionState,
+    if (isObjectsSection) {
+      socket.emit("designer:objects:update", {
+        state: sectionState,
+      });
+      return;
+    }
+
+    socket.emit("designer:maps:update", {
+      state: buildPlayableMapsSnapshot(sectionState),
     });
-  }, [authenticated, isObjectsSection, sectionState, socket]);
+  }, [authenticated, isObjectsSection, isRealtimeSection, sectionState, socket]);
 
   useEffect(() => {
     if (!isObjectsSection) {
@@ -798,6 +811,75 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   }, [authReady, authenticated, isObjectsSection, sectionKey, socket, toast]);
 
   useEffect(() => {
+    if (!isMapsSection) {
+      return;
+    }
+
+    if (!authReady || !authenticated || !socket) {
+      return;
+    }
+
+    const joinMapsRoom = () => {
+      setIsObjectsStateHydrated(false);
+      socket.emit("designer:maps:join", {
+        seedState: buildPlayableMapsSnapshot(latestSectionStateRef.current),
+      });
+    };
+
+    const handleMapsState = (payload: unknown) => {
+      const syncPayload = sanitizePlayableMapsSyncPayload(payload);
+
+      if (!syncPayload) {
+        return;
+      }
+
+      shouldBroadcastRef.current = false;
+      persistPlayableMapsSyncPayload(syncPayload);
+
+      const nextState = sanitizeSectionState(sectionKey, {
+        categories: syncPayload.state.categories,
+        items: syncPayload.state.items,
+      });
+
+      latestSectionStateRef.current = nextState;
+      setSectionState(nextState);
+      setObjectsSyncMeta({
+        updatedAt: syncPayload.updatedAt,
+        updatedByUsername: syncPayload.updatedByUsername,
+      });
+      setIsObjectsStateHydrated(true);
+    };
+
+    const handleMapsError = ({ message }: { message: string }) => {
+      setIsObjectsStateHydrated(false);
+      toast({
+        title: message,
+        status: "error",
+        duration: 4000,
+        isClosable: true,
+        position: "top",
+      });
+    };
+
+    socket.on("playableMaps:state", handleMapsState);
+    socket.on("playableMaps:error", handleMapsError);
+    socket.on("connect", joinMapsRoom);
+
+    if (!socket.connected) {
+      socket.connect();
+    } else {
+      joinMapsRoom();
+    }
+
+    return () => {
+      socket.emit("designer:maps:leave");
+      socket.off("playableMaps:state", handleMapsState);
+      socket.off("playableMaps:error", handleMapsError);
+      socket.off("connect", joinMapsRoom);
+    };
+  }, [authReady, authenticated, isMapsSection, sectionKey, socket, toast]);
+
+  useEffect(() => {
     if (!sectionState.categories.includes(newItemCategory)) {
       setNewItemCategory(sectionState.categories[0] || UNCATEGORIZED);
     }
@@ -845,7 +927,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const selectedCount = selectedIds.length;
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const isObjectsSyncReady =
-    !isObjectsSection ||
+    !isRealtimeSection ||
     (authReady && authenticated && Boolean(socket?.connected) && isObjectsStateHydrated);
   const lastSyncedLabel = useMemo(() => {
     if (!objectsSyncMeta.updatedAt) {
@@ -2033,16 +2115,16 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             onChange={handleImportItems}
           />
           <Text mt={4} color="#55645a" fontSize="sm">
-            {isObjectsSection
+            {isRealtimeSection
               ? !authReady
-                ? "Preparing the live collaborative objects channel."
+                ? `Preparing the live ${isMapsSection ? "maps" : "objects"} channel.`
                 : !authenticated
-                  ? "Authentication is required to edit live map objects."
+                  ? `Authentication is required to edit live map ${isMapsSection ? "data" : "objects"}.`
                   : !socket?.connected
-                    ? "Reconnecting the live collaborative objects channel."
+                    ? `Reconnecting the live ${isMapsSection ? "maps" : "objects"} channel.`
                     : !isObjectsStateHydrated
-                      ? "Syncing map objects from Redis through the realtime server."
-                      : `Live sync is active for map objects. ${selectedCount} selected.${lastSyncedLabel ? ` Last saved ${lastSyncedLabel}.` : ""}${objectsSyncMeta.updatedByUsername ? ` Latest change by ${objectsSyncMeta.updatedByUsername}.` : ""}`
+                      ? `Syncing map ${isMapsSection ? "data" : "objects"} from Redis through the realtime server.`
+                      : `Live sync is active for map ${isMapsSection ? "data" : "objects"}. ${selectedCount} selected.${lastSyncedLabel ? ` Last saved ${lastSyncedLabel}.` : ""}${objectsSyncMeta.updatedByUsername ? ` Latest change by ${objectsSyncMeta.updatedByUsername}.` : ""}`
               : `Demo mode is active with seeded ${section.itemLabelPlural}. ${selectedCount} selected.`}
           </Text>
         </Box>

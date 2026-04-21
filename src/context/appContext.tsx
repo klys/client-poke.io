@@ -1,6 +1,7 @@
 import { createContext, useReducer, useState } from "react"
 import io, { Socket } from "socket.io-client"
 import Ship from "../components/game/Ship"
+import { loadPlayableMapsSnapshot } from "../components/game/playableMapRuntime"
 
 export type Player = { // unused
     playerId: string
@@ -17,6 +18,7 @@ export type InitialStateType = {
     projectiles: any[]
     mouse: {}
     map:any
+    playableMapsState:any
     pointerAngle:number
     myplayer:string
 }
@@ -29,6 +31,7 @@ const createInitialState = (socket: Socket) => ({
     projectiles:[],
     mouse:{x:-1,y:-1},
     map:undefined,
+    playableMapsState: loadPlayableMapsSnapshot(),
     pointerAngle: 0,
     life: 0,
     waiting:false,
@@ -51,6 +54,7 @@ enum actions {
     SET_MAP = 'SET_MAP',
     SET_POINTERANGLE = 'SET_POINTERANGLE',
     SET_LIFE = 'SET_LIFE',
+    SET_PLAYABLE_MAPS_STATE = 'SET_PLAYABLE_MAPS_STATE',
     START_WAIT = 'START_WAIT',
     STOP_WAIT = 'STOP_WAIT',
     SET_MYPLAYER = 'SET_MYPLAYER',
@@ -68,9 +72,12 @@ const reducer = (state:any, action:any) => {
         case actions.ADD_PLAYER:
             console.log("action.playerData:", action.playerData);
             //console.log("state.playersIds[action.playerData.playerId]: ", state.playersIds[action.playerData.playerId])
-            
-            if (typeof state.players[action.playerData.id] !== "undefined") return state;
-            state.players[action.playerData.id] = ({jsx:<Ship playerInfo={action.playerData} key={action.playerData.playerId} />, ...action.playerData})
+
+            state.players[action.playerData.id] = ({
+                ...state.players[action.playerData.id],
+                ...action.playerData,
+                jsx:<Ship playerInfo={action.playerData} key={`${action.playerData.playerId}-${action.playerData.currentMapId ?? "default"}`} />
+            })
             // if (state.playersIds[action.playerData.playerId] === undefined) {
             //     state.players.push({jsx:<Ship playerInfo={action.playerData} key={action.playerData.playerId} />, ...action.playerData})
             //     state.playersIds[action.playerData.playerId] = state.players.length - 1;
@@ -181,6 +188,11 @@ const reducer = (state:any, action:any) => {
                 ...state,
                 life:action.life
             }
+        case actions.SET_PLAYABLE_MAPS_STATE:
+            return {
+                ...state,
+                playableMapsState: action.playableMapsState
+            }
         case actions.START_WAIT:
             return{
                 ...state,
@@ -226,6 +238,7 @@ export const Provider = ({ children, socketUrl }:{children:any, socketUrl:string
         projectiles: state.projectiles ?? [],
         mouse:state.mouse,
         //map:state.map,
+        playableMapsState: state.playableMapsState,
         pointerAngle:state.pointerAngle,
         life:state.life ?? 100,
         waiting:state.waiting ?? false,
@@ -266,6 +279,9 @@ export const Provider = ({ children, socketUrl }:{children:any, socketUrl:string
         setLife: (life:number) => {
             //console.log("Dispatching setLife")
             dispatch({type: actions.SET_LIFE, life})
+        },
+        setPlayableMapsState: (playableMapsState:any) => {
+            dispatch({type: actions.SET_PLAYABLE_MAPS_STATE, playableMapsState})
         },
         startWait: () => {
             dispatch({type: actions.START_WAIT})

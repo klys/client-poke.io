@@ -54,13 +54,15 @@ function normalizeScriptBody(script: string) {
 
 const PortalRuntime = () => {
   const toast = useToast();
-  const { players, socket, myplayer } = useContext(AppContext);
+  const { players, socket, myplayer, playableMapsState } = useContext(AppContext);
   const lastTriggeredPortalRef = useRef<string | null>(null);
   const lastTriggeredAtRef = useRef(0);
 
   const currentPlayer: any =
     Object.values(players ?? {}).find((player: any) => player?.playerId === myplayer) ?? null;
-  const activeMap = getPlayableMapById(currentPlayer?.currentMapId) ?? getInitialPlayableMap();
+  const activeMap =
+    getPlayableMapById(currentPlayer?.currentMapId, playableMapsState) ??
+    getInitialPlayableMap(playableMapsState);
 
   const requestTeleport = useCallback((mapId: string, x: number, y: number) => {
     socket.emit("player:teleport", {
@@ -105,7 +107,7 @@ const PortalRuntime = () => {
         requestTeleport(activeMap.item.id, position.x, position.y);
       },
       teleportToMap: (mapId: string, cellX: number, cellY: number) => {
-        const targetMap = getPlayableMapById(mapId);
+        const targetMap = getPlayableMapById(mapId, playableMapsState);
 
         if (!targetMap) {
           throw new Error(`Target map "${mapId}" was not found.`);
@@ -115,7 +117,7 @@ const PortalRuntime = () => {
         requestTeleport(targetMap.item.id, position.x, position.y);
       },
       loadMap: (mapId: string, cellX: number, cellY: number) => {
-        const targetMap = getPlayableMapById(mapId);
+        const targetMap = getPlayableMapById(mapId, playableMapsState);
 
         if (!targetMap) {
           throw new Error(`Target map "${mapId}" was not found.`);
@@ -169,7 +171,7 @@ const PortalRuntime = () => {
         position: "top",
       });
     }
-  }, [activeMap, currentPlayer, requestTeleport, toast]);
+  }, [activeMap, currentPlayer, playableMapsState, requestTeleport, toast]);
 
   useEffect(() => {
     if (!activeMap || !currentPlayer) {
@@ -205,7 +207,11 @@ const PortalRuntime = () => {
       return;
     }
 
-    const destination = resolvePortalDestination(activeMap, overlappingPortal);
+    const destination = resolvePortalDestination(
+      activeMap,
+      overlappingPortal,
+      playableMapsState
+    );
 
     if (!destination) {
       toast({
@@ -219,7 +225,7 @@ const PortalRuntime = () => {
     }
 
     requestTeleport(destination.mapId, destination.x, destination.y);
-  }, [activeMap, currentPlayer, requestTeleport, runPortalScript, toast]);
+  }, [activeMap, currentPlayer, playableMapsState, requestTeleport, runPortalScript, toast]);
 
   return null;
 };

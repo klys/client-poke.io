@@ -1,6 +1,11 @@
 import { useContext, useEffect, useRef } from "react";
 import { AppContext } from "../../context/appContext"
-import { getInitialGameSpawn, getPlayableMapDefinitions } from "./playableMapRuntime";
+import {
+    getPlayableMapsCacheVersion,
+    persistPlayableMapsSyncPayload,
+    sanitizePlayableMapsSnapshot,
+    sanitizePlayableMapsSyncPayload,
+} from "./playableMapRuntime";
 
 const AUTH_TOKEN_STORAGE_KEY = "client-poke.io.auth.token";
 
@@ -13,13 +18,25 @@ function getStoredAuthToken() {
 }
 
 const Network = () => {
-    const { socket, addPlayer, removePlayer, addProjectil, removeProjectil, addObject, setMyPlayer } = useContext(AppContext);
+    const {
+        socket,
+        addPlayer,
+        removePlayer,
+        addProjectil,
+        removeProjectil,
+        addObject,
+        setMyPlayer,
+        playableMapsState,
+        setPlayableMapsState,
+    } = useContext(AppContext);
     const addPlayerRef = useRef(addPlayer);
     const removePlayerRef = useRef(removePlayer);
     const addProjectilRef = useRef(addProjectil);
     const removeProjectilRef = useRef(removeProjectil);
     const addObjectRef = useRef(addObject);
     const setMyPlayerRef = useRef(setMyPlayer);
+    const playableMapsStateRef = useRef(playableMapsState);
+    const setPlayableMapsStateRef = useRef(setPlayableMapsState);
 
     useEffect(() => {
         addPlayerRef.current = addPlayer;
@@ -28,26 +45,27 @@ const Network = () => {
         removeProjectilRef.current = removeProjectil;
         addObjectRef.current = addObject;
         setMyPlayerRef.current = setMyPlayer;
-    }, [addPlayer, removePlayer, addProjectil, removeProjectil, addObject, setMyPlayer]);
+        playableMapsStateRef.current = playableMapsState;
+        setPlayableMapsStateRef.current = setPlayableMapsState;
+    }, [
+        addPlayer,
+        removePlayer,
+        addProjectil,
+        removeProjectil,
+        addObject,
+        setMyPlayer,
+        playableMapsState,
+        setPlayableMapsState,
+    ]);
 
     useEffect(() => {
         const joinGame = () => {
-            const initialSpawn = getInitialGameSpawn();
-            const mapDefinitions = getPlayableMapDefinitions();
             const token = getStoredAuthToken();
 
-            socket.emit(
-                "addPlayer",
-                initialSpawn || token || mapDefinitions.length > 0
-                    ? {
-                        initialMapId: initialSpawn?.initialMapId,
-                        initialX: initialSpawn?.initialX,
-                        initialY: initialSpawn?.initialY,
-                        mapDefinitions,
-                        token: token ?? undefined
-                    }
-                    : undefined
-            );
+            socket.emit("playableMaps:sync", {
+                version: getPlayableMapsCacheVersion()
+            });
+            socket.emit("addPlayer", token ? { token } : undefined);
         };
 
         const handleAddPlayer = (data:any) => {
@@ -81,6 +99,32 @@ const Network = () => {
             }
         };
 
+        const handlePlayableMapsState = (data:any) => {
+            const payload = sanitizePlayableMapsSyncPayload(data);
+
+            if (payload) {
+                persistPlayableMapsSyncPayload(payload);
+                setPlayableMapsStateRef.current(payload.state);
+                return;
+            }
+
+            setPlayableMapsStateRef.current(sanitizePlayableMapsSnapshot(data))
+        };
+
+        const handlePlayableMapsVersion = (data:any) => {
+            if (data?.hasState !== true || typeof data.version !== "number") {
+                return;
+            }
+
+            if (data.version === getPlayableMapsCacheVersion()) {
+                return;
+            }
+
+            socket.emit("playableMaps:sync", {
+                version: getPlayableMapsCacheVersion()
+            });
+        };
+
         if (socket.connected) {
             joinGame();
         }
@@ -92,6 +136,8 @@ const Network = () => {
         socket.on("shotProjectil", handleShotProjectil)
         socket.on("explodeProjectil", handleExplodeProjectil)
         socket.on("addObject", handleAddObject)
+        socket.on("playableMaps:state", handlePlayableMapsState)
+        socket.on("playableMaps:version", handlePlayableMapsVersion)
 
         return () => {
             socket.off("connect", joinGame)
@@ -101,6 +147,8 @@ const Network = () => {
             socket.off("shotProjectil", handleShotProjectil)
             socket.off("explodeProjectil", handleExplodeProjectil)
             socket.off("addObject", handleAddObject)
+            socket.off("playableMaps:state", handlePlayableMapsState)
+            socket.off("playableMaps:version", handlePlayableMapsVersion)
         }
     }, [socket])
 

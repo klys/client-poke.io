@@ -11,12 +11,14 @@ import {
 //import { point_direction } from "./gameMath";
 
 const Map = ({children}:{children:any}) => {
-    const { setMouse, players, myplayer } = useContext(AppContext);
+    const { setMouse, players, myplayer, playableMapsState } = useContext(AppContext);
 
     const mapRef = useRef<HTMLDivElement | null>(null);
     const currentPlayer: any =
         Object.values(players ?? {}).find((player: any) => player?.playerId === myplayer) ?? null;
-    const activeMap = getPlayableMapById(currentPlayer?.currentMapId) ?? getInitialPlayableMap();
+    const activeMap =
+        getPlayableMapById(currentPlayer?.currentMapId, playableMapsState) ??
+        getInitialPlayableMap(playableMapsState);
     const activeMapConfig = activeMap?.config ?? null;
     const activeMapEditorData = activeMap?.editorData ?? null;
     const mapPixelWidth = activeMapConfig ? activeMapConfig.width * activeMapConfig.cellSize : 3200;
