@@ -22,15 +22,16 @@ const DEFAULT_POSITION: Position = {
 /*
  * Movement timing guide:
  * - MOVEMENT_DURATION_PER_PIXEL is the main "feel" control. Higher values make each step glide longer.
- * - MIN_MOVEMENT_DURATION prevents very short moves from looking like teleports.
+ * - MIN_MOVEMENT_DURATION keeps tiny corrections from animating faster than a frame.
  * - MAX_MOVEMENT_DURATION caps long moves so the client does not feel sluggish when several updates queue up.
  *
  * Current examples:
- * - A 16px step uses about 112ms (16 * 7), which fits between the min and max values.
+ * - A 4px server tick uses about 28ms (4 * 7).
+ * - A 16px keyboard step uses about 112ms total across four server ticks.
  * - Raising MIN_MOVEMENT_DURATION makes tiny corrections more visible.
  * - Lowering MAX_MOVEMENT_DURATION makes catch-up movement more responsive when network updates stack.
  */
-const MIN_MOVEMENT_DURATION = 90;
+const MIN_MOVEMENT_DURATION = 16;
 const MAX_MOVEMENT_DURATION = 180;
 const MOVEMENT_DURATION_PER_PIXEL = 7;
 
@@ -206,8 +207,6 @@ const Ship = (props: any) => {
       return undefined;
     }
 
-    const isLocalPlayer = myplayer === playerId;
-
     const handlePlayerMove = (data: any) => {
       if (deathRef.current) {
         return;
@@ -245,35 +244,17 @@ const Ship = (props: any) => {
         return;
       }
 
-      if (isLocalPlayer) {
-        const wasMoving = !sameCoordinates(posRef.current, nextPosition);
-
-        stopMovement();
-        posRef.current = nextPosition;
-        setDirection(getDirectionFromAngle(nextPosition.angle));
-        setPos(nextPosition);
-        setIsWalking(wasMoving);
-
-        if (typeof playerIndex !== "undefined") {
-          movePlayerRef.current({
-            id: playerIndex,
-            angle: nextPosition.angle,
-            x: nextPosition.x,
-            y: nextPosition.y,
-            currentMapId: nextPosition.currentMapId
-          });
-        }
-
-        return;
-      }
-
       const lastKnownTarget =
         moveQueueRef.current[moveQueueRef.current.length - 1] ??
         currentTargetRef.current ??
         posRef.current;
 
       if (!samePosition(lastKnownTarget, nextPosition)) {
-        moveQueueRef.current.push(nextPosition);
+        if (animationFrameRef.current !== null) {
+          moveQueueRef.current = [nextPosition];
+        } else {
+          moveQueueRef.current.push(nextPosition);
+        }
         processMoveQueue();
       }
 
@@ -307,7 +288,7 @@ const Ship = (props: any) => {
       socket.off(`playerReborn${playerId}`, handlePlayerReborn);
       stopMovement();
     };
-  }, [myplayer, playerId, playerIndex, processMoveQueue, socket, stopMovement]);
+  }, [playerId, playerIndex, processMoveQueue, socket, stopMovement]);
 
   useEffect(() => {
     if (myplayer !== playerId) {
