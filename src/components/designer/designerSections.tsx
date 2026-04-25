@@ -119,12 +119,40 @@ export interface DesignerSkillGfxProfile {
   appear: number;
 }
 
+export type DesignerItemType =
+  | "usable"
+  | "pokeball"
+  | "skill item"
+  | "berries"
+  | "quest item";
+
+export interface DesignerItemStatModifiers {
+  hp: number;
+  attack: number;
+  defense: number;
+  specialAttack: number;
+  specialDefense: number;
+  speed: number;
+}
+
+export interface DesignerGameItemProfile {
+  iconSrc: string;
+  description: string;
+  type: DesignerItemType;
+  statModifiers: DesignerItemStatModifiers;
+  skillId: string;
+  skillName: string;
+  pokeballBonusElements: string[];
+  pokeballBonusRatio: number;
+}
+
 export interface DesignerItemCreateOptions {
   mapObjectAsset?: DesignerMapObjectAsset;
   playableMapConfig?: DesignerPlayableMapConfig;
   pokemonProfile?: DesignerPokemonProfile;
   pokemonSkillProfile?: DesignerPokemonSkillProfile;
   skillGfxProfile?: DesignerSkillGfxProfile;
+  itemProfile?: DesignerGameItemProfile;
 }
 
 export interface DesignerItemSeed {
@@ -137,6 +165,7 @@ export interface DesignerItemSeed {
   pokemonProfile?: DesignerPokemonProfile;
   pokemonSkillProfile?: DesignerPokemonSkillProfile;
   skillGfxProfile?: DesignerSkillGfxProfile;
+  itemProfile?: DesignerGameItemProfile;
 }
 
 export interface DesignerPlayableMapConfig {
@@ -419,6 +448,26 @@ const skillGfxDetailValue = (
   key: keyof DesignerSkillGfxProfile,
   fallback: string | number
 ) => String(options?.skillGfxProfile?.[key] ?? fallback);
+
+function formatItemStatModifiers(modifiers?: DesignerItemStatModifiers) {
+  if (!modifiers) {
+    return "None";
+  }
+
+  const entries: Array<[keyof DesignerItemStatModifiers, string]> = [
+    ["hp", "HP"],
+    ["attack", "Attack"],
+    ["defense", "Defense"],
+    ["specialAttack", "Special Attack"],
+    ["specialDefense", "Special Defense"],
+    ["speed", "Speed"],
+  ];
+  const formatted = entries
+    .filter(([key]) => modifiers[key] !== 0)
+    .map(([key, label]) => `${label} ${modifiers[key] > 0 ? "+" : ""}${modifiers[key]}`);
+
+  return formatted.length > 0 ? formatted.join(", ") : "None";
+}
 
 export const designerSections: DesignerSectionDefinition[] = [
   {
@@ -742,33 +791,43 @@ export const designerSections: DesignerSectionDefinition[] = [
     path: "/designer/items",
     itemLabel: "item",
     itemLabelPlural: "items",
-    categoryLabel: "folder",
+    categoryLabel: "type",
     icon: "items",
-    defaultCategories: ["Healing", "Quest", "Equipment"],
+    defaultCategories: ["usable", "pokeball", "skill item", "berries", "quest item"],
     demoItems: [
       {
         id: "item-potion-plus",
         name: "Potion Plus",
-        category: "Healing",
-        details: [detail("Stack", "99"), detail("Rarity", "Common"), detail("Use", "Recover HP")],
+        category: "usable",
+        details: [detail("Type", "usable"), detail("Description", "Recover HP"), detail("Effect", "HP +20")],
       },
       {
         id: "item-ancient-seal",
         name: "Ancient Seal",
-        category: "Quest",
-        details: [detail("Stack", "1"), detail("Rarity", "Epic"), detail("Use", "Story Key")],
+        category: "quest item",
+        details: [detail("Type", "quest item"), detail("Description", "Story key"), detail("Effect", "None")],
       },
       {
         id: "item-ranger-boots",
         name: "Ranger Boots",
-        category: "Equipment",
-        details: [detail("Stack", "1"), detail("Rarity", "Rare"), detail("Use", "Movement Buff")],
+        category: "berries",
+        details: [detail("Type", "berries"), detail("Description", "Speed boost"), detail("Effect", "Speed +5")],
       },
     ],
-    createDetails: (_name, category, index) => [
-      detail("Stack", category === "Healing" ? "99" : "1"),
-      detail("Rarity", ["Common", "Rare", "Epic"][index % 3]),
-      detail("Use", `${category} utility`),
+    createDetails: (_name, category, _index, options) => [
+      detail("Type", options?.itemProfile?.type ?? category),
+      detail("Icon", options?.itemProfile?.iconSrc ? "Uploaded" : "Required"),
+      detail("Description", options?.itemProfile?.description || "None"),
+      detail(
+        "Effect",
+        options?.itemProfile?.type === "skill item"
+          ? `Learn ${options.itemProfile.skillName || "None"}`
+          : options?.itemProfile?.type === "pokeball"
+            ? `${options.itemProfile.pokeballBonusElements.join(", ") || "Any"} +${options.itemProfile.pokeballBonusRatio}% catch`
+            : options?.itemProfile?.type === "usable" || options?.itemProfile?.type === "berries"
+              ? formatItemStatModifiers(options.itemProfile.statModifiers)
+              : "None"
+      ),
     ],
   },
   {
