@@ -29,6 +29,7 @@ import { Link as RouterLink } from "react-router-dom";
 import { useAuth } from "../../context/authContext";
 import {
   buildPlayableMapsSnapshot,
+  getPlayableMapsCacheVersion,
   persistPlayableMapsSyncPayload,
   sanitizePlayableMapsSyncPayload,
 } from "../game/playableMapRuntime";
@@ -56,9 +57,18 @@ interface DesignerSectionProps {
 }
 
 interface DesignerObjectsSyncPayload {
+  sectionKey?: DesignerSectionKey;
   state: DesignerSectionState;
+  version: number;
   updatedAt: string | null;
   updatedByUserId: number | null;
+  updatedByUsername: string | null;
+}
+
+interface StoredDesignerSectionPayload {
+  state: DesignerSectionState;
+  version: number | null;
+  updatedAt: string | null;
   updatedByUsername: string | null;
 }
 
@@ -346,6 +356,10 @@ function findCategoryName(categories: string[], target: string) {
 }
 
 function getStorageKey(sectionKey: DesignerSectionKey) {
+  return `designer:section:${sectionKey}`;
+}
+
+function getLegacyStorageKey(sectionKey: DesignerSectionKey) {
   return `designer-demo:${sectionKey}`;
 }
 
@@ -591,9 +605,10 @@ function loadRegionNames() {
       return fallbackRegions;
     }
 
-    const parsed = JSON.parse(raw) as Partial<DesignerSectionState>;
-    const regionNames = Array.isArray(parsed.items)
-      ? parsed.items
+    const parsed = JSON.parse(raw) as Partial<DesignerSectionState> & { state?: Partial<DesignerSectionState> };
+    const regionState = parsed.state ?? parsed;
+    const regionNames = Array.isArray(regionState.items)
+      ? regionState.items
           .map((item) => (typeof item?.name === "string" ? item.name.trim() : ""))
           .filter(Boolean)
       : [];
@@ -607,18 +622,10 @@ function loadRegionNames() {
 function buildInitialState(sectionKey: DesignerSectionKey): DesignerSectionState {
   const section = designerSectionsByKey[sectionKey];
   const categorySet = new Set([UNCATEGORIZED, ...section.defaultCategories]);
-  const items =
-    sectionKey === "mapsEditor"
-      ? syncPlayableMapItems(section.demoItems)
-      : section.demoItems;
-
-  items.forEach((item) => {
-    categorySet.add(item.category || UNCATEGORIZED);
-  });
 
   return {
     categories: Array.from(categorySet),
-    items,
+    items: [],
   };
 }
 
@@ -675,23 +682,70 @@ function sanitizeSectionState(
   };
 }
 
-function loadStoredState(sectionKey: DesignerSectionKey): DesignerSectionState {
+function readStoredPayload(sectionKey: DesignerSectionKey): StoredDesignerSectionPayload {
   const fallback = buildInitialState(sectionKey);
 
   if (typeof window === "undefined") {
-    return fallback;
+    return {
+      state: fallback,
+      version: null,
+      updatedAt: null,
+      updatedByUsername: null,
+    };
   }
 
   try {
-    const raw = window.localStorage.getItem(getStorageKey(sectionKey));
+    const raw =
+      window.localStorage.getItem(getStorageKey(sectionKey)) ??
+      window.localStorage.getItem(getLegacyStorageKey(sectionKey));
     if (!raw) {
-      return fallback;
+      return {
+        state: fallback,
+        version: null,
+        updatedAt: null,
+        updatedByUsername: null,
+      };
     }
 
-    return sanitizeSectionState(sectionKey, JSON.parse(raw));
+    const parsed = JSON.parse(raw);
+    const stateCandidate =
+      parsed && typeof parsed === "object" && "state" in parsed
+        ? (parsed as { state?: unknown }).state
+        : parsed;
+
+    return {
+      state: sanitizeSectionState(sectionKey, stateCandidate),
+      version:
+        typeof parsed?.version === "number" && Number.isFinite(parsed.version)
+          ? Math.round(parsed.version)
+          : null,
+      updatedAt: typeof parsed?.updatedAt === "string" ? parsed.updatedAt : null,
+      updatedByUsername:
+        typeof parsed?.updatedByUsername === "string" ? parsed.updatedByUsername : null,
+    };
   } catch {
-    return fallback;
+    return {
+      state: fallback,
+      version: null,
+      updatedAt: null,
+      updatedByUsername: null,
+    };
   }
+}
+
+function loadStoredState(sectionKey: DesignerSectionKey): DesignerSectionState {
+  return readStoredPayload(sectionKey).state;
+}
+
+function persistStoredPayload(
+  sectionKey: DesignerSectionKey,
+  payload: StoredDesignerSectionPayload
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(getStorageKey(sectionKey), JSON.stringify(payload));
 }
 
 function buildImportedSectionState(
@@ -736,16 +790,18 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const isObjectsSection = sectionKey === "objects";
   const isMapsSection = sectionKey === "mapsEditor";
   const isPokemonSection = sectionKey === "pokemons";
-  const isRealtimeSection = isObjectsSection || isMapsSection;
+  const isGenericRealtimeSection = !isMapsSection;
+  const isRealtimeSection = true;
   const toast = useToast();
   const { authReady, authenticated, socket } = useAuth();
   const regionNames = useMemo(() => loadRegionNames(), []);
   const [sectionState, setSectionState] = useState<DesignerSectionState>(() =>
     loadStoredState(sectionKey)
   );
-  const [isObjectsStateHydrated, setIsObjectsStateHydrated] = useState(
-    !isRealtimeSection
+  const [sectionCacheVersion, setSectionCacheVersion] = useState<number | null>(
+    () => readStoredPayload(sectionKey).version
   );
+  const [isObjectsStateHydrated, setIsObjectsStateHydrated] = useState(false);
   const [objectsSyncMeta, setObjectsSyncMeta] = useState<{
     updatedAt: string | null;
     updatedByUsername: string | null;
@@ -858,10 +914,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   }, [sectionState]);
 
   useEffect(() => {
-    const nextStoredState = loadStoredState(sectionKey);
+    const nextStoredPayload = readStoredPayload(sectionKey);
+    const nextStoredState = nextStoredPayload.state;
 
     setSectionState(nextStoredState);
     latestSectionStateRef.current = nextStoredState;
+    setSectionCacheVersion(nextStoredPayload.version);
     setSelectedIds([]);
     setIsAddOpen(false);
     setIsEditOpen(false);
@@ -871,24 +929,26 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setEditingCategory(null);
     setDeletingCategory(null);
     setDeletingItemId(null);
-    setIsObjectsStateHydrated(!isRealtimeSection);
+    setIsObjectsStateHydrated(false);
     setObjectsSyncMeta({
-      updatedAt: null,
-      updatedByUsername: null,
+      updatedAt: nextStoredPayload.updatedAt,
+      updatedByUsername: nextStoredPayload.updatedByUsername,
     });
     shouldBroadcastRef.current = false;
-  }, [isRealtimeSection, sectionKey]);
+  }, [sectionKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
 
-    window.localStorage.setItem(
-      getStorageKey(sectionKey),
-      JSON.stringify(sectionState)
-    );
-  }, [sectionKey, sectionState]);
+    persistStoredPayload(sectionKey, {
+      state: sectionState,
+      version: sectionCacheVersion,
+      updatedAt: objectsSyncMeta.updatedAt,
+      updatedByUsername: objectsSyncMeta.updatedByUsername,
+    });
+  }, [objectsSyncMeta.updatedAt, objectsSyncMeta.updatedByUsername, sectionCacheVersion, sectionKey, sectionState]);
 
   useEffect(() => {
     if (!isRealtimeSection || !shouldBroadcastRef.current) {
@@ -901,8 +961,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       return;
     }
 
-    if (isObjectsSection) {
-      socket.emit("designer:objects:update", {
+    if (isGenericRealtimeSection) {
+      socket.emit("designer:section:update", {
+        sectionKey,
         state: sectionState,
       });
       return;
@@ -911,10 +972,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     socket.emit("designer:maps:update", {
       state: buildPlayableMapsSnapshot(sectionState),
     });
-  }, [authenticated, isObjectsSection, isRealtimeSection, sectionState, socket]);
+  }, [authenticated, isGenericRealtimeSection, isRealtimeSection, sectionKey, sectionState, socket]);
 
   useEffect(() => {
-    if (!isObjectsSection) {
+    if (!isGenericRealtimeSection) {
       return;
     }
 
@@ -922,23 +983,52 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       return;
     }
 
-    const joinObjectsRoom = () => {
+    const joinSectionRoom = () => {
+      const storedPayload = readStoredPayload(sectionKey);
       setIsObjectsStateHydrated(false);
-      socket.emit("designer:objects:join", {
-        seedState: latestSectionStateRef.current,
+      socket.emit("designer:section:join", {
+        sectionKey,
+        version: storedPayload.version,
+        seedState:
+          storedPayload.version === null && storedPayload.state.items.length > 0
+            ? storedPayload.state
+            : undefined,
       });
     };
 
     const handleObjectsState = (payload: DesignerObjectsSyncPayload) => {
+      if (payload.sectionKey && payload.sectionKey !== sectionKey) {
+        return;
+      }
+
       shouldBroadcastRef.current = false;
       const nextState = sanitizeSectionState(sectionKey, payload.state);
 
       latestSectionStateRef.current = nextState;
       setSectionState(nextState);
+      setSectionCacheVersion(payload.version);
       setObjectsSyncMeta({
         updatedAt: payload.updatedAt,
         updatedByUsername: payload.updatedByUsername,
       });
+      setIsObjectsStateHydrated(true);
+    };
+
+    const handleSectionVersion = (payload: {
+      sectionKey: DesignerSectionKey;
+      hasState: boolean;
+      version: number | null;
+      updatedAt: string | null;
+    }) => {
+      if (payload.sectionKey !== sectionKey) {
+        return;
+      }
+
+      setSectionCacheVersion(payload.version);
+      setObjectsSyncMeta((current) => ({
+        ...current,
+        updatedAt: payload.updatedAt,
+      }));
       setIsObjectsStateHydrated(true);
     };
 
@@ -953,23 +1043,25 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       });
     };
 
-    socket.on("designer:objects:state", handleObjectsState);
-    socket.on("designer:objects:error", handleObjectsError);
-    socket.on("connect", joinObjectsRoom);
+    socket.on("designer:section:state", handleObjectsState);
+    socket.on("designer:section:version", handleSectionVersion);
+    socket.on("designer:section:error", handleObjectsError);
+    socket.on("connect", joinSectionRoom);
 
     if (!socket.connected) {
       socket.connect();
     } else {
-      joinObjectsRoom();
+      joinSectionRoom();
     }
 
     return () => {
-      socket.emit("designer:objects:leave");
-      socket.off("designer:objects:state", handleObjectsState);
-      socket.off("designer:objects:error", handleObjectsError);
-      socket.off("connect", joinObjectsRoom);
+      socket.emit("designer:section:leave", { sectionKey });
+      socket.off("designer:section:state", handleObjectsState);
+      socket.off("designer:section:version", handleSectionVersion);
+      socket.off("designer:section:error", handleObjectsError);
+      socket.off("connect", joinSectionRoom);
     };
-  }, [authReady, authenticated, isObjectsSection, sectionKey, socket, toast]);
+  }, [authReady, authenticated, isGenericRealtimeSection, sectionKey, socket, toast]);
 
   useEffect(() => {
     if (!isMapsSection) {
@@ -983,6 +1075,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     const joinMapsRoom = () => {
       setIsObjectsStateHydrated(false);
       socket.emit("designer:maps:join", {
+        version: getPlayableMapsCacheVersion(),
         seedState: buildPlayableMapsSnapshot(latestSectionStateRef.current),
       });
     };
@@ -1004,6 +1097,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
 
       latestSectionStateRef.current = nextState;
       setSectionState(nextState);
+      setSectionCacheVersion(syncPayload.version);
       setObjectsSyncMeta({
         updatedAt: syncPayload.updatedAt,
         updatedByUsername: syncPayload.updatedByUsername,
@@ -1022,7 +1116,17 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       });
     };
 
+    const handleMapsVersion = (payload: { version: number | null; updatedAt: string | null }) => {
+      setSectionCacheVersion(payload.version);
+      setObjectsSyncMeta((current) => ({
+        ...current,
+        updatedAt: payload.updatedAt,
+      }));
+      setIsObjectsStateHydrated(true);
+    };
+
     socket.on("playableMaps:state", handleMapsState);
+    socket.on("playableMaps:version", handleMapsVersion);
     socket.on("playableMaps:error", handleMapsError);
     socket.on("connect", joinMapsRoom);
 
@@ -1035,6 +1139,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     return () => {
       socket.emit("designer:maps:leave");
       socket.off("playableMaps:state", handleMapsState);
+      socket.off("playableMaps:version", handleMapsVersion);
       socket.off("playableMaps:error", handleMapsError);
       socket.off("connect", joinMapsRoom);
     };
@@ -2536,17 +2641,15 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             onChange={handleImportItems}
           />
           <Text mt={4} color="#55645a" fontSize="sm">
-            {isRealtimeSection
-              ? !authReady
-                ? `Preparing the live ${isMapsSection ? "maps" : "objects"} channel.`
-                : !authenticated
-                  ? `Authentication is required to edit live map ${isMapsSection ? "data" : "objects"}.`
-                  : !socket?.connected
-                    ? `Reconnecting the live ${isMapsSection ? "maps" : "objects"} channel.`
-                    : !isObjectsStateHydrated
-                      ? `Syncing map ${isMapsSection ? "data" : "objects"} from Redis through the realtime server.`
-                      : `Live sync is active for map ${isMapsSection ? "data" : "objects"}. ${selectedCount} selected.${lastSyncedLabel ? ` Last saved ${lastSyncedLabel}.` : ""}${objectsSyncMeta.updatedByUsername ? ` Latest change by ${objectsSyncMeta.updatedByUsername}.` : ""}`
-              : `Demo mode is active with seeded ${section.itemLabelPlural}. ${selectedCount} selected.`}
+            {!authReady
+              ? `Preparing the live ${section.itemLabelPlural} channel.`
+              : !authenticated
+                ? `Authentication is required to edit live ${section.itemLabelPlural}.`
+                : !socket?.connected
+                  ? `Reconnecting the live ${section.itemLabelPlural} channel.`
+                  : !isObjectsStateHydrated
+                    ? `Syncing ${section.itemLabelPlural} from Redis through the realtime server.`
+                    : `Live sync is active for ${section.itemLabelPlural}. ${selectedCount} selected.${lastSyncedLabel ? ` Last saved ${lastSyncedLabel}.` : ""}${objectsSyncMeta.updatedByUsername ? ` Latest change by ${objectsSyncMeta.updatedByUsername}.` : ""}`}
           </Text>
         </Box>
 

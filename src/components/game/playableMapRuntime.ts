@@ -56,8 +56,10 @@ export type PlayableMapPortalDestination = {
 };
 
 const PLAYABLE_MAPS_CACHE_KEY = "server-cache:playableMaps";
-const MAPS_STORAGE_KEY = "designer-demo:mapsEditor";
-const MAP_EDITOR_STORAGE_PREFIX = "designer-demo:mapEditor:";
+const MAPS_STORAGE_KEY = "designer:section:mapsEditor";
+const LEGACY_MAPS_STORAGE_KEY = "designer-demo:mapsEditor";
+const MAP_EDITOR_STORAGE_PREFIX = "designer:mapEditor:";
+const LEGACY_MAP_EDITOR_STORAGE_PREFIX = "designer-demo:mapEditor:";
 const DEFAULT_MAP_BACKGROUND_COLOR = "#8bc17f";
 const DEFAULT_MAP_BACKGROUND_IMAGE_MODE: DesignerPlayableMapBackgroundImageMode = "repeat";
 
@@ -121,6 +123,10 @@ function getMapEditorStorageKey(mapId: string) {
   return `${MAP_EDITOR_STORAGE_PREFIX}${mapId}`;
 }
 
+function getLegacyMapEditorStorageKey(mapId: string) {
+  return `${LEGACY_MAP_EDITOR_STORAGE_PREFIX}${mapId}`;
+}
+
 export function getPlayableMapBackgroundStyle(config: DesignerPlayableMapConfig): CSSProperties {
   const backgroundColor = normalizeBackgroundColor(config.backgroundColor);
 
@@ -162,7 +168,7 @@ export function getPlayableMapBackgroundStyle(config: DesignerPlayableMapConfig)
 export function loadPlayableMapsState() {
   const fallback: DesignerSectionState = {
     categories: designerSectionsByKey.mapsEditor.defaultCategories,
-    items: designerSectionsByKey.mapsEditor.demoItems,
+    items: [],
   };
 
   if (typeof window === "undefined") {
@@ -170,23 +176,28 @@ export function loadPlayableMapsState() {
   }
 
   try {
-    const raw = window.localStorage.getItem(MAPS_STORAGE_KEY);
+    const raw =
+      window.localStorage.getItem(MAPS_STORAGE_KEY) ??
+      window.localStorage.getItem(LEGACY_MAPS_STORAGE_KEY);
 
     if (!raw) {
       return fallback;
     }
 
-    const parsed = JSON.parse(raw) as Partial<DesignerSectionState>;
+    const parsed = JSON.parse(raw) as Partial<DesignerSectionState> & {
+      state?: Partial<DesignerSectionState>;
+    };
+    const state = parsed.state ?? parsed;
 
-    if (!Array.isArray(parsed.items)) {
+    if (!Array.isArray(state.items)) {
       return fallback;
     }
 
     return {
-      categories: Array.isArray(parsed.categories)
-        ? parsed.categories.filter((category): category is string => typeof category === "string")
+      categories: Array.isArray(state.categories)
+        ? state.categories.filter((category): category is string => typeof category === "string")
         : fallback.categories,
-      items: parsed.items.filter(
+      items: state.items.filter(
         (item): item is DesignerItemSeed =>
           typeof item?.id === "string" &&
           typeof item?.name === "string" &&
@@ -202,7 +213,7 @@ export function loadPlayableMapsState() {
 function sanitizePlayableMapsState(value: unknown) {
   const fallback: DesignerSectionState = {
     categories: designerSectionsByKey.mapsEditor.defaultCategories,
-    items: designerSectionsByKey.mapsEditor.demoItems,
+    items: [],
   };
 
   if (!value || typeof value !== "object") {
@@ -363,8 +374,13 @@ export function persistPlayableMapsSyncPayload(payload: PlayableMapsSyncPayload)
   window.localStorage.setItem(
     MAPS_STORAGE_KEY,
     JSON.stringify({
-      categories: sanitizedPayload.state.categories,
-      items: sanitizedPayload.state.items,
+      state: {
+        categories: sanitizedPayload.state.categories,
+        items: sanitizedPayload.state.items,
+      },
+      version: sanitizedPayload.version,
+      updatedAt: sanitizedPayload.updatedAt,
+      updatedByUsername: sanitizedPayload.updatedByUsername,
     })
   );
 
@@ -372,7 +388,15 @@ export function persistPlayableMapsSyncPayload(payload: PlayableMapsSyncPayload)
     const editorData = sanitizedPayload.state.editorDataByMapId[item.id];
 
     if (editorData) {
-      window.localStorage.setItem(getMapEditorStorageKey(item.id), JSON.stringify(editorData));
+      window.localStorage.setItem(
+        getMapEditorStorageKey(item.id),
+        JSON.stringify({
+          data: editorData,
+          version: sanitizedPayload.version,
+          updatedAt: sanitizedPayload.updatedAt,
+          updatedByUsername: sanitizedPayload.updatedByUsername,
+        })
+      );
     }
   });
 }
@@ -387,10 +411,17 @@ export function loadPlayableMapEditorData(mapId: string) {
   }
 
   try {
-    const raw = window.localStorage.getItem(getMapEditorStorageKey(mapId));
+    const raw =
+      window.localStorage.getItem(getMapEditorStorageKey(mapId)) ??
+      window.localStorage.getItem(getLegacyMapEditorStorageKey(mapId));
+    const parsed = raw ? JSON.parse(raw) : undefined;
+    const editorData =
+      parsed && typeof parsed === "object" && "data" in parsed
+        ? (parsed as { data?: unknown }).data
+        : parsed;
 
-    return raw
-      ? sanitizePlayableMapEditorData(JSON.parse(raw))
+    return editorData
+      ? sanitizePlayableMapEditorData(editorData)
       : sanitizePlayableMapEditorData(undefined);
   } catch {
     return sanitizePlayableMapEditorData(undefined);
@@ -407,9 +438,7 @@ export function getPlayableMapById(
 
   const mapsState = resolvePlayableMapsSnapshot(snapshot);
   const item =
-    mapsState.items.find((candidate) => candidate.id === mapId) ??
-    designerSectionsByKey.mapsEditor.demoItems.find((candidate) => candidate.id === mapId) ??
-    null;
+    mapsState.items.find((candidate) => candidate.id === mapId) ?? null;
 
   if (!item) {
     return null;
@@ -431,7 +460,6 @@ export function getInitialPlayableMap(snapshot?: PlayableMapsStateSnapshot) {
   const item =
     mapsState.items.find((candidate) => candidate.playableMapConfig?.isInitialMap === true) ??
     mapsState.items[0] ??
-    designerSectionsByKey.mapsEditor.demoItems[0] ??
     null;
 
   if (!item) {
