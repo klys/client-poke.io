@@ -106,11 +106,25 @@ export interface DesignerPokemonSkillProfile {
   stateConditionName: string;
 }
 
+export type DesignerSkillGfxApplyTo =
+  | "caster"
+  | "selected foe"
+  | "multiple foes"
+  | "all combatants"
+  | "selectable friend";
+
+export interface DesignerSkillGfxProfile {
+  mediaSrc: string;
+  applyTo: DesignerSkillGfxApplyTo;
+  appear: number;
+}
+
 export interface DesignerItemCreateOptions {
   mapObjectAsset?: DesignerMapObjectAsset;
   playableMapConfig?: DesignerPlayableMapConfig;
   pokemonProfile?: DesignerPokemonProfile;
   pokemonSkillProfile?: DesignerPokemonSkillProfile;
+  skillGfxProfile?: DesignerSkillGfxProfile;
 }
 
 export interface DesignerItemSeed {
@@ -122,6 +136,7 @@ export interface DesignerItemSeed {
   playableMapConfig?: DesignerPlayableMapConfig;
   pokemonProfile?: DesignerPokemonProfile;
   pokemonSkillProfile?: DesignerPokemonSkillProfile;
+  skillGfxProfile?: DesignerSkillGfxProfile;
 }
 
 export interface DesignerPlayableMapConfig {
@@ -399,6 +414,12 @@ const skillDetailValue = (
   fallback: string | number
 ) => String(options?.pokemonSkillProfile?.[key] ?? fallback);
 
+const skillGfxDetailValue = (
+  options: DesignerItemCreateOptions | undefined,
+  key: keyof DesignerSkillGfxProfile,
+  fallback: string | number
+) => String(options?.skillGfxProfile?.[key] ?? fallback);
+
 export const designerSections: DesignerSectionDefinition[] = [
   {
     key: "mapsEditor",
@@ -549,25 +570,37 @@ export const designerSections: DesignerSectionDefinition[] = [
         id: "gfx-ember-burst",
         name: "Ember Burst",
         category: "Fire",
-        details: [detail("Frames", "12"), detail("Palette", "Warm"), detail("Loop", "No")],
+        details: [
+          detail("Media", "Required"),
+          detail("Apply To", "selected foe"),
+          detail("Appear", "1"),
+        ],
       },
       {
         id: "gfx-tidal-ring",
         name: "Tidal Ring",
         category: "Water",
-        details: [detail("Frames", "18"), detail("Palette", "Cool"), detail("Loop", "Yes")],
+        details: [
+          detail("Media", "Required"),
+          detail("Apply To", "multiple foes"),
+          detail("Appear", "1"),
+        ],
       },
       {
         id: "gfx-healing-spark",
         name: "Healing Spark",
         category: "Support",
-        details: [detail("Frames", "10"), detail("Palette", "Mint"), detail("Loop", "No")],
+        details: [
+          detail("Media", "Required"),
+          detail("Apply To", "selectable friend"),
+          detail("Appear", "1"),
+        ],
       },
     ],
-    createDetails: (_name, category, index) => [
-      detail("Frames", `${10 + index * 2}`),
-      detail("Palette", category),
-      detail("Loop", index % 2 === 0 ? "Yes" : "No"),
+    createDetails: (_name, _category, _index, options) => [
+      detail("Media", options?.skillGfxProfile?.mediaSrc ? "Uploaded" : "Required"),
+      detail("Apply To", skillGfxDetailValue(options, "applyTo", "selected foe")),
+      detail("Appear", skillGfxDetailValue(options, "appear", 1)),
     ],
   },
   {
