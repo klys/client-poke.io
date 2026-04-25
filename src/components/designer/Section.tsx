@@ -23,6 +23,7 @@ import {
   Stack,
   Switch,
   Text,
+  Textarea,
   useToast,
 } from "@chakra-ui/react";
 import { Link as RouterLink } from "react-router-dom";
@@ -41,8 +42,10 @@ import {
   type DesignerMapObjectType,
   type DesignerPokemonProfile,
   type DesignerPokemonSkillAssignment,
+  type DesignerPokemonSkillProfile,
   type DesignerPlayableMapConfig,
   type DesignerPlayableMapType,
+  type DesignerWeatherEffect,
   designerSectionsByKey,
   type DesignerItemSeed,
   type DesignerSectionKey,
@@ -142,6 +145,17 @@ const POKEMON_ELEMENTS = [
   "Flying",
   "Ghost",
 ];
+const WEATHER_EFFECT_DESCRIPTIONS: Record<DesignerWeatherEffect, string> = {
+  None: "No weather is created by this skill.",
+  "Sunny Day": "Fire skills are favored while Water pressure is reduced.",
+  Rain: "Water skills are favored while Fire pressure is reduced.",
+  Sandstorm: "Rock, Ground, and Steel battlers are favored while exposed battlers take chip pressure.",
+  Snow: "Ice battlers are favored and fast tempo can be harder to maintain.",
+  "Strong Winds": "Flying battlers are favored and weather weaknesses are softened.",
+};
+const WEATHER_EFFECT_OPTIONS = Object.keys(
+  WEATHER_EFFECT_DESCRIPTIONS
+) as DesignerWeatherEffect[];
 const POKEMON_STAT_FIELDS: Array<{
   key: keyof Pick<
     DesignerPokemonProfile,
@@ -164,6 +178,12 @@ const DEFAULT_POKEMON_STATS = {
   specialDefense: "1",
   speed: "1",
 };
+const DEFAULT_SKILL_FORM_STATE = {
+  power: "0",
+  powerPoint: "1",
+  accuracy: "100",
+  cooldown: "0",
+};
 
 interface PokemonFormState {
   hp: string;
@@ -183,6 +203,19 @@ interface PokemonSkillFormEntry {
   skillId: string;
   skillName: string;
   level: string;
+}
+
+interface SkillFormState {
+  elements: string[];
+  power: string;
+  powerPoint: string;
+  accuracy: string;
+  description: string;
+  skillGfxId: string;
+  weatherEffect: DesignerWeatherEffect;
+  inflictStateId: string;
+  cooldown: string;
+  stateConditionId: string;
 }
 
 function createUniqueMapId() {
@@ -295,10 +328,38 @@ function createDefaultPokemonFormState(): PokemonFormState {
   };
 }
 
+function createDefaultSkillFormState(): SkillFormState {
+  return {
+    ...DEFAULT_SKILL_FORM_STATE,
+    elements: [POKEMON_ELEMENTS[0]],
+    description: "",
+    skillGfxId: "",
+    weatherEffect: WEATHER_EFFECT_OPTIONS[0],
+    inflictStateId: "",
+    stateConditionId: "",
+  };
+}
+
 function parsePokemonStat(value: string) {
   const parsedValue = Number.parseInt(value, 10);
 
   return Number.isFinite(parsedValue) && parsedValue > 0
+    ? Math.round(parsedValue)
+    : null;
+}
+
+function parseSkillPositiveNumber(value: string) {
+  const parsedValue = Number.parseInt(value, 10);
+
+  return Number.isFinite(parsedValue) && parsedValue > 0
+    ? Math.round(parsedValue)
+    : null;
+}
+
+function parseSkillNonNegativeNumber(value: string) {
+  const parsedValue = Number.parseInt(value, 10);
+
+  return Number.isFinite(parsedValue) && parsedValue >= 0
     ? Math.round(parsedValue)
     : null;
 }
@@ -533,6 +594,75 @@ function sanitizePokemonProfile(
   };
 }
 
+function isWeatherEffect(value: unknown): value is DesignerWeatherEffect {
+  return (
+    typeof value === "string" &&
+    WEATHER_EFFECT_OPTIONS.includes(value as DesignerWeatherEffect)
+  );
+}
+
+function sanitizePokemonSkillProfile(
+  value: unknown,
+  fallbackItem?: Pick<DesignerItemSeed, "category" | "details">
+): DesignerPokemonSkillProfile | undefined {
+  const candidate =
+    value && typeof value === "object"
+      ? (value as Partial<DesignerPokemonSkillProfile>)
+      : null;
+  const fallbackElements = fallbackItem?.details
+    .find((item) => item.label === "Elements")
+    ?.value.split(",")
+    .map((element) => element.trim())
+    .filter(isPokemonElement);
+  const rawElements = candidate && Array.isArray(candidate.elements)
+    ? candidate.elements
+    : fallbackElements ?? [fallbackItem?.category];
+  const elements = Array.from(new Set(rawElements.filter(isPokemonElement)));
+  const weatherEffect = candidate?.weatherEffect;
+
+  if (!candidate && !fallbackItem) {
+    return undefined;
+  }
+
+  return {
+    elements: elements.length > 0 ? elements : [POKEMON_ELEMENTS[0]],
+    power:
+      typeof candidate?.power === "number" && Number.isFinite(candidate.power) && candidate.power >= 0
+        ? Math.round(candidate.power)
+        : parseSkillNonNegativeNumber(
+            fallbackItem?.details.find((item) => item.label === "Power")?.value ?? ""
+          ) ?? 0,
+    powerPoint:
+      typeof candidate?.powerPoint === "number" &&
+      Number.isFinite(candidate.powerPoint) &&
+      candidate.powerPoint > 0
+        ? Math.round(candidate.powerPoint)
+        : parsePokemonDetailNumber(fallbackItem?.details ?? [], "Power Point", 1),
+    accuracy:
+      typeof candidate?.accuracy === "number" && Number.isFinite(candidate.accuracy) && candidate.accuracy > 0
+        ? Math.round(candidate.accuracy)
+        : parsePokemonDetailNumber(fallbackItem?.details ?? [], "Accuracy", 100),
+    description: typeof candidate?.description === "string" ? candidate.description : "",
+    skillGfxId: typeof candidate?.skillGfxId === "string" ? candidate.skillGfxId : "",
+    skillGfxName: typeof candidate?.skillGfxName === "string" ? candidate.skillGfxName : "",
+    weatherEffect: isWeatherEffect(weatherEffect)
+      ? weatherEffect
+      : WEATHER_EFFECT_OPTIONS[0],
+    inflictStateId: typeof candidate?.inflictStateId === "string" ? candidate.inflictStateId : "",
+    inflictStateName: typeof candidate?.inflictStateName === "string" ? candidate.inflictStateName : "",
+    cooldown:
+      typeof candidate?.cooldown === "number" &&
+      Number.isFinite(candidate.cooldown) &&
+      candidate.cooldown >= 0
+        ? Math.round(candidate.cooldown)
+        : 0,
+    stateConditionId:
+      typeof candidate?.stateConditionId === "string" ? candidate.stateConditionId : "",
+    stateConditionName:
+      typeof candidate?.stateConditionName === "string" ? candidate.stateConditionName : "",
+  };
+}
+
 function sanitizePlayableMapConfig(
   value: unknown,
   regionNames: string[]
@@ -725,6 +855,10 @@ function sanitizeSectionState(
         sectionKey === "pokemons"
           ? sanitizePokemonProfile(item.pokemonProfile, item)
           : undefined,
+      pokemonSkillProfile:
+        sectionKey === "skills"
+          ? sanitizePokemonSkillProfile(item.pokemonSkillProfile, item)
+          : undefined,
     }));
   const normalizedItems =
     sectionKey === "mapsEditor" ? syncPlayableMapItems(items) : items;
@@ -845,6 +979,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const isObjectsSection = sectionKey === "objects";
   const isMapsSection = sectionKey === "mapsEditor";
   const isPokemonSection = sectionKey === "pokemons";
+  const isSkillsSection = sectionKey === "skills";
   const isGenericRealtimeSection = !isMapsSection;
   const isRealtimeSection = true;
   const toast = useToast();
@@ -855,6 +990,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   );
   const [skillCatalogState, setSkillCatalogState] = useState<DesignerSectionState>(() =>
     loadStoredState("skills")
+  );
+  const [skillGfxCatalogState, setSkillGfxCatalogState] = useState<DesignerSectionState>(() =>
+    loadStoredState("skillsGfx")
+  );
+  const [passiveStateCatalogState, setPassiveStateCatalogState] = useState<DesignerSectionState>(() =>
+    loadStoredState("passiveStates")
   );
   const [sectionCacheVersion, setSectionCacheVersion] = useState<number | null>(
     () => readStoredPayload(sectionKey).version
@@ -904,6 +1045,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const [newPokemonForm, setNewPokemonForm] = useState<PokemonFormState>(
     createDefaultPokemonFormState
   );
+  const [newSkillForm, setNewSkillForm] = useState<SkillFormState>(
+    createDefaultSkillFormState
+  );
   const [editMapObjectImage, setEditMapObjectImage] = useState("");
   const [editMapObjectWidth, setEditMapObjectWidth] = useState(
     String(DEFAULT_MAP_OBJECT_SIZE)
@@ -915,6 +1059,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     useState<DesignerMapObjectType>(DEFAULT_MAP_OBJECT_TYPE);
   const [editPokemonForm, setEditPokemonForm] = useState<PokemonFormState>(
     createDefaultPokemonFormState
+  );
+  const [editSkillForm, setEditSkillForm] = useState<SkillFormState>(
+    createDefaultSkillFormState
   );
   const [newMapCellSize, setNewMapCellSize] = useState(String(DEFAULT_MAP_CELL_SIZE));
   const [newMapSizePreset, setNewMapSizePreset] =
@@ -995,6 +1142,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setSkillCatalogState(
       sectionKey === "skills" ? nextStoredState : loadStoredState("skills")
     );
+    setSkillGfxCatalogState(
+      sectionKey === "skillsGfx" ? nextStoredState : loadStoredState("skillsGfx")
+    );
+    setPassiveStateCatalogState(
+      sectionKey === "passiveStates" ? nextStoredState : loadStoredState("passiveStates")
+    );
     shouldBroadcastRef.current = false;
   }, [sectionKey]);
 
@@ -1056,17 +1209,22 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             : undefined,
       });
 
-      if (isPokemonSection) {
-        const storedSkillsPayload = readStoredPayload("skills");
+      const catalogSectionKeys: DesignerSectionKey[] = [
+        ...(isPokemonSection ? (["skills"] as DesignerSectionKey[]) : []),
+        ...(isSkillsSection ? (["skillsGfx", "passiveStates"] as DesignerSectionKey[]) : []),
+      ];
+
+      catalogSectionKeys.forEach((catalogSectionKey) => {
+        const storedCatalogPayload = readStoredPayload(catalogSectionKey);
         socket.emit("designer:section:join", {
-          sectionKey: "skills",
-          version: storedSkillsPayload.version,
+          sectionKey: catalogSectionKey,
+          version: storedCatalogPayload.version,
           seedState:
-            storedSkillsPayload.version === null && storedSkillsPayload.state.items.length > 0
-              ? storedSkillsPayload.state
+            storedCatalogPayload.version === null && storedCatalogPayload.state.items.length > 0
+              ? storedCatalogPayload.state
               : undefined,
         });
-      }
+      });
     };
 
     const handleObjectsState = (payload: DesignerObjectsSyncPayload) => {
@@ -1076,6 +1234,32 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         setSkillCatalogState(nextSkillsState);
         persistStoredPayload("skills", {
           state: nextSkillsState,
+          version: payload.version,
+          updatedAt: payload.updatedAt,
+          updatedByUsername: payload.updatedByUsername,
+        });
+        return;
+      }
+
+      if (isSkillsSection && payload.sectionKey === "skillsGfx") {
+        const nextSkillGfxState = sanitizeSectionState("skillsGfx", payload.state);
+
+        setSkillGfxCatalogState(nextSkillGfxState);
+        persistStoredPayload("skillsGfx", {
+          state: nextSkillGfxState,
+          version: payload.version,
+          updatedAt: payload.updatedAt,
+          updatedByUsername: payload.updatedByUsername,
+        });
+        return;
+      }
+
+      if (isSkillsSection && payload.sectionKey === "passiveStates") {
+        const nextPassiveState = sanitizeSectionState("passiveStates", payload.state);
+
+        setPassiveStateCatalogState(nextPassiveState);
+        persistStoredPayload("passiveStates", {
+          state: nextPassiveState,
           version: payload.version,
           updatedAt: payload.updatedAt,
           updatedByUsername: payload.updatedByUsername,
@@ -1145,12 +1329,16 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       if (isPokemonSection) {
         socket.emit("designer:section:leave", { sectionKey: "skills" });
       }
+      if (isSkillsSection) {
+        socket.emit("designer:section:leave", { sectionKey: "skillsGfx" });
+        socket.emit("designer:section:leave", { sectionKey: "passiveStates" });
+      }
       socket.off("designer:section:state", handleObjectsState);
       socket.off("designer:section:version", handleSectionVersion);
       socket.off("designer:section:error", handleObjectsError);
       socket.off("connect", joinSectionRoom);
     };
-  }, [authReady, authenticated, isGenericRealtimeSection, isPokemonSection, sectionKey, socket, toast]);
+  }, [authReady, authenticated, isGenericRealtimeSection, isPokemonSection, isSkillsSection, sectionKey, socket, toast]);
 
   useEffect(() => {
     if (!isMapsSection) {
@@ -1345,6 +1533,20 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       !!editPokemonForm.frontImageSrc &&
       !!editPokemonForm.backImageSrc &&
       !!editPokemonForm.iconImageSrc);
+  const isSkillFormValid =
+    !isSkillsSection ||
+    (newSkillForm.elements.length > 0 &&
+      parseSkillNonNegativeNumber(newSkillForm.power) !== null &&
+      parseSkillPositiveNumber(newSkillForm.powerPoint) !== null &&
+      parseSkillPositiveNumber(newSkillForm.accuracy) !== null &&
+      parseSkillNonNegativeNumber(newSkillForm.cooldown) !== null);
+  const isEditSkillFormValid =
+    !isSkillsSection ||
+    (editSkillForm.elements.length > 0 &&
+      parseSkillNonNegativeNumber(editSkillForm.power) !== null &&
+      parseSkillPositiveNumber(editSkillForm.powerPoint) !== null &&
+      parseSkillPositiveNumber(editSkillForm.accuracy) !== null &&
+      parseSkillNonNegativeNumber(editSkillForm.cooldown) !== null);
   const isMapObjectFormValid =
     !isObjectsSection ||
     (!!newMapObjectImage && hasValidMapObjectWidth && hasValidMapObjectHeight);
@@ -1401,6 +1603,30 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         .sort((left, right) => left.category.localeCompare(right.category) || left.name.localeCompare(right.name)),
     [skillCatalogState.items]
   );
+  const skillGfxCatalog = useMemo(
+    () =>
+      skillGfxCatalogState.items
+        .filter((item) => item.id.trim() && item.name.trim())
+        .map((item) => ({
+          id: item.id,
+          name: item.name,
+          category: item.category,
+        }))
+        .sort((left, right) => left.category.localeCompare(right.category) || left.name.localeCompare(right.name)),
+    [skillGfxCatalogState.items]
+  );
+  const passiveStateCatalog = useMemo(
+    () =>
+      passiveStateCatalogState.items
+        .filter((item) => item.id.trim() && item.name.trim())
+        .map((item) => ({
+          id: item.id,
+          name: item.name,
+          category: item.category,
+        }))
+        .sort((left, right) => left.category.localeCompare(right.category) || left.name.localeCompare(right.name)),
+    [passiveStateCatalogState.items]
+  );
 
   const deleteCategoryOptions = useMemo(() => {
     return [UNCATEGORIZED, ...sectionState.categories.filter((category) => category !== deletingCategory && category !== UNCATEGORIZED)];
@@ -1422,6 +1648,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setNewMapObjectHeight(String(DEFAULT_MAP_OBJECT_SIZE));
     setNewMapObjectType(DEFAULT_MAP_OBJECT_TYPE);
     setNewPokemonForm(createDefaultPokemonFormState());
+    setNewSkillForm(createDefaultSkillFormState());
     setNewMapCellSize(String(DEFAULT_MAP_CELL_SIZE));
     setNewMapSizePreset(DEFAULT_MAP_SIZE_PRESET);
     setNewMapCustomWidth("500");
@@ -1448,6 +1675,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     const mapObjectAsset = sanitizeMapObjectAsset(item.mapObjectAsset);
     const playableMapConfig = sanitizePlayableMapConfig(item.playableMapConfig, regionNames);
     const pokemonProfile = sanitizePokemonProfile(item.pokemonProfile, item);
+    const pokemonSkillProfile = sanitizePokemonSkillProfile(item.pokemonSkillProfile, item);
 
     setEditingItemId(item.id);
     setEditItemName(item.name);
@@ -1476,6 +1704,22 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             iconImageSrc: pokemonProfile.iconImageSrc,
           }
         : createDefaultPokemonFormState()
+    );
+    setEditSkillForm(
+      pokemonSkillProfile
+        ? {
+            elements: pokemonSkillProfile.elements,
+            power: String(pokemonSkillProfile.power),
+            powerPoint: String(pokemonSkillProfile.powerPoint),
+            accuracy: String(pokemonSkillProfile.accuracy),
+            description: pokemonSkillProfile.description,
+            skillGfxId: pokemonSkillProfile.skillGfxId,
+            weatherEffect: pokemonSkillProfile.weatherEffect,
+            inflictStateId: pokemonSkillProfile.inflictStateId,
+            cooldown: String(pokemonSkillProfile.cooldown),
+            stateConditionId: pokemonSkillProfile.stateConditionId,
+          }
+        : createDefaultSkillFormState()
     );
     setEditMapCellSize(String(playableMapConfig?.cellSize || DEFAULT_MAP_CELL_SIZE));
     setEditMapSizePreset(playableMapConfig?.sizePreset || DEFAULT_MAP_SIZE_PRESET);
@@ -1808,17 +2052,64 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     };
   };
 
+  const buildPokemonSkillProfile = (
+    formState: SkillFormState
+  ): DesignerPokemonSkillProfile | undefined => {
+    const power = parseSkillNonNegativeNumber(formState.power);
+    const powerPoint = parseSkillPositiveNumber(formState.powerPoint);
+    const accuracy = parseSkillPositiveNumber(formState.accuracy);
+    const cooldown = parseSkillNonNegativeNumber(formState.cooldown);
+
+    if (
+      formState.elements.length === 0 ||
+      power === null ||
+      powerPoint === null ||
+      accuracy === null ||
+      cooldown === null
+    ) {
+      return undefined;
+    }
+
+    const skillGfx = skillGfxCatalog.find((item) => item.id === formState.skillGfxId);
+    const inflictState = passiveStateCatalog.find(
+      (item) => item.id === formState.inflictStateId
+    );
+    const stateCondition = passiveStateCatalog.find(
+      (item) => item.id === formState.stateConditionId
+    );
+
+    return {
+      elements: formState.elements,
+      power,
+      powerPoint,
+      accuracy,
+      description: formState.description.trim(),
+      skillGfxId: skillGfx?.id ?? "",
+      skillGfxName: skillGfx?.name ?? "",
+      weatherEffect: formState.weatherEffect,
+      inflictStateId: inflictState?.id ?? "",
+      inflictStateName: inflictState?.name ?? "",
+      cooldown,
+      stateConditionId: stateCondition?.id ?? "",
+      stateConditionName: stateCondition?.name ?? "",
+    };
+  };
+
   const handleAddItem = () => {
     const name = newItemName.trim();
     const pokemonProfile = isPokemonSection ? buildPokemonProfile(newPokemonForm) : undefined;
+    const pokemonSkillProfile = isSkillsSection ? buildPokemonSkillProfile(newSkillForm) : undefined;
     const category =
       isPokemonSection && pokemonProfile
         ? pokemonProfile.elements[0]
+        : isSkillsSection && pokemonSkillProfile
+          ? pokemonSkillProfile.elements[0]
         : normalizeCategoryName(newItemCategory) || UNCATEGORIZED;
 
     if (
       !name ||
       (isPokemonSection && !isPokemonFormValid) ||
+      (isSkillsSection && !isSkillFormValid) ||
       (isObjectsSection && !isMapObjectFormValid) ||
       (isMapsSection && !isPlayableMapFormValid)
     ) {
@@ -1865,10 +2156,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           mapObjectAsset,
           playableMapConfig,
           pokemonProfile,
+          pokemonSkillProfile,
         }),
         mapObjectAsset,
         playableMapConfig,
         pokemonProfile,
+        pokemonSkillProfile,
       };
 
       const nextItems = [item, ...current.items];
@@ -1890,15 +2183,19 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const handleEditItem = () => {
     const name = editItemName.trim();
     const pokemonProfile = isPokemonSection ? buildPokemonProfile(editPokemonForm) : undefined;
+    const pokemonSkillProfile = isSkillsSection ? buildPokemonSkillProfile(editSkillForm) : undefined;
     const category =
       isPokemonSection && pokemonProfile
         ? pokemonProfile.elements[0]
+        : isSkillsSection && pokemonSkillProfile
+          ? pokemonSkillProfile.elements[0]
         : normalizeCategoryName(editItemCategory) || UNCATEGORIZED;
 
     if (
       !editingItemId ||
       !name ||
       (isPokemonSection && !isEditPokemonFormValid) ||
+      (isSkillsSection && !isEditSkillFormValid) ||
       (isObjectsSection && !isEditMapObjectFormValid) ||
       (isMapsSection && !isEditPlayableMapFormValid)
     ) {
@@ -1945,10 +2242,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 mapObjectAsset,
                 playableMapConfig,
                 pokemonProfile,
+                pokemonSkillProfile,
               }),
               mapObjectAsset,
               playableMapConfig,
               pokemonProfile,
+              pokemonSkillProfile,
             }
           : item
       );
@@ -2025,14 +2324,29 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 ),
               }
             : item.pokemonProfile;
+        const pokemonSkillProfile =
+          isSkillsSection && isPokemonElement(category)
+            ? {
+                ...sanitizePokemonSkillProfile(item.pokemonSkillProfile, item)!,
+                elements: Array.from(
+                  new Set([
+                    category,
+                    ...(sanitizePokemonSkillProfile(item.pokemonSkillProfile, item)?.elements ?? []),
+                  ])
+                ),
+              }
+            : item.pokemonSkillProfile;
 
         return {
           ...item,
           category,
           pokemonProfile,
+          pokemonSkillProfile,
           details:
             isPokemonSection && pokemonProfile
               ? section.createDetails(item.name, category, index + 1, { pokemonProfile })
+              : isSkillsSection && pokemonSkillProfile
+                ? section.createDetails(item.name, category, index + 1, { pokemonSkillProfile })
               : item.details,
         };
       }),
@@ -2756,6 +3070,178 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     );
   };
 
+  const renderSkillFields = (
+    formState: SkillFormState,
+    onFormChange: React.Dispatch<React.SetStateAction<SkillFormState>>
+  ) => {
+    const updateField = <Key extends keyof SkillFormState>(
+      key: Key,
+      value: SkillFormState[Key]
+    ) => {
+      onFormChange((current) => ({
+        ...current,
+        [key]: value,
+      }));
+    };
+
+    const toggleElement = (element: string, checked: boolean) => {
+      onFormChange((current) => {
+        const nextElements = checked
+          ? [...current.elements, element]
+          : current.elements.filter((currentElement) => currentElement !== element);
+
+        return {
+          ...current,
+          elements: Array.from(new Set(nextElements)),
+        };
+      });
+    };
+
+    return (
+      <>
+        <Box>
+          <FormLabel>Elements</FormLabel>
+          <SimpleGrid columns={{ base: 2, md: 3 }} spacing={2}>
+            {POKEMON_ELEMENTS.map((element) => (
+              <Checkbox
+                key={element}
+                colorScheme="green"
+                isChecked={formState.elements.includes(element)}
+                onChange={(event) => toggleElement(element, event.target.checked)}
+              >
+                {element}
+              </Checkbox>
+            ))}
+          </SimpleGrid>
+          {formState.elements.length === 0 ? (
+            <Text mt={2} color="#914335" fontSize="sm">
+              Select at least one element.
+            </Text>
+          ) : null}
+        </Box>
+
+        <SimpleGrid columns={{ base: 1, md: 4 }} spacing={4}>
+          <FormControl isRequired isInvalid={formState.power !== "" && parseSkillNonNegativeNumber(formState.power) === null}>
+            <FormLabel>Power</FormLabel>
+            <Input
+              type="number"
+              min={0}
+              step={1}
+              value={formState.power}
+              onChange={(event) => updateField("power", event.target.value)}
+            />
+          </FormControl>
+          <FormControl isRequired isInvalid={formState.powerPoint !== "" && parseSkillPositiveNumber(formState.powerPoint) === null}>
+            <FormLabel>Power Point</FormLabel>
+            <Input
+              type="number"
+              min={1}
+              step={1}
+              value={formState.powerPoint}
+              onChange={(event) => updateField("powerPoint", event.target.value)}
+            />
+          </FormControl>
+          <FormControl isRequired isInvalid={formState.accuracy !== "" && parseSkillPositiveNumber(formState.accuracy) === null}>
+            <FormLabel>Accuracy</FormLabel>
+            <Input
+              type="number"
+              min={1}
+              step={1}
+              value={formState.accuracy}
+              onChange={(event) => updateField("accuracy", event.target.value)}
+            />
+          </FormControl>
+          <FormControl isRequired isInvalid={formState.cooldown !== "" && parseSkillNonNegativeNumber(formState.cooldown) === null}>
+            <FormLabel>Cooldown</FormLabel>
+            <Input
+              type="number"
+              min={0}
+              step={1}
+              value={formState.cooldown}
+              onChange={(event) => updateField("cooldown", event.target.value)}
+            />
+          </FormControl>
+        </SimpleGrid>
+
+        <FormControl>
+          <FormLabel>Description</FormLabel>
+          <Textarea
+            value={formState.description}
+            onChange={(event) => updateField("description", event.target.value)}
+            placeholder="Describe what this skill does"
+            minH="96px"
+          />
+        </FormControl>
+
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+          <FormControl>
+            <FormLabel>Skill GFX</FormLabel>
+            <Select
+              value={formState.skillGfxId}
+              onChange={(event) => updateField("skillGfxId", event.target.value)}
+            >
+              <option value="">None</option>
+              {skillGfxCatalog.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} ({item.category})
+                </option>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl>
+            <FormLabel>Weather Effect</FormLabel>
+            <Select
+              value={formState.weatherEffect}
+              onChange={(event) =>
+                updateField("weatherEffect", event.target.value as DesignerWeatherEffect)
+              }
+            >
+              {WEATHER_EFFECT_OPTIONS.map((weatherEffect) => (
+                <option key={weatherEffect} value={weatherEffect}>
+                  {weatherEffect}
+                </option>
+              ))}
+            </Select>
+            <Text mt={2} color="#55645a" fontSize="sm">
+              {WEATHER_EFFECT_DESCRIPTIONS[formState.weatherEffect]}
+            </Text>
+          </FormControl>
+        </SimpleGrid>
+
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+          <FormControl>
+            <FormLabel>Inflict State</FormLabel>
+            <Select
+              value={formState.inflictStateId}
+              onChange={(event) => updateField("inflictStateId", event.target.value)}
+            >
+              <option value="">None</option>
+              {passiveStateCatalog.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} ({item.category})
+                </option>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl>
+            <FormLabel>State Condition</FormLabel>
+            <Select
+              value={formState.stateConditionId}
+              onChange={(event) => updateField("stateConditionId", event.target.value)}
+            >
+              <option value="">None</option>
+              {passiveStateCatalog.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} ({item.category})
+                </option>
+              ))}
+            </Select>
+          </FormControl>
+        </SimpleGrid>
+      </>
+    );
+  };
+
   return (
     <Box
       minH="100vh"
@@ -3249,7 +3735,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       <Modal
         isOpen={isAddOpen}
         onClose={() => setIsAddOpen(false)}
-        size={isObjectsSection || isMapsSection || isPokemonSection ? "3xl" : "md"}
+        size={isObjectsSection || isMapsSection || isPokemonSection || isSkillsSection ? "3xl" : "md"}
         scrollBehavior="inside"
       >
         <ModalOverlay bg="blackAlpha.400" />
@@ -3274,7 +3760,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   placeholder={`Enter ${section.itemLabel} name`}
                 />
               </FormControl>
-              {!isPokemonSection ? (
+              {!isPokemonSection && !isSkillsSection ? (
                 <FormControl>
                 <FormLabel>Category</FormLabel>
                 <Select
@@ -3290,6 +3776,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 </FormControl>
               ) : null}
               {isPokemonSection ? renderPokemonFields(newPokemonForm, setNewPokemonForm) : null}
+              {isSkillsSection ? renderSkillFields(newSkillForm, setNewSkillForm) : null}
               {isObjectsSection ? (
                 <>
                   <FormControl isRequired>
@@ -3462,6 +3949,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               isDisabled={
                 !newItemName.trim() ||
                 !isPokemonFormValid ||
+                !isSkillFormValid ||
                 !isMapObjectFormValid ||
                 !isPlayableMapFormValid
               }
@@ -3475,7 +3963,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       <Modal
         isOpen={isEditOpen}
         onClose={closeEditModal}
-        size={isObjectsSection || isMapsSection || isPokemonSection ? "3xl" : "md"}
+        size={isObjectsSection || isMapsSection || isPokemonSection || isSkillsSection ? "3xl" : "md"}
         scrollBehavior="inside"
       >
         <ModalOverlay bg="blackAlpha.400" />
@@ -3500,7 +3988,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   placeholder={`Enter ${section.itemLabel} name`}
                 />
               </FormControl>
-              {!isPokemonSection ? (
+              {!isPokemonSection && !isSkillsSection ? (
                 <FormControl>
                 <FormLabel>Category</FormLabel>
                 <Select
@@ -3516,6 +4004,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 </FormControl>
               ) : null}
               {isPokemonSection ? renderPokemonFields(editPokemonForm, setEditPokemonForm) : null}
+              {isSkillsSection ? renderSkillFields(editSkillForm, setEditSkillForm) : null}
               {isObjectsSection ? (
                 <>
                   <FormControl isRequired>
@@ -3718,6 +4207,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               isDisabled={
                 !editItemName.trim() ||
                 !isEditPokemonFormValid ||
+                !isEditSkillFormValid ||
                 !isEditMapObjectFormValid ||
                 !isEditPlayableMapFormValid
               }

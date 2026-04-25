@@ -8,6 +8,7 @@ export type DesignerIconName =
   | "mapObjects"
   | "items"
   | "pokemonSkills"
+  | "passiveStates"
   | "players"
   | "regions"
   | "npcs";
@@ -19,6 +20,7 @@ export type DesignerSectionKey =
   | "objects"
   | "items"
   | "skills"
+  | "passiveStates"
   | "players"
   | "regions"
   | "npcs";
@@ -80,10 +82,35 @@ export interface DesignerPokemonSkillAssignment {
   level: number;
 }
 
+export type DesignerWeatherEffect =
+  | "None"
+  | "Sunny Day"
+  | "Rain"
+  | "Sandstorm"
+  | "Snow"
+  | "Strong Winds";
+
+export interface DesignerPokemonSkillProfile {
+  elements: string[];
+  power: number;
+  powerPoint: number;
+  accuracy: number;
+  description: string;
+  skillGfxId: string;
+  skillGfxName: string;
+  weatherEffect: DesignerWeatherEffect;
+  inflictStateId: string;
+  inflictStateName: string;
+  cooldown: number;
+  stateConditionId: string;
+  stateConditionName: string;
+}
+
 export interface DesignerItemCreateOptions {
   mapObjectAsset?: DesignerMapObjectAsset;
   playableMapConfig?: DesignerPlayableMapConfig;
   pokemonProfile?: DesignerPokemonProfile;
+  pokemonSkillProfile?: DesignerPokemonSkillProfile;
 }
 
 export interface DesignerItemSeed {
@@ -94,6 +121,7 @@ export interface DesignerItemSeed {
   mapObjectAsset?: DesignerMapObjectAsset;
   playableMapConfig?: DesignerPlayableMapConfig;
   pokemonProfile?: DesignerPokemonProfile;
+  pokemonSkillProfile?: DesignerPokemonSkillProfile;
 }
 
 export interface DesignerPlayableMapConfig {
@@ -259,6 +287,26 @@ export function DesignerIcon(props: IconProps & { icon: DesignerIconName }) {
           />
         </Icon>
       );
+    case "passiveStates":
+      return (
+        <Icon viewBox="0 0 24 24" {...iconProps}>
+          <path
+            d="M12 4 5 7.5v5.2c0 4.4 3 6.8 7 8.1 4-1.3 7-3.7 7-8.1V7.5L12 4Z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M9 12.2 11.1 14.3 15.5 9.8"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </Icon>
+      );
     case "players":
       return (
         <Icon viewBox="0 0 24 24" {...iconProps}>
@@ -344,6 +392,12 @@ const pokemonDetailValue = (
   key: keyof DesignerPokemonProfile,
   fallback: string | number
 ) => String(options?.pokemonProfile?.[key] ?? fallback);
+
+const skillDetailValue = (
+  options: DesignerItemCreateOptions | undefined,
+  key: keyof DesignerPokemonSkillProfile,
+  fallback: string | number
+) => String(options?.pokemonSkillProfile?.[key] ?? fallback);
 
 export const designerSections: DesignerSectionDefinition[] = [
   {
@@ -699,25 +753,89 @@ export const designerSections: DesignerSectionDefinition[] = [
         id: "skill-flame-wheel",
         name: "Flame Wheel",
         category: "Fire",
-        details: [detail("Power", "60"), detail("Cooldown", "8s"), detail("Range", "Melee")],
+        details: [
+          detail("Elements", "Fire"),
+          detail("Power", "60"),
+          detail("Power Point", "15"),
+          detail("Accuracy", "90"),
+          detail("Cooldown", "1 turn"),
+        ],
       },
       {
         id: "skill-rain-lance",
         name: "Rain Lance",
         category: "Water",
-        details: [detail("Power", "54"), detail("Cooldown", "7s"), detail("Range", "Long")],
+        details: [
+          detail("Elements", "Water"),
+          detail("Power", "54"),
+          detail("Power Point", "20"),
+          detail("Accuracy", "95"),
+          detail("Cooldown", "1 turn"),
+        ],
       },
       {
         id: "skill-guard-song",
         name: "Guard Song",
         category: "Support",
-        details: [detail("Power", "Buff"), detail("Cooldown", "12s"), detail("Range", "Party")],
+        details: [
+          detail("Elements", "Normal"),
+          detail("Power", "1"),
+          detail("Power Point", "10"),
+          detail("Accuracy", "100"),
+          detail("Cooldown", "2 turns"),
+        ],
       },
     ],
-    createDetails: (_name, category, index) => [
-      detail("Power", `${48 + index * 6}`),
-      detail("Cooldown", `${6 + index}s`),
-      detail("Range", category === "Support" ? "Party" : index % 2 === 0 ? "Mid" : "Long"),
+    createDetails: (_name, category, _index, options) => [
+      detail(
+        "Elements",
+        options?.pokemonSkillProfile?.elements.length
+          ? options.pokemonSkillProfile.elements.join(", ")
+          : category
+      ),
+      detail("Power", skillDetailValue(options, "power", 0)),
+      detail("Power Point", skillDetailValue(options, "powerPoint", 1)),
+      detail("Accuracy", skillDetailValue(options, "accuracy", 100)),
+      detail("Skill GFX", options?.pokemonSkillProfile?.skillGfxName || "None"),
+      detail("Weather", options?.pokemonSkillProfile?.weatherEffect || "None"),
+      detail("Inflict State", options?.pokemonSkillProfile?.inflictStateName || "None"),
+      detail("Cooldown", `${skillDetailValue(options, "cooldown", 0)} turns`),
+      detail("State Condition", options?.pokemonSkillProfile?.stateConditionName || "None"),
+    ],
+  },
+  {
+    key: "passiveStates",
+    title: "Passive States",
+    description: "Manage reusable battle states that skills can inflict or require.",
+    path: "/designer/passive-states",
+    itemLabel: "passive state",
+    itemLabelPlural: "passive states",
+    categoryLabel: "group",
+    icon: "passiveStates",
+    defaultCategories: ["Status", "Buff", "Debuff"],
+    demoItems: [
+      {
+        id: "state-burn",
+        name: "Burn",
+        category: "Status",
+        details: [detail("Effect", "Takes damage each turn"), detail("Stacking", "No")],
+      },
+      {
+        id: "state-focused",
+        name: "Focused",
+        category: "Buff",
+        details: [detail("Effect", "Improves accuracy"), detail("Stacking", "No")],
+      },
+      {
+        id: "state-slowed",
+        name: "Slowed",
+        category: "Debuff",
+        details: [detail("Effect", "Reduces speed"), detail("Stacking", "No")],
+      },
+    ],
+    createDetails: (_name, category, _index) => [
+      detail("Effect", `${category} effect`),
+      detail("Stacking", "No"),
     ],
   },
   {

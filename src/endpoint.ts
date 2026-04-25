@@ -81,6 +81,10 @@ export const createEndpoints = (config: RuntimeConfig): RouteObject[] => [
     element: withAuth(createElement(Section, { sectionKey: "skills" }))
   },
   {
+    path: "/designer/passive-states",
+    element: withAuth(createElement(Section, { sectionKey: "passiveStates" }))
+  },
+  {
     path: "/designer/players",
     element: withAuth(createElement(Section, { sectionKey: "players" }))
   },
