@@ -3,6 +3,7 @@ import {
   Badge,
   Box,
   Button,
+  Checkbox,
   Flex,
   FormControl,
   FormLabel,
@@ -37,6 +38,7 @@ import {
   type DesignerMapSizePreset,
   type DesignerMapObjectAsset,
   type DesignerMapObjectType,
+  type DesignerPokemonProfile,
   type DesignerPlayableMapConfig,
   type DesignerPlayableMapType,
   designerSectionsByKey,
@@ -109,6 +111,61 @@ const MAP_BACKGROUND_IMAGE_MODES: DesignerPlayableMapBackgroundImageMode[] = [
 const DEFAULT_MAP_BACKGROUND_COLOR = "#8bc17f";
 const DEFAULT_MAP_BACKGROUND_IMAGE_MODE: DesignerPlayableMapBackgroundImageMode = "repeat";
 const DEFAULT_IS_INITIAL_MAP = false;
+const POKEMON_ELEMENTS = [
+  "Fire",
+  "Water",
+  "Grass",
+  "Electricity",
+  "Ice",
+  "Fight",
+  "Poison",
+  "Ground",
+  "Normal",
+  "Psychic",
+  "Rock",
+  "Steel",
+  "Dragon",
+  "Fairy",
+  "Bug",
+  "Dark",
+  "Flying",
+  "Ghost",
+];
+const POKEMON_STAT_FIELDS: Array<{
+  key: keyof Pick<
+    DesignerPokemonProfile,
+    "hp" | "attack" | "defense" | "specialAttack" | "specialDefense" | "speed"
+  >;
+  label: string;
+}> = [
+  { key: "hp", label: "HP" },
+  { key: "attack", label: "Attack" },
+  { key: "defense", label: "Defense" },
+  { key: "specialAttack", label: "Special Attack" },
+  { key: "specialDefense", label: "Special Defense" },
+  { key: "speed", label: "Speed" },
+];
+const DEFAULT_POKEMON_STATS = {
+  hp: "1",
+  attack: "1",
+  defense: "1",
+  specialAttack: "1",
+  specialDefense: "1",
+  speed: "1",
+};
+
+interface PokemonFormState {
+  hp: string;
+  attack: string;
+  defense: string;
+  specialAttack: string;
+  specialDefense: string;
+  speed: string;
+  elements: string[];
+  frontImageSrc: string;
+  backImageSrc: string;
+  iconImageSrc: string;
+}
 
 function createUniqueMapId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -207,6 +264,24 @@ function isValidBackgroundImageMode(
 
 function normalizeBackgroundColor(value: string) {
   return /^#[0-9a-f]{6}$/i.test(value) ? value : DEFAULT_MAP_BACKGROUND_COLOR;
+}
+
+function createDefaultPokemonFormState(): PokemonFormState {
+  return {
+    ...DEFAULT_POKEMON_STATS,
+    elements: [POKEMON_ELEMENTS[0]],
+    frontImageSrc: "",
+    backImageSrc: "",
+    iconImageSrc: "",
+  };
+}
+
+function parsePokemonStat(value: string) {
+  const parsedValue = Number.parseInt(value, 10);
+
+  return Number.isFinite(parsedValue) && parsedValue > 0
+    ? Math.round(parsedValue)
+    : null;
 }
 
 function getPlayableMapBackgroundStyle(config: {
@@ -311,6 +386,81 @@ function sanitizeMapObjectAsset(value: unknown): DesignerMapObjectAsset | undefi
     width,
     height,
     objectType: candidate.objectType,
+  };
+}
+
+function isPokemonElement(value: unknown): value is string {
+  return typeof value === "string" && POKEMON_ELEMENTS.includes(value);
+}
+
+function parsePokemonDetailNumber(
+  details: DesignerItemSeed["details"],
+  label: string,
+  fallback: number
+) {
+  const value = details.find((item) => item.label === label)?.value;
+  const parsedValue = Number.parseInt(value ?? "", 10);
+
+  return Number.isFinite(parsedValue) && parsedValue > 0
+    ? Math.round(parsedValue)
+    : fallback;
+}
+
+function sanitizePokemonProfile(
+  value: unknown,
+  fallbackItem?: Pick<DesignerItemSeed, "category" | "details">
+): DesignerPokemonProfile | undefined {
+  const candidate =
+    value && typeof value === "object"
+      ? (value as Partial<DesignerPokemonProfile>)
+      : null;
+  const fallbackElements = fallbackItem?.details
+    .find((item) => item.label === "Elements")
+    ?.value.split(",")
+    .map((element) => element.trim())
+    .filter(isPokemonElement);
+  const rawElements = candidate && Array.isArray(candidate.elements)
+    ? candidate.elements
+    : fallbackElements ?? [fallbackItem?.category];
+  const elements = Array.from(new Set(rawElements.filter(isPokemonElement)));
+
+  if (!candidate && !fallbackItem) {
+    return undefined;
+  }
+
+  return {
+    hp:
+      typeof candidate?.hp === "number" && Number.isFinite(candidate.hp) && candidate.hp > 0
+        ? Math.round(candidate.hp)
+        : parsePokemonDetailNumber(fallbackItem?.details ?? [], "HP", 1),
+    attack:
+      typeof candidate?.attack === "number" && Number.isFinite(candidate.attack) && candidate.attack > 0
+        ? Math.round(candidate.attack)
+        : parsePokemonDetailNumber(fallbackItem?.details ?? [], "Attack", 1),
+    defense:
+      typeof candidate?.defense === "number" && Number.isFinite(candidate.defense) && candidate.defense > 0
+        ? Math.round(candidate.defense)
+        : parsePokemonDetailNumber(fallbackItem?.details ?? [], "Defense", 1),
+    specialAttack:
+      typeof candidate?.specialAttack === "number" &&
+      Number.isFinite(candidate.specialAttack) &&
+      candidate.specialAttack > 0
+        ? Math.round(candidate.specialAttack)
+        : parsePokemonDetailNumber(fallbackItem?.details ?? [], "Special Attack", 1),
+    specialDefense:
+      typeof candidate?.specialDefense === "number" &&
+      Number.isFinite(candidate.specialDefense) &&
+      candidate.specialDefense > 0
+        ? Math.round(candidate.specialDefense)
+        : parsePokemonDetailNumber(fallbackItem?.details ?? [], "Special Defense", 1),
+    speed:
+      typeof candidate?.speed === "number" && Number.isFinite(candidate.speed) && candidate.speed > 0
+        ? Math.round(candidate.speed)
+        : parsePokemonDetailNumber(fallbackItem?.details ?? [], "Speed", 1),
+    elements: elements.length > 0 ? elements : [POKEMON_ELEMENTS[0]],
+    frontImageSrc: typeof candidate?.frontImageSrc === "string" ? candidate.frontImageSrc : "",
+    backImageSrc: typeof candidate?.backImageSrc === "string" ? candidate.backImageSrc : "",
+    iconImageSrc: typeof candidate?.iconImageSrc === "string" ? candidate.iconImageSrc : "",
   };
 }
 
@@ -509,6 +659,10 @@ function sanitizeSectionState(
       category: normalizeCategoryName(item.category) || UNCATEGORIZED,
       mapObjectAsset: sanitizeMapObjectAsset(item.mapObjectAsset),
       playableMapConfig: sanitizePlayableMapConfig(item.playableMapConfig, regionNames),
+      pokemonProfile:
+        sectionKey === "pokemons"
+          ? sanitizePokemonProfile(item.pokemonProfile, item)
+          : undefined,
     }));
   const normalizedItems =
     sectionKey === "mapsEditor" ? syncPlayableMapItems(items) : items;
@@ -581,6 +735,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const section = designerSectionsByKey[sectionKey];
   const isObjectsSection = sectionKey === "objects";
   const isMapsSection = sectionKey === "mapsEditor";
+  const isPokemonSection = sectionKey === "pokemons";
   const isRealtimeSection = isObjectsSection || isMapsSection;
   const toast = useToast();
   const { authReady, authenticated, socket } = useAuth();
@@ -632,6 +787,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   );
   const [newMapObjectType, setNewMapObjectType] =
     useState<DesignerMapObjectType>(DEFAULT_MAP_OBJECT_TYPE);
+  const [newPokemonForm, setNewPokemonForm] = useState<PokemonFormState>(
+    createDefaultPokemonFormState
+  );
   const [editMapObjectImage, setEditMapObjectImage] = useState("");
   const [editMapObjectWidth, setEditMapObjectWidth] = useState(
     String(DEFAULT_MAP_OBJECT_SIZE)
@@ -641,6 +799,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   );
   const [editMapObjectType, setEditMapObjectType] =
     useState<DesignerMapObjectType>(DEFAULT_MAP_OBJECT_TYPE);
+  const [editPokemonForm, setEditPokemonForm] = useState<PokemonFormState>(
+    createDefaultPokemonFormState
+  );
   const [newMapCellSize, setNewMapCellSize] = useState(String(DEFAULT_MAP_CELL_SIZE));
   const [newMapSizePreset, setNewMapSizePreset] =
     useState<DesignerMapSizePreset>(DEFAULT_MAP_SIZE_PRESET);
@@ -974,6 +1135,20 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     editMapInitialPositionX,
     editMapInitialPositionY
   );
+  const isPokemonFormValid =
+    !isPokemonSection ||
+    (newPokemonForm.elements.length > 0 &&
+      POKEMON_STAT_FIELDS.every((field) => parsePokemonStat(newPokemonForm[field.key]) !== null) &&
+      !!newPokemonForm.frontImageSrc &&
+      !!newPokemonForm.backImageSrc &&
+      !!newPokemonForm.iconImageSrc);
+  const isEditPokemonFormValid =
+    !isPokemonSection ||
+    (editPokemonForm.elements.length > 0 &&
+      POKEMON_STAT_FIELDS.every((field) => parsePokemonStat(editPokemonForm[field.key]) !== null) &&
+      !!editPokemonForm.frontImageSrc &&
+      !!editPokemonForm.backImageSrc &&
+      !!editPokemonForm.iconImageSrc);
   const isMapObjectFormValid =
     !isObjectsSection ||
     (!!newMapObjectImage && hasValidMapObjectWidth && hasValidMapObjectHeight);
@@ -1037,6 +1212,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setNewMapObjectWidth(String(DEFAULT_MAP_OBJECT_SIZE));
     setNewMapObjectHeight(String(DEFAULT_MAP_OBJECT_SIZE));
     setNewMapObjectType(DEFAULT_MAP_OBJECT_TYPE);
+    setNewPokemonForm(createDefaultPokemonFormState());
     setNewMapCellSize(String(DEFAULT_MAP_CELL_SIZE));
     setNewMapSizePreset(DEFAULT_MAP_SIZE_PRESET);
     setNewMapCustomWidth("500");
@@ -1062,6 +1238,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const openEditModal = (item: DesignerItemSeed) => {
     const mapObjectAsset = sanitizeMapObjectAsset(item.mapObjectAsset);
     const playableMapConfig = sanitizePlayableMapConfig(item.playableMapConfig, regionNames);
+    const pokemonProfile = sanitizePokemonProfile(item.pokemonProfile, item);
 
     setEditingItemId(item.id);
     setEditItemName(item.name);
@@ -1070,6 +1247,22 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setEditMapObjectWidth(String(mapObjectAsset?.width || DEFAULT_MAP_OBJECT_SIZE));
     setEditMapObjectHeight(String(mapObjectAsset?.height || DEFAULT_MAP_OBJECT_SIZE));
     setEditMapObjectType(mapObjectAsset?.objectType || DEFAULT_MAP_OBJECT_TYPE);
+    setEditPokemonForm(
+      pokemonProfile
+        ? {
+            hp: String(pokemonProfile.hp),
+            attack: String(pokemonProfile.attack),
+            defense: String(pokemonProfile.defense),
+            specialAttack: String(pokemonProfile.specialAttack),
+            specialDefense: String(pokemonProfile.specialDefense),
+            speed: String(pokemonProfile.speed),
+            elements: pokemonProfile.elements,
+            frontImageSrc: pokemonProfile.frontImageSrc,
+            backImageSrc: pokemonProfile.backImageSrc,
+            iconImageSrc: pokemonProfile.iconImageSrc,
+          }
+        : createDefaultPokemonFormState()
+    );
     setEditMapCellSize(String(playableMapConfig?.cellSize || DEFAULT_MAP_CELL_SIZE));
     setEditMapSizePreset(playableMapConfig?.sizePreset || DEFAULT_MAP_SIZE_PRESET);
     setEditMapCustomWidth(String(playableMapConfig?.width || 500));
@@ -1318,12 +1511,84 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     reader.readAsDataURL(file);
   };
 
+  const handlePokemonImageChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+    onImageChange: (value: string) => void
+  ) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      onImageChange("");
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      window.alert("Please upload an image file for the pokemon.");
+      event.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        onImageChange(reader.result);
+      }
+    };
+
+    reader.readAsDataURL(file);
+  };
+
+  const buildPokemonProfile = (
+    formState: PokemonFormState
+  ): DesignerPokemonProfile | undefined => {
+    const parsedStats = POKEMON_STAT_FIELDS.reduce<
+      Partial<Record<(typeof POKEMON_STAT_FIELDS)[number]["key"], number>>
+    >((stats, field) => {
+      const value = parsePokemonStat(formState[field.key]);
+
+      if (value !== null) {
+        stats[field.key] = value;
+      }
+
+      return stats;
+    }, {});
+
+    if (
+      formState.elements.length === 0 ||
+      !formState.frontImageSrc ||
+      !formState.backImageSrc ||
+      !formState.iconImageSrc ||
+      POKEMON_STAT_FIELDS.some((field) => typeof parsedStats[field.key] !== "number")
+    ) {
+      return undefined;
+    }
+
+    return {
+      hp: parsedStats.hp ?? 1,
+      attack: parsedStats.attack ?? 1,
+      defense: parsedStats.defense ?? 1,
+      specialAttack: parsedStats.specialAttack ?? 1,
+      specialDefense: parsedStats.specialDefense ?? 1,
+      speed: parsedStats.speed ?? 1,
+      elements: formState.elements,
+      frontImageSrc: formState.frontImageSrc,
+      backImageSrc: formState.backImageSrc,
+      iconImageSrc: formState.iconImageSrc,
+    };
+  };
+
   const handleAddItem = () => {
     const name = newItemName.trim();
-    const category = normalizeCategoryName(newItemCategory) || UNCATEGORIZED;
+    const pokemonProfile = isPokemonSection ? buildPokemonProfile(newPokemonForm) : undefined;
+    const category =
+      isPokemonSection && pokemonProfile
+        ? pokemonProfile.elements[0]
+        : normalizeCategoryName(newItemCategory) || UNCATEGORIZED;
 
     if (
       !name ||
+      (isPokemonSection && !isPokemonFormValid) ||
       (isObjectsSection && !isMapObjectFormValid) ||
       (isMapsSection && !isPlayableMapFormValid)
     ) {
@@ -1369,9 +1634,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         details: section.createDetails(name, category, nextIndex, {
           mapObjectAsset,
           playableMapConfig,
+          pokemonProfile,
         }),
         mapObjectAsset,
         playableMapConfig,
+        pokemonProfile,
       };
 
       const nextItems = [item, ...current.items];
@@ -1392,11 +1659,16 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
 
   const handleEditItem = () => {
     const name = editItemName.trim();
-    const category = normalizeCategoryName(editItemCategory) || UNCATEGORIZED;
+    const pokemonProfile = isPokemonSection ? buildPokemonProfile(editPokemonForm) : undefined;
+    const category =
+      isPokemonSection && pokemonProfile
+        ? pokemonProfile.elements[0]
+        : normalizeCategoryName(editItemCategory) || UNCATEGORIZED;
 
     if (
       !editingItemId ||
       !name ||
+      (isPokemonSection && !isEditPokemonFormValid) ||
       (isObjectsSection && !isEditMapObjectFormValid) ||
       (isMapsSection && !isEditPlayableMapFormValid)
     ) {
@@ -1442,9 +1714,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               details: section.createDetails(name, category, index + 1, {
                 mapObjectAsset,
                 playableMapConfig,
+                pokemonProfile,
               }),
               mapObjectAsset,
               playableMapConfig,
+              pokemonProfile,
             }
           : item
       );
@@ -1504,9 +1778,34 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       categories: current.categories.includes(category)
         ? current.categories
         : [...current.categories, category],
-      items: current.items.map((item) =>
-        selectedSet.has(item.id) ? { ...item, category } : item
-      ),
+      items: current.items.map((item, index) => {
+        if (!selectedSet.has(item.id)) {
+          return item;
+        }
+
+        const pokemonProfile =
+          isPokemonSection && isPokemonElement(category)
+            ? {
+                ...sanitizePokemonProfile(item.pokemonProfile, item)!,
+                elements: Array.from(
+                  new Set([
+                    category,
+                    ...(sanitizePokemonProfile(item.pokemonProfile, item)?.elements ?? []),
+                  ])
+                ),
+              }
+            : item.pokemonProfile;
+
+        return {
+          ...item,
+          category,
+          pokemonProfile,
+          details:
+            isPokemonSection && pokemonProfile
+              ? section.createDetails(item.name, category, index + 1, { pokemonProfile })
+              : item.details,
+        };
+      }),
     }));
     setSelectedIds([]);
     setIsMoveOpen(false);
@@ -1986,6 +2285,128 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     );
   };
 
+  const renderPokemonFields = (
+    formState: PokemonFormState,
+    onFormChange: React.Dispatch<React.SetStateAction<PokemonFormState>>
+  ) => {
+    const updateField = <Key extends keyof PokemonFormState>(
+      key: Key,
+      value: PokemonFormState[Key]
+    ) => {
+      onFormChange((current) => ({
+        ...current,
+        [key]: value,
+      }));
+    };
+
+    const toggleElement = (element: string, checked: boolean) => {
+      onFormChange((current) => {
+        const nextElements = checked
+          ? [...current.elements, element]
+          : current.elements.filter((currentElement) => currentElement !== element);
+
+        return {
+          ...current,
+          elements: Array.from(new Set(nextElements)),
+        };
+      });
+    };
+
+    const imageFields: Array<{
+      key: "frontImageSrc" | "backImageSrc" | "iconImageSrc";
+      label: string;
+    }> = [
+      { key: "frontImageSrc", label: "Front Image" },
+      { key: "backImageSrc", label: "Back Image" },
+      { key: "iconImageSrc", label: "Icon Image" },
+    ];
+
+    return (
+      <>
+        <Box>
+          <FormLabel>Elements</FormLabel>
+          <SimpleGrid columns={{ base: 2, md: 3 }} spacing={2}>
+            {POKEMON_ELEMENTS.map((element) => (
+              <Checkbox
+                key={element}
+                colorScheme="green"
+                isChecked={formState.elements.includes(element)}
+                onChange={(event) => toggleElement(element, event.target.checked)}
+              >
+                {element}
+              </Checkbox>
+            ))}
+          </SimpleGrid>
+          {formState.elements.length === 0 ? (
+            <Text mt={2} color="#914335" fontSize="sm">
+              Select at least one element.
+            </Text>
+          ) : null}
+        </Box>
+
+        <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+          {POKEMON_STAT_FIELDS.map((field) => (
+            <FormControl
+              key={field.key}
+              isRequired
+              isInvalid={formState[field.key] !== "" && parsePokemonStat(formState[field.key]) === null}
+            >
+              <FormLabel>{field.label}</FormLabel>
+              <Input
+                type="number"
+                min={1}
+                step={1}
+                value={formState[field.key]}
+                onChange={(event) => updateField(field.key, event.target.value)}
+              />
+            </FormControl>
+          ))}
+        </SimpleGrid>
+
+        <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+          {imageFields.map((field) => (
+            <FormControl key={field.key} isRequired>
+              <FormLabel>{field.label}</FormLabel>
+              <Input
+                type="file"
+                accept="image/*"
+                p={1.5}
+                onChange={(event) =>
+                  handlePokemonImageChange(event, (value) => updateField(field.key, value))
+                }
+              />
+              <Flex
+                mt={3}
+                h="96px"
+                align="center"
+                justify="center"
+                borderRadius="16px"
+                border="1px dashed rgba(43, 66, 47, 0.18)"
+                bg="rgba(255,255,255,0.68)"
+              >
+                {formState[field.key] ? (
+                  <Box
+                    as="img"
+                    src={formState[field.key]}
+                    alt={`${field.label} preview`}
+                    maxW="88px"
+                    maxH="88px"
+                    objectFit="contain"
+                    style={{ imageRendering: "pixelated" }}
+                  />
+                ) : (
+                  <Text fontSize="sm" color="#6d7b71">
+                    Required
+                  </Text>
+                )}
+              </Flex>
+            </FormControl>
+          ))}
+        </SimpleGrid>
+      </>
+    );
+  };
+
   return (
     <Box
       minH="100vh"
@@ -2240,6 +2661,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 const playableMapConfig = isMapsSection
                   ? sanitizePlayableMapConfig(item.playableMapConfig, regionNames)
                   : undefined;
+                const pokemonProfile = isPokemonSection
+                  ? sanitizePokemonProfile(item.pokemonProfile, item)
+                  : undefined;
 
                 return (
                   <Box
@@ -2289,7 +2713,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                           display="grid"
                           placeItems="center"
                           bg={
-                            mapObjectAsset
+                            mapObjectAsset || pokemonProfile?.iconImageSrc
                               ? "linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(227,235,224,0.95) 100%)"
                               : "rgba(126, 166, 120, 0.12)"
                           }
@@ -2303,6 +2727,16 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                               alt={`${item.name} preview`}
                               width={`${Math.max(20, Math.min(mapObjectAsset.width, 56))}px`}
                               height={`${Math.max(20, Math.min(mapObjectAsset.height, 56))}px`}
+                              objectFit="contain"
+                              style={{ imageRendering: "pixelated" }}
+                            />
+                          ) : pokemonProfile?.iconImageSrc ? (
+                            <Box
+                              as="img"
+                              src={pokemonProfile.iconImageSrc}
+                              alt={`${item.name} icon`}
+                              maxW="48px"
+                              maxH="48px"
                               objectFit="contain"
                               style={{ imageRendering: "pixelated" }}
                             />
@@ -2468,7 +2902,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       <Modal
         isOpen={isAddOpen}
         onClose={() => setIsAddOpen(false)}
-        size={isObjectsSection || isMapsSection ? "3xl" : "md"}
+        size={isObjectsSection || isMapsSection || isPokemonSection ? "3xl" : "md"}
         scrollBehavior="inside"
       >
         <ModalOverlay bg="blackAlpha.400" />
@@ -2493,7 +2927,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   placeholder={`Enter ${section.itemLabel} name`}
                 />
               </FormControl>
-              <FormControl>
+              {!isPokemonSection ? (
+                <FormControl>
                 <FormLabel>Category</FormLabel>
                 <Select
                   value={newItemCategory}
@@ -2505,7 +2940,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                     </option>
                   ))}
                 </Select>
-              </FormControl>
+                </FormControl>
+              ) : null}
+              {isPokemonSection ? renderPokemonFields(newPokemonForm, setNewPokemonForm) : null}
               {isObjectsSection ? (
                 <>
                   <FormControl isRequired>
@@ -2677,6 +3114,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               onClick={handleAddItem}
               isDisabled={
                 !newItemName.trim() ||
+                !isPokemonFormValid ||
                 !isMapObjectFormValid ||
                 !isPlayableMapFormValid
               }
@@ -2690,7 +3128,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       <Modal
         isOpen={isEditOpen}
         onClose={closeEditModal}
-        size={isObjectsSection || isMapsSection ? "3xl" : "md"}
+        size={isObjectsSection || isMapsSection || isPokemonSection ? "3xl" : "md"}
         scrollBehavior="inside"
       >
         <ModalOverlay bg="blackAlpha.400" />
@@ -2715,7 +3153,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   placeholder={`Enter ${section.itemLabel} name`}
                 />
               </FormControl>
-              <FormControl>
+              {!isPokemonSection ? (
+                <FormControl>
                 <FormLabel>Category</FormLabel>
                 <Select
                   value={editItemCategory}
@@ -2727,7 +3166,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                     </option>
                   ))}
                 </Select>
-              </FormControl>
+                </FormControl>
+              ) : null}
+              {isPokemonSection ? renderPokemonFields(editPokemonForm, setEditPokemonForm) : null}
               {isObjectsSection ? (
                 <>
                   <FormControl isRequired>
@@ -2929,6 +3370,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               onClick={handleEditItem}
               isDisabled={
                 !editItemName.trim() ||
+                !isEditPokemonFormValid ||
                 !isEditMapObjectFormValid ||
                 !isEditPlayableMapFormValid
               }

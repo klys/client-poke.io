@@ -1,6 +1,6 @@
 import React from "react"
 import { Provider } from "../../context/appContext";
-import Ships from "./Ships"
+import Players from "./Players"
 import Network from "./Network";
 import PortalRuntime from "./PortalRuntime";
 import UserControl from "./UserControl"
@@ -23,7 +23,7 @@ const Game = ({ socketUrl }:{ socketUrl:string }) => {
             <UserControl />
             <Map>
             </Map>
-            <Ships />
+            <Players />
                         
         </Provider>
     </>)

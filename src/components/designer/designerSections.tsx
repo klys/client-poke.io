@@ -60,9 +60,23 @@ export interface DesignerMapObjectAsset {
   objectType: DesignerMapObjectType;
 }
 
+export interface DesignerPokemonProfile {
+  hp: number;
+  attack: number;
+  defense: number;
+  specialAttack: number;
+  specialDefense: number;
+  speed: number;
+  elements: string[];
+  frontImageSrc: string;
+  backImageSrc: string;
+  iconImageSrc: string;
+}
+
 export interface DesignerItemCreateOptions {
   mapObjectAsset?: DesignerMapObjectAsset;
   playableMapConfig?: DesignerPlayableMapConfig;
+  pokemonProfile?: DesignerPokemonProfile;
 }
 
 export interface DesignerItemSeed {
@@ -72,6 +86,7 @@ export interface DesignerItemSeed {
   details: DesignerItemDetail[];
   mapObjectAsset?: DesignerMapObjectAsset;
   playableMapConfig?: DesignerPlayableMapConfig;
+  pokemonProfile?: DesignerPokemonProfile;
 }
 
 export interface DesignerPlayableMapConfig {
@@ -317,6 +332,12 @@ export function DesignerIcon(props: IconProps & { icon: DesignerIconName }) {
 
 const detail = (label: string, value: string): DesignerItemDetail => ({ label, value });
 
+const pokemonDetailValue = (
+  options: DesignerItemCreateOptions | undefined,
+  key: keyof DesignerPokemonProfile,
+  fallback: string | number
+) => String(options?.pokemonProfile?.[key] ?? fallback);
+
 export const designerSections: DesignerSectionDefinition[] = [
   {
     key: "mapsEditor",
@@ -495,33 +516,85 @@ export const designerSections: DesignerSectionDefinition[] = [
     path: "/designer/pokemons",
     itemLabel: "pokemon",
     itemLabelPlural: "pokemons",
-    categoryLabel: "type",
+    categoryLabel: "primary element",
     icon: "pokemons",
-    defaultCategories: ["Fire", "Water", "Grass"],
+    defaultCategories: [
+      "Fire",
+      "Water",
+      "Grass",
+      "Electricity",
+      "Ice",
+      "Fight",
+      "Poison",
+      "Ground",
+      "Normal",
+      "Psychic",
+      "Rock",
+      "Steel",
+      "Dragon",
+      "Fairy",
+      "Bug",
+      "Dark",
+      "Flying",
+      "Ghost",
+    ],
     demoItems: [
       {
         id: "pokemon-flameling",
         name: "Flameling",
         category: "Fire",
-        details: [detail("Region", "Ash Coast"), detail("Rarity", "Common"), detail("Stage", "Basic")],
+        details: [
+          detail("Elements", "Fire"),
+          detail("HP", "45"),
+          detail("Attack", "58"),
+          detail("Defense", "42"),
+          detail("Special Attack", "70"),
+          detail("Special Defense", "45"),
+          detail("Speed", "64"),
+        ],
       },
       {
         id: "pokemon-ripplet",
         name: "Ripplet",
         category: "Water",
-        details: [detail("Region", "Moon Bay"), detail("Rarity", "Uncommon"), detail("Stage", "Basic")],
+        details: [
+          detail("Elements", "Water"),
+          detail("HP", "50"),
+          detail("Attack", "45"),
+          detail("Defense", "52"),
+          detail("Special Attack", "62"),
+          detail("Special Defense", "58"),
+          detail("Speed", "45"),
+        ],
       },
       {
         id: "pokemon-bramblit",
         name: "Bramblit",
         category: "Grass",
-        details: [detail("Region", "Fernwild"), detail("Rarity", "Rare"), detail("Stage", "Stage 1")],
+        details: [
+          detail("Elements", "Grass"),
+          detail("HP", "55"),
+          detail("Attack", "52"),
+          detail("Defense", "60"),
+          detail("Special Attack", "48"),
+          detail("Special Defense", "58"),
+          detail("Speed", "40"),
+        ],
       },
     ],
-    createDetails: (_name, category, index) => [
-      detail("Region", ["Ash Coast", "Moon Bay", "Fernwild"][index % 3]),
-      detail("Rarity", ["Common", "Uncommon", "Rare"][index % 3]),
-      detail("Stage", category === "Fire" ? "Basic" : "Stage 1"),
+    createDetails: (_name, category, _index, options) => [
+      detail(
+        "Elements",
+        options?.pokemonProfile?.elements.length
+          ? options.pokemonProfile.elements.join(", ")
+          : category
+      ),
+      detail("HP", pokemonDetailValue(options, "hp", 1)),
+      detail("Attack", pokemonDetailValue(options, "attack", 1)),
+      detail("Defense", pokemonDetailValue(options, "defense", 1)),
+      detail("Special Attack", pokemonDetailValue(options, "specialAttack", 1)),
+      detail("Special Defense", pokemonDetailValue(options, "specialDefense", 1)),
+      detail("Speed", pokemonDetailValue(options, "speed", 1)),
     ],
   },
   {

@@ -1,9 +1,9 @@
 import { createContext, useReducer, useState } from "react"
 import io, { Socket } from "socket.io-client"
-import Ship from "../components/game/Ship"
+import Player from "../components/game/Player"
 import { loadPlayableMapsSnapshot } from "../components/game/playableMapRuntime"
 
-export type Player = { // unused
+export type PlayerState = { // unused
     playerId: string
     x: number
     y: number
@@ -76,10 +76,10 @@ const reducer = (state:any, action:any) => {
             state.players[action.playerData.id] = ({
                 ...state.players[action.playerData.id],
                 ...action.playerData,
-                jsx:<Ship playerInfo={action.playerData} key={`${action.playerData.playerId}-${action.playerData.currentMapId ?? "default"}`} />
+                jsx:<Player playerInfo={action.playerData} key={`${action.playerData.playerId}-${action.playerData.currentMapId ?? "default"}`} />
             })
             // if (state.playersIds[action.playerData.playerId] === undefined) {
-            //     state.players.push({jsx:<Ship playerInfo={action.playerData} key={action.playerData.playerId} />, ...action.playerData})
+            //     state.players.push({jsx:<Player playerInfo={action.playerData} key={action.playerData.playerId} />, ...action.playerData})
             //     state.playersIds[action.playerData.playerId] = state.players.length - 1;
             // }
             //console.log("state.players: ", state.players);

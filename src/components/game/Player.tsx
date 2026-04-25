@@ -62,10 +62,11 @@ const easeOutCubic = (progress: number) => 1 - Math.pow(1 - progress, 3);
 const buildSpritePath = (direction: Direction, isWalking: boolean) =>
   `/character0/player_${isWalking ? "walk" : "stand"}_${direction}.${isWalking ? "gif" : "png"}`;
 
-const Ship = (props: any) => {
+const Player = (props: any) => {
   const [death, setDeath] = useState(false);
   const { socket, movePlayer, myplayer } = useContext(AppContext);
   const playerInfo = props.playerInfo ?? {};
+  const activeMapId = typeof props.activeMapId === "string" ? props.activeMapId : null;
   const playerId = playerInfo.playerId;
   const playerIndex = playerInfo.id;
   const initialPosition = {
@@ -303,11 +304,12 @@ const Ship = (props: any) => {
 
   const spritePath = buildSpritePath(direction, isWalking);
   const spriteLabel = `${isWalking ? "walking" : "standing"} ${direction}`;
+  const isVisibleOnActiveMap = !activeMapId || pos.currentMapId === activeMapId;
 
   return (
     <div
       id={playerId}
-      hidden={death}
+      hidden={death || !isVisibleOnActiveMap}
       style={{
         position: "absolute",
         top: `${pos.y}px`,
@@ -329,4 +331,4 @@ const Ship = (props: any) => {
   );
 };
 
-export default Ship;
+export default Player;
