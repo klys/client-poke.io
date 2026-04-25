@@ -68,9 +68,16 @@ export interface DesignerPokemonProfile {
   specialDefense: number;
   speed: number;
   elements: string[];
+  skills: DesignerPokemonSkillAssignment[];
   frontImageSrc: string;
   backImageSrc: string;
   iconImageSrc: string;
+}
+
+export interface DesignerPokemonSkillAssignment {
+  skillId: string;
+  skillName: string;
+  level: number;
 }
 
 export interface DesignerItemCreateOptions {
@@ -595,6 +602,14 @@ export const designerSections: DesignerSectionDefinition[] = [
       detail("Special Attack", pokemonDetailValue(options, "specialAttack", 1)),
       detail("Special Defense", pokemonDetailValue(options, "specialDefense", 1)),
       detail("Speed", pokemonDetailValue(options, "speed", 1)),
+      detail(
+        "Skills",
+        options?.pokemonProfile?.skills.length
+          ? options.pokemonProfile.skills
+              .map((skill) => `${skill.skillName} (Lv. ${skill.level})`)
+              .join(", ")
+          : "None"
+      ),
     ],
   },
   {

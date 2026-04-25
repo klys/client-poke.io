@@ -40,6 +40,7 @@ import {
   type DesignerMapObjectAsset,
   type DesignerMapObjectType,
   type DesignerPokemonProfile,
+  type DesignerPokemonSkillAssignment,
   type DesignerPlayableMapConfig,
   type DesignerPlayableMapType,
   designerSectionsByKey,
@@ -172,9 +173,16 @@ interface PokemonFormState {
   specialDefense: string;
   speed: string;
   elements: string[];
+  skills: PokemonSkillFormEntry[];
   frontImageSrc: string;
   backImageSrc: string;
   iconImageSrc: string;
+}
+
+interface PokemonSkillFormEntry {
+  skillId: string;
+  skillName: string;
+  level: string;
 }
 
 function createUniqueMapId() {
@@ -280,6 +288,7 @@ function createDefaultPokemonFormState(): PokemonFormState {
   return {
     ...DEFAULT_POKEMON_STATS,
     elements: [POKEMON_ELEMENTS[0]],
+    skills: [],
     frontImageSrc: "",
     backImageSrc: "",
     iconImageSrc: "",
@@ -287,6 +296,14 @@ function createDefaultPokemonFormState(): PokemonFormState {
 }
 
 function parsePokemonStat(value: string) {
+  const parsedValue = Number.parseInt(value, 10);
+
+  return Number.isFinite(parsedValue) && parsedValue > 0
+    ? Math.round(parsedValue)
+    : null;
+}
+
+function parsePokemonSkillLevel(value: string) {
   const parsedValue = Number.parseInt(value, 10);
 
   return Number.isFinite(parsedValue) && parsedValue > 0
@@ -420,6 +437,43 @@ function parsePokemonDetailNumber(
     : fallback;
 }
 
+function sanitizePokemonSkillAssignments(value: unknown): DesignerPokemonSkillAssignment[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seenSkillIds = new Set<string>();
+  const skills: DesignerPokemonSkillAssignment[] = [];
+
+  value.forEach((item) => {
+    if (!item || typeof item !== "object") {
+      return;
+    }
+
+    const candidate = item as Partial<DesignerPokemonSkillAssignment>;
+    const skillId = typeof candidate.skillId === "string" ? candidate.skillId.trim() : "";
+    const skillName =
+      typeof candidate.skillName === "string" ? normalizeCategoryName(candidate.skillName) : "";
+    const level =
+      typeof candidate.level === "number" && Number.isFinite(candidate.level) && candidate.level > 0
+        ? Math.round(candidate.level)
+        : null;
+
+    if (!skillId || !skillName || level === null || seenSkillIds.has(skillId)) {
+      return;
+    }
+
+    seenSkillIds.add(skillId);
+    skills.push({
+      skillId,
+      skillName,
+      level,
+    });
+  });
+
+  return skills.sort((left, right) => left.level - right.level || left.skillName.localeCompare(right.skillName));
+}
+
 function sanitizePokemonProfile(
   value: unknown,
   fallbackItem?: Pick<DesignerItemSeed, "category" | "details">
@@ -472,6 +526,7 @@ function sanitizePokemonProfile(
         ? Math.round(candidate.speed)
         : parsePokemonDetailNumber(fallbackItem?.details ?? [], "Speed", 1),
     elements: elements.length > 0 ? elements : [POKEMON_ELEMENTS[0]],
+    skills: sanitizePokemonSkillAssignments(candidate?.skills),
     frontImageSrc: typeof candidate?.frontImageSrc === "string" ? candidate.frontImageSrc : "",
     backImageSrc: typeof candidate?.backImageSrc === "string" ? candidate.backImageSrc : "",
     iconImageSrc: typeof candidate?.iconImageSrc === "string" ? candidate.iconImageSrc : "",
@@ -798,6 +853,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const [sectionState, setSectionState] = useState<DesignerSectionState>(() =>
     loadStoredState(sectionKey)
   );
+  const [skillCatalogState, setSkillCatalogState] = useState<DesignerSectionState>(() =>
+    loadStoredState("skills")
+  );
   const [sectionCacheVersion, setSectionCacheVersion] = useState<number | null>(
     () => readStoredPayload(sectionKey).version
   );
@@ -934,6 +992,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       updatedAt: nextStoredPayload.updatedAt,
       updatedByUsername: nextStoredPayload.updatedByUsername,
     });
+    setSkillCatalogState(
+      sectionKey === "skills" ? nextStoredState : loadStoredState("skills")
+    );
     shouldBroadcastRef.current = false;
   }, [sectionKey]);
 
@@ -994,9 +1055,34 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             ? storedPayload.state
             : undefined,
       });
+
+      if (isPokemonSection) {
+        const storedSkillsPayload = readStoredPayload("skills");
+        socket.emit("designer:section:join", {
+          sectionKey: "skills",
+          version: storedSkillsPayload.version,
+          seedState:
+            storedSkillsPayload.version === null && storedSkillsPayload.state.items.length > 0
+              ? storedSkillsPayload.state
+              : undefined,
+        });
+      }
     };
 
     const handleObjectsState = (payload: DesignerObjectsSyncPayload) => {
+      if (isPokemonSection && payload.sectionKey === "skills") {
+        const nextSkillsState = sanitizeSectionState("skills", payload.state);
+
+        setSkillCatalogState(nextSkillsState);
+        persistStoredPayload("skills", {
+          state: nextSkillsState,
+          version: payload.version,
+          updatedAt: payload.updatedAt,
+          updatedByUsername: payload.updatedByUsername,
+        });
+        return;
+      }
+
       if (payload.sectionKey && payload.sectionKey !== sectionKey) {
         return;
       }
@@ -1056,12 +1142,15 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
 
     return () => {
       socket.emit("designer:section:leave", { sectionKey });
+      if (isPokemonSection) {
+        socket.emit("designer:section:leave", { sectionKey: "skills" });
+      }
       socket.off("designer:section:state", handleObjectsState);
       socket.off("designer:section:version", handleSectionVersion);
       socket.off("designer:section:error", handleObjectsError);
       socket.off("connect", joinSectionRoom);
     };
-  }, [authReady, authenticated, isGenericRealtimeSection, sectionKey, socket, toast]);
+  }, [authReady, authenticated, isGenericRealtimeSection, isPokemonSection, sectionKey, socket, toast]);
 
   useEffect(() => {
     if (!isMapsSection) {
@@ -1244,6 +1333,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     !isPokemonSection ||
     (newPokemonForm.elements.length > 0 &&
       POKEMON_STAT_FIELDS.every((field) => parsePokemonStat(newPokemonForm[field.key]) !== null) &&
+      newPokemonForm.skills.every((skill) => parsePokemonSkillLevel(skill.level) !== null) &&
       !!newPokemonForm.frontImageSrc &&
       !!newPokemonForm.backImageSrc &&
       !!newPokemonForm.iconImageSrc);
@@ -1251,6 +1341,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     !isPokemonSection ||
     (editPokemonForm.elements.length > 0 &&
       POKEMON_STAT_FIELDS.every((field) => parsePokemonStat(editPokemonForm[field.key]) !== null) &&
+      editPokemonForm.skills.every((skill) => parsePokemonSkillLevel(skill.level) !== null) &&
       !!editPokemonForm.frontImageSrc &&
       !!editPokemonForm.backImageSrc &&
       !!editPokemonForm.iconImageSrc);
@@ -1297,6 +1388,19 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       return matchesName && matchesCategory;
     });
   }, [categoryFilter, searchTerm, sectionState.items]);
+
+  const pokemonSkillCatalog = useMemo(
+    () =>
+      skillCatalogState.items
+        .filter((item) => item.id.trim() && item.name.trim())
+        .map((item) => ({
+          id: item.id,
+          name: item.name,
+          category: item.category,
+        }))
+        .sort((left, right) => left.category.localeCompare(right.category) || left.name.localeCompare(right.name)),
+    [skillCatalogState.items]
+  );
 
   const deleteCategoryOptions = useMemo(() => {
     return [UNCATEGORIZED, ...sectionState.categories.filter((category) => category !== deletingCategory && category !== UNCATEGORIZED)];
@@ -1362,6 +1466,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             specialDefense: String(pokemonProfile.specialDefense),
             speed: String(pokemonProfile.speed),
             elements: pokemonProfile.elements,
+            skills: pokemonProfile.skills.map((skill) => ({
+              skillId: skill.skillId,
+              skillName: skill.skillName,
+              level: String(skill.level),
+            })),
             frontImageSrc: pokemonProfile.frontImageSrc,
             backImageSrc: pokemonProfile.backImageSrc,
             iconImageSrc: pokemonProfile.iconImageSrc,
@@ -1664,10 +1773,25 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       !formState.frontImageSrc ||
       !formState.backImageSrc ||
       !formState.iconImageSrc ||
-      POKEMON_STAT_FIELDS.some((field) => typeof parsedStats[field.key] !== "number")
+      POKEMON_STAT_FIELDS.some((field) => typeof parsedStats[field.key] !== "number") ||
+      formState.skills.some((skill) => parsePokemonSkillLevel(skill.level) === null)
     ) {
       return undefined;
     }
+
+    const skills = formState.skills
+      .map((skill) => {
+        const catalogSkill = pokemonSkillCatalog.find(
+          (catalogItem) => catalogItem.id === skill.skillId
+        );
+
+        return {
+          skillId: skill.skillId,
+          skillName: catalogSkill?.name ?? skill.skillName,
+          level: parsePokemonSkillLevel(skill.level) ?? 1,
+        };
+      })
+      .sort((left, right) => left.level - right.level || left.skillName.localeCompare(right.skillName));
 
     return {
       hp: parsedStats.hp ?? 1,
@@ -1677,6 +1801,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       specialDefense: parsedStats.specialDefense ?? 1,
       speed: parsedStats.speed ?? 1,
       elements: formState.elements,
+      skills,
       frontImageSrc: formState.frontImageSrc,
       backImageSrc: formState.backImageSrc,
       iconImageSrc: formState.iconImageSrc,
@@ -2417,6 +2542,45 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       });
     };
 
+    const toggleSkill = (
+      skill: (typeof pokemonSkillCatalog)[number],
+      checked: boolean
+    ) => {
+      onFormChange((current) => {
+        if (!checked) {
+          return {
+            ...current,
+            skills: current.skills.filter((currentSkill) => currentSkill.skillId !== skill.id),
+          };
+        }
+
+        if (current.skills.some((currentSkill) => currentSkill.skillId === skill.id)) {
+          return current;
+        }
+
+        return {
+          ...current,
+          skills: [
+            ...current.skills,
+            {
+              skillId: skill.id,
+              skillName: skill.name,
+              level: "1",
+            },
+          ],
+        };
+      });
+    };
+
+    const updateSkillLevel = (skillId: string, level: string) => {
+      onFormChange((current) => ({
+        ...current,
+        skills: current.skills.map((skill) =>
+          skill.skillId === skillId ? { ...skill, level } : skill
+        ),
+      }));
+    };
+
     const imageFields: Array<{
       key: "frontImageSrc" | "backImageSrc" | "iconImageSrc";
       label: string;
@@ -2424,6 +2588,19 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       { key: "frontImageSrc", label: "Front Image" },
       { key: "backImageSrc", label: "Back Image" },
       { key: "iconImageSrc", label: "Icon Image" },
+    ];
+    const visiblePokemonSkills = [
+      ...pokemonSkillCatalog,
+      ...formState.skills
+        .filter(
+          (skill) =>
+            !pokemonSkillCatalog.some((catalogSkill) => catalogSkill.id === skill.skillId)
+        )
+        .map((skill) => ({
+          id: skill.skillId,
+          name: skill.skillName,
+          category: "Assigned",
+        })),
     ];
 
     return (
@@ -2467,6 +2644,73 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             </FormControl>
           ))}
         </SimpleGrid>
+
+        <Box>
+          <FormLabel>Pokemon Skills</FormLabel>
+          {visiblePokemonSkills.length > 0 ? (
+            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+              {visiblePokemonSkills.map((skill) => {
+                const selectedSkill = formState.skills.find(
+                  (currentSkill) => currentSkill.skillId === skill.id
+                );
+                const skillLevel = selectedSkill?.level ?? "1";
+
+                return (
+                  <Box
+                    key={skill.id}
+                    p={3}
+                    borderRadius="16px"
+                    border="1px solid rgba(43, 66, 47, 0.12)"
+                    bg="rgba(255,255,255,0.68)"
+                  >
+                    <Flex align="center" justify="space-between" gap={3}>
+                      <Checkbox
+                        colorScheme="green"
+                        isChecked={Boolean(selectedSkill)}
+                        onChange={(event) => toggleSkill(skill, event.target.checked)}
+                      >
+                        <Box>
+                          <Text fontWeight="700">{skill.name}</Text>
+                          <Text fontSize="xs" color="#6d7b71">
+                            {skill.category}
+                          </Text>
+                        </Box>
+                      </Checkbox>
+                      <FormControl
+                        w="104px"
+                        isInvalid={Boolean(selectedSkill) && parsePokemonSkillLevel(skillLevel) === null}
+                      >
+                        <FormLabel fontSize="xs" mb={1}>
+                          Level
+                        </FormLabel>
+                        <Input
+                          type="number"
+                          min={1}
+                          step={1}
+                          size="sm"
+                          value={skillLevel}
+                          isDisabled={!selectedSkill}
+                          onChange={(event) => updateSkillLevel(skill.id, event.target.value)}
+                        />
+                      </FormControl>
+                    </Flex>
+                  </Box>
+                );
+              })}
+            </SimpleGrid>
+          ) : (
+            <Box
+              p={4}
+              borderRadius="16px"
+              border="1px dashed rgba(43, 66, 47, 0.18)"
+              bg="rgba(255,255,255,0.68)"
+            >
+              <Text color="#6d7b71" fontSize="sm">
+                Create skills in Pokemon Skills before assigning them.
+              </Text>
+            </Box>
+          )}
+        </Box>
 
         <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
           {imageFields.map((field) => (
