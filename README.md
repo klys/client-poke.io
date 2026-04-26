@@ -199,3 +199,7 @@ npm install
 - Clean up unused context actions and legacy comments
 - Document the backend event contract in a dedicated spec
 - Add screenshots or a short gameplay preview
+
+# Contact developer
+
+junior.jimenez@klys.dev
