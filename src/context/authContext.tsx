@@ -103,7 +103,8 @@ const getSharedAuthSocket = (socketUrl: string) => {
   }
 
   sharedAuthSocket = io(socketUrl, {
-    autoConnect: false
+    autoConnect: false,
+    transports: ["websocket"]
   });
   sharedAuthSocketUrl = socketUrl;
 
