@@ -4,7 +4,7 @@ import { createAppRouter, type RuntimeConfig } from './endpoint';
 import { AuthProvider } from './context/authContext';
 
 const DEFAULT_CONFIG: RuntimeConfig = {
-  backendUrl: 'http://localhost:3001/'
+  backendUrl: 'https://pokecraft-staging-0.klys.dev'
 }
 
 function App() {
