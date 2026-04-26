@@ -31,7 +31,7 @@ jobs:
       - name: Deploy to pokecraft_frontend
         uses: peaceiris/actions-gh-pages@v3
         with:
-          personal_token: ${{ secrets.DEPLOY_TOKEN }}
+          deploy_key: ${{ secrets.DEPLOY_TOKEN }}
           external_repository: klys/pokecraft_frontend
           publish_branch: master # Change to 'master' if the target repository uses master as its default branch
           publish_dir: ./build
