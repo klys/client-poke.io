@@ -7,12 +7,25 @@ const MOVEMENT_KEYS = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
 
 const isMovementKey = (key:string) => MOVEMENT_KEYS.includes(key);
 
+const isUxEventTarget = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return false;
+    const tagName = target.tagName.toLowerCase();
+
+    return Boolean(
+        target.closest('[data-game-ux="true"]') ||
+        tagName === "input" ||
+        tagName === "textarea" ||
+        tagName === "select" ||
+        target.isContentEditable
+    );
+};
+
 const UserControl = () => {
     //const [mouse, setMouse] = useState({x:-1,y:-1})
     
     //npconst map = useRef<>
 
-    const { socket,players,playersIds, mouse, pointerAngle, waiting, myplayer } = useContext(AppContext);
+    const { socket, players, mouse, waiting, myplayer } = useContext(AppContext);
 
     // const mapRef = document.getElementById('map');
     // // MOVE THE MOUSE OVER THE GAME
@@ -33,12 +46,10 @@ const UserControl = () => {
     // CLICK OVER THE GAME
     const clickOverMap = (event:MouseEvent) => {
         if (waiting) return;
+        if (isUxEventTarget(event.target)) return;
         const map = document.getElementById("map");
         const target = event.target as Node | null;
         if (map == null || target == null || !map.contains(target)) return;
-        let rect = map.getBoundingClientRect();
-        let x = Math.round(event.clientX - rect.left); //x position within the element.
-        let y = Math.round(event.clientY - rect.top);  //y position within the element.
         //console.log("CLICK!! Left? : " + x + " ; Top? : " + y + ".");
         
         socket.emit("move", { x: mouse.x, y: mouse.y })
@@ -47,7 +58,8 @@ const UserControl = () => {
 
     const keyUpEvent = (event:KeyboardEvent) => {
         if (waiting) return;
-        if (event.key == "q" || isMovementKey(event.key)) {
+        if (isUxEventTarget(event.target)) return;
+        if (event.key === "q" || isMovementKey(event.key)) {
             event.preventDefault()
         }
         console.log("players", players)
@@ -60,7 +72,7 @@ const UserControl = () => {
             }
         } */
         //const myId = players.findIndex((player:any) => player.playerId == socket.id)[0];
-        if ((event.key == "q")) {
+        if ((event.key === "q")) {
             
             console.log("Pressing Q")
             //const myId = playersIds[socket.id];
@@ -82,16 +94,16 @@ const UserControl = () => {
         /* if (typeof myId == 'undefined') return;
         console.log("my_player",players[myId])
         const moveSlot = 32;
-        if ((event.key == "ArrowUp")) {
+        if ((event.key === "ArrowUp")) {
             socket.emit("move", { x: players[myId].x , y: players[myId].y-moveSlot })
         }
-        if ((event.key == "ArrowDown")) {
+        if ((event.key === "ArrowDown")) {
             socket.emit("move", { x: players[myId].x, y: players[myId].y+moveSlot })
         }
-        if ((event.key == "ArrowLeft")) {
+        if ((event.key === "ArrowLeft")) {
             socket.emit("move", { x: players[myId].x-moveSlot, y: players[myId].y })
         }
-        if ((event.key == "ArrowRight")) {
+        if ((event.key === "ArrowRight")) {
             socket.emit("move", { x: players[myId].x+moveSlot, y: players[myId].y })
         } */
     }
@@ -99,6 +111,7 @@ const UserControl = () => {
 
     const keyDownEvent = (event:KeyboardEvent) => {
         if (waiting) return;
+        if (isUxEventTarget(event.target)) return;
         if (!isMovementKey(event.key)) return;
         event.preventDefault()
         console.log("players", players)
@@ -110,19 +123,19 @@ const UserControl = () => {
                 break;
             }
         }
-        if (typeof myId == 'undefined') return;
+        if (typeof myId === 'undefined') return;
         console.log("my_player",players[myId])
         const moveSlot = 16;
-        if ((event.key == "ArrowUp")) {
+        if ((event.key === "ArrowUp")) {
             socket.emit("move", { x: players[myId].x , y: players[myId].y-moveSlot })
         }
-        if ((event.key == "ArrowDown")) {
+        if ((event.key === "ArrowDown")) {
             socket.emit("move", { x: players[myId].x, y: players[myId].y+moveSlot })
         }
-        if ((event.key == "ArrowLeft")) {
+        if ((event.key === "ArrowLeft")) {
             socket.emit("move", { x: players[myId].x-moveSlot, y: players[myId].y })
         }
-        if ((event.key == "ArrowRight")) {
+        if ((event.key === "ArrowRight")) {
             socket.emit("move", { x: players[myId].x+moveSlot, y: players[myId].y })
         }
     }

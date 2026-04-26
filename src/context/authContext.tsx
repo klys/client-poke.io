@@ -9,6 +9,28 @@ export type AuthUser = {
   username: string
   email: string
   emailVerified: boolean
+  profileImage: string
+  description: string
+  inventory: InventoryItem[]
+  pokemonParty: PokemonSummary[]
+}
+
+export type InventoryItem = {
+  id: string
+  name: string
+  category: 'usable' | 'berries' | 'moves' | 'quest'
+  quantity: number
+  description: string
+}
+
+export type PokemonSummary = {
+  id: string
+  name: string
+  level: number
+  types: string[]
+  hp: number
+  maxHp: number
+  moves: string[]
 }
 
 type AuthSessionPayload = {
@@ -50,6 +72,16 @@ type VerifyEmailPayload = {
   token: string
 }
 
+type ChangePasswordPayload = {
+  currentPassword: string
+  newPassword: string
+}
+
+type UpdateProfilePayload = {
+  profileImage?: string
+  description?: string
+}
+
 type AuthContextValue = {
   socket: Socket | null
   authReady: boolean
@@ -65,6 +97,8 @@ type AuthContextValue = {
   resetPassword: (payload: ResetPasswordPayload) => void
   recoverUsername: (payload: RecoverUsernamePayload) => void
   verifyEmail: (payload: VerifyEmailPayload) => void
+  changePassword: (payload: ChangePasswordPayload) => void
+  updateProfile: (payload: UpdateProfilePayload) => void
   requestEmailValidation: () => void
   logout: () => void
 }
@@ -293,6 +327,8 @@ export const AuthProvider = (
     register: (payload) => emitAuthEvent('auth:register', payload),
     recoverPassword: (payload) => emitAuthEvent('auth:recover-password', payload),
     resetPassword: (payload) => emitAuthEvent('auth:reset-password', payload),
+    changePassword: (payload) => emitAuthEvent('auth:change-password', payload),
+    updateProfile: (payload) => emitAuthEvent('auth:update-profile', payload),
     recoverUsername: (payload) => emitAuthEvent('auth:recover-username', payload),
     verifyEmail: (payload) => emitAuthEvent('auth:verify-email', payload),
     requestEmailValidation: () => emitAuthEvent('auth:request-email-validation'),
