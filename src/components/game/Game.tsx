@@ -3,6 +3,7 @@ import { Provider } from "../../context/appContext";
 import Players from "./Players"
 import Network from "./Network";
 import PortalRuntime from "./PortalRuntime";
+import PlayerBoundaryGuard from "./PlayerBoundaryGuard";
 import UserControl from "./UserControl"
 import Map from "./Map"
 import Missiles from "./Missiles";
@@ -20,6 +21,7 @@ const Game = ({ socketUrl }:{ socketUrl:string }) => {
   
             <Network />
             <PortalRuntime />
+            <PlayerBoundaryGuard />
             <UserControl />
             <Map>
             </Map>
