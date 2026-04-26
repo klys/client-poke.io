@@ -6,16 +6,20 @@ import PortalRuntime from "./PortalRuntime";
 import PlayerBoundaryGuard from "./PlayerBoundaryGuard";
 import UserControl from "./UserControl"
 import Map from "./Map"
-import Missiles from "./Missiles";
-// import Debug from "../Debug"
-// import Mouse from "./Mouse";
-import LifeBar from "../ux/game/lifeBar";
-import DeathMessage from "../ux/game/DeathMessage"
 import AccountMenu from "../ux/auth/AccountMenu";
 
 
 const Game = ({ socketUrl }:{ socketUrl:string }) => {
-    return (<>
+    return (
+        <div
+            style={{
+                position: "relative",
+                minWidth: "100vw",
+                minHeight: "100vh",
+                background: "#000",
+                overflow: "visible",
+            }}
+        >
         <Provider socketUrl={socketUrl}>
             <AccountMenu />
   
@@ -28,7 +32,8 @@ const Game = ({ socketUrl }:{ socketUrl:string }) => {
             <Players />
                         
         </Provider>
-    </>)
+        </div>
+    )
 }
 
 export default Game;

@@ -46,8 +46,14 @@ const Map = ({children}:{children:any}) => {
             ref ={mapRef}
             style={{
                 position: "relative",
+                display: "block",
+                flex: "0 0 auto",
                 height:`${mapPixelHeight}px`,
                 width:`${mapPixelWidth}px`,
+                minHeight: `${mapPixelHeight}px`,
+                maxHeight: `${mapPixelHeight}px`,
+                minWidth: `${mapPixelWidth}px`,
+                maxWidth: `${mapPixelWidth}px`,
                 ...backgroundStyle,
             }}
         >
