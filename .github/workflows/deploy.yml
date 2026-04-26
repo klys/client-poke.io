@@ -1,0 +1,38 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18' # Adjust to match your project's target Node version
+          cache: 'npm'
+
+      - name: Overwrite config.json
+        run: echo '${{ secrets.CONFIG_ENV }}' > public/config.json
+
+      - name: Install dependencies
+        run: npm ci # If you use Yarn, change this to: yarn install --frozen-lockfile
+
+      - name: Build the app
+        run: npm run build # If you use Yarn, change this to: yarn build
+
+      - name: Deploy to pokecraft_frontend
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          personal_token: ${{ secrets.DEPLOY_TOKEN }}
+          external_repository: klys/pokecraft_frontend
+          publish_branch: master # Change to 'master' if the target repository uses master as its default branch
+          publish_dir: ./build
+          keep_files: false # Ensures the entire content is overwritten
