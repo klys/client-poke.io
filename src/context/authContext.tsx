@@ -11,6 +11,7 @@ export type AuthUser = {
   emailVerified: boolean
   profileImage: string
   description: string
+  trainerGender: string
   inventory: InventoryItem[]
   pokemonParty: PokemonSummary[]
 }
@@ -25,12 +26,16 @@ export type InventoryItem = {
 
 export type PokemonSummary = {
   id: string
+  sourcePokemonId?: string
   name: string
   level: number
   types: string[]
   hp: number
   maxHp: number
   moves: string[]
+  experience: number
+  experienceCurve: 'fast' | 'medium' | 'slow'
+  nextLevelExperience: number
 }
 
 type AuthSessionPayload = {
@@ -82,6 +87,11 @@ type UpdateProfilePayload = {
   description?: string
 }
 
+type ChooseStarterPayload = {
+  gender: string
+  pokemonId: string
+}
+
 type AuthContextValue = {
   socket: Socket | null
   authReady: boolean
@@ -99,6 +109,7 @@ type AuthContextValue = {
   verifyEmail: (payload: VerifyEmailPayload) => void
   changePassword: (payload: ChangePasswordPayload) => void
   updateProfile: (payload: UpdateProfilePayload) => void
+  chooseStarter: (payload: ChooseStarterPayload) => void
   requestEmailValidation: () => void
   logout: () => void
 }
@@ -329,6 +340,7 @@ export const AuthProvider = (
     resetPassword: (payload) => emitAuthEvent('auth:reset-password', payload),
     changePassword: (payload) => emitAuthEvent('auth:change-password', payload),
     updateProfile: (payload) => emitAuthEvent('auth:update-profile', payload),
+    chooseStarter: (payload) => emitAuthEvent('auth:choose-starter', payload),
     recoverUsername: (payload) => emitAuthEvent('auth:recover-username', payload),
     verifyEmail: (payload) => emitAuthEvent('auth:verify-email', payload),
     requestEmailValidation: () => emitAuthEvent('auth:request-email-validation'),

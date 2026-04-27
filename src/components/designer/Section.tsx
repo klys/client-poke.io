@@ -219,6 +219,7 @@ interface PokemonFormState {
   specialAttack: string;
   specialDefense: string;
   speed: string;
+  isInitialPokemon: boolean;
   elements: string[];
   skills: PokemonSkillFormEntry[];
   frontImageSrc: string;
@@ -363,6 +364,7 @@ function normalizeBackgroundColor(value: string) {
 function createDefaultPokemonFormState(): PokemonFormState {
   return {
     ...DEFAULT_POKEMON_STATS,
+    isInitialPokemon: false,
     elements: [POKEMON_ELEMENTS[0]],
     skills: [],
     frontImageSrc: "",
@@ -671,6 +673,10 @@ function sanitizePokemonProfile(
       typeof candidate?.speed === "number" && Number.isFinite(candidate.speed) && candidate.speed > 0
         ? Math.round(candidate.speed)
         : parsePokemonDetailNumber(fallbackItem?.details ?? [], "Speed", 1),
+    isInitialPokemon:
+      typeof candidate?.isInitialPokemon === "boolean"
+        ? candidate.isInitialPokemon
+        : fallbackItem?.details.find((item) => item.label === "Initial Pokemon")?.value === "Yes",
     elements: elements.length > 0 ? elements : [POKEMON_ELEMENTS[0]],
     skills: sanitizePokemonSkillAssignments(candidate?.skills),
     frontImageSrc: typeof candidate?.frontImageSrc === "string" ? candidate.frontImageSrc : "",
@@ -1931,6 +1937,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             specialAttack: String(pokemonProfile.specialAttack),
             specialDefense: String(pokemonProfile.specialDefense),
             speed: String(pokemonProfile.speed),
+            isInitialPokemon: pokemonProfile.isInitialPokemon,
             elements: pokemonProfile.elements,
             skills: pokemonProfile.skills.map((skill) => ({
               skillId: skill.skillId,
@@ -2338,6 +2345,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       specialAttack: parsedStats.specialAttack ?? 1,
       specialDefense: parsedStats.specialDefense ?? 1,
       speed: parsedStats.speed ?? 1,
+      isInitialPokemon: formState.isInitialPokemon,
       elements: formState.elements,
       skills,
       frontImageSrc: formState.frontImageSrc,
@@ -3316,6 +3324,24 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               Select at least one element.
             </Text>
           ) : null}
+        </Box>
+
+        <Box
+          p={4}
+          borderRadius="16px"
+          border="1px solid rgba(43, 66, 47, 0.12)"
+          bg="rgba(255,255,255,0.68)"
+        >
+          <Checkbox
+            colorScheme="green"
+            isChecked={formState.isInitialPokemon}
+            onChange={(event) => updateField("isInitialPokemon", event.target.checked)}
+          >
+            Initial Pokemon
+          </Checkbox>
+          <Text mt={1} fontSize="sm" color="#6d7b71">
+            Can be selected by new trainers as their first Pokemon.
+          </Text>
         </Box>
 
         <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>

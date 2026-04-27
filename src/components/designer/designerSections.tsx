@@ -69,6 +69,7 @@ export interface DesignerPokemonProfile {
   specialAttack: number;
   specialDefense: number;
   speed: number;
+  isInitialPokemon: boolean;
   elements: string[];
   skills: DesignerPokemonSkillAssignment[];
   frontImageSrc: string;
@@ -738,6 +739,7 @@ export const designerSections: DesignerSectionDefinition[] = [
       detail("Special Attack", pokemonDetailValue(options, "specialAttack", 1)),
       detail("Special Defense", pokemonDetailValue(options, "specialDefense", 1)),
       detail("Speed", pokemonDetailValue(options, "speed", 1)),
+      detail("Initial Pokemon", options?.pokemonProfile?.isInitialPokemon ? "Yes" : "No"),
       detail(
         "Skills",
         options?.pokemonProfile?.skills.length
