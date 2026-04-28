@@ -15,6 +15,7 @@ export type AuthUser = {
   money: number
   inventory: InventoryItem[]
   pokemonParty: PokemonSummary[]
+  battleHistory: BattleHistoryEntry[]
 }
 
 export type InventoryItem = {
@@ -38,6 +39,19 @@ export type PokemonSummary = {
   experience: number
   experienceCurve: 'fast' | 'medium' | 'slow'
   nextLevelExperience: number
+}
+
+export type BattleHistoryEntry = {
+  id: string
+  battleId: string
+  kind: 'wild' | 'trainer'
+  opponentName: string
+  winnerName: string | null
+  loserName: string | null
+  result: string
+  startedAt: string
+  endedAt: string
+  log: string[]
 }
 
 type AuthSessionPayload = {

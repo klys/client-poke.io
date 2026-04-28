@@ -157,14 +157,14 @@ const Network = () => {
                 battleClearTimerRef.current = window.setTimeout(() => {
                     clearBattleRef.current();
                     battleClearTimerRef.current = null;
-                }, 2400);
+                }, 12000);
             }
         };
 
         const handleBattleEnded = () => {
             window.setTimeout(() => {
                 clearBattleRef.current();
-            }, 2400);
+            }, 12000);
         };
 
         const handleBattleError = (data:any) => {

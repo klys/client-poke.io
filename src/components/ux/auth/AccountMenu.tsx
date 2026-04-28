@@ -28,9 +28,9 @@ import {
   useToast
 } from '@chakra-ui/react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useAuth, type InventoryItem, type PokemonSummary } from '../../../context/authContext';
+import { useAuth, type BattleHistoryEntry, type InventoryItem, type PokemonSummary } from '../../../context/authContext';
 
-type WindowKey = 'account' | 'settings' | 'bag' | 'pokemons' | 'trainerCard';
+type WindowKey = 'account' | 'settings' | 'bag' | 'pokemons' | 'trainerCard' | 'battleHistory';
 
 type WindowPosition = {
   x: number;
@@ -52,7 +52,8 @@ const WINDOW_TITLES: Record<WindowKey, string> = {
   settings: 'Settings',
   bag: 'Bag',
   pokemons: 'Pokemons',
-  trainerCard: 'Trainer Card'
+  trainerCard: 'Trainer Card',
+  battleHistory: 'Battle History'
 };
 
 const DEFAULT_POSITIONS: Record<WindowKey, WindowPosition> = {
@@ -60,7 +61,8 @@ const DEFAULT_POSITIONS: Record<WindowKey, WindowPosition> = {
   settings: { x: 96, y: 132 },
   bag: { x: 132, y: 84 },
   pokemons: { x: 168, y: 120 },
-  trainerCard: { x: 210, y: 156 }
+  trainerCard: { x: 210, y: 156 },
+  battleHistory: { x: 246, y: 192 }
 };
 
 const WINDOW_POSITIONS_KEY = 'client-poke.io.ux.windowPositions';
@@ -345,7 +347,7 @@ function BagWindow() {
   );
 }
 
-function TrainerCardWindow() {
+function TrainerCardWindow({ openBattleHistory }: { openBattleHistory: () => void }) {
   const { user } = useAuth();
 
   return (
@@ -361,7 +363,58 @@ function TrainerCardWindow() {
       <Divider my={4} borderColor="whiteAlpha.400" />
       <Text fontWeight="800" color="yellow.100">${user?.money ?? 0}</Text>
       <Text minH="24px">{user?.description || 'No description set.'}</Text>
+      <Button mt={4} width="100%" colorScheme="teal" onClick={openBattleHistory}>
+        Battle History
+      </Button>
     </Box>
+  );
+}
+
+function BattleHistoryCard({ entry }: { entry: BattleHistoryEntry }) {
+  const endedAt = entry.endedAt ? new Date(entry.endedAt) : null;
+
+  return (
+    <Box bg="whiteAlpha.100" border="1px solid rgba(255,255,255,0.12)" p={3} borderRadius="8px">
+      <HStack justify="space-between" align="start">
+        <Box minW={0}>
+          <Text fontWeight="800" noOfLines={1}>{entry.result}</Text>
+          <Text color="gray.300" fontSize="sm" noOfLines={1}>Opponent: {entry.opponentName}</Text>
+        </Box>
+        <Badge colorScheme={entry.kind === 'trainer' ? 'red' : 'green'}>{entry.kind}</Badge>
+      </HStack>
+      <SimpleGrid mt={3} columns={2} spacing={2}>
+        <Box>
+          <Text fontSize="xs" color="gray.400">Winner</Text>
+          <Text fontSize="sm">{entry.winnerName ?? 'No winner'}</Text>
+        </Box>
+        <Box>
+          <Text fontSize="xs" color="gray.400">Loser</Text>
+          <Text fontSize="sm">{entry.loserName ?? 'No loser'}</Text>
+        </Box>
+      </SimpleGrid>
+      <Text mt={3} fontSize="xs" color="gray.400">
+        {endedAt ? endedAt.toLocaleString() : 'Unknown date'}
+      </Text>
+      <Box mt={3} maxH="150px" overflowY="auto" bg="blackAlpha.300" borderRadius="6px" p={2}>
+        {entry.log.slice(-15).map((line, index) => (
+          <Text key={`${entry.id}-${index}`} fontSize="xs" color="gray.200">
+            {line}
+          </Text>
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
+function BattleHistoryWindow() {
+  const { user } = useAuth();
+  const history = user?.battleHistory ?? [];
+
+  return (
+    <VStack align="stretch" spacing={3}>
+      {history.map((entry) => <BattleHistoryCard key={entry.id} entry={entry} />)}
+      {history.length === 0 ? <Text color="gray.400">No battles recorded yet.</Text> : null}
+    </VStack>
   );
 }
 
@@ -463,7 +516,11 @@ const AccountMenu = () => {
       return <PokemonsWindow />;
     }
 
-    return <TrainerCardWindow />;
+    if (windowKey === 'battleHistory') {
+      return <BattleHistoryWindow />;
+    }
+
+    return <TrainerCardWindow openBattleHistory={() => openWindow('battleHistory')} />;
   };
 
   return (
@@ -493,6 +550,7 @@ const AccountMenu = () => {
           <MenuItem onClick={() => openWindow('bag')}>Bag</MenuItem>
           <MenuItem onClick={() => openWindow('pokemons')}>Pokemons</MenuItem>
           <MenuItem onClick={() => openWindow('trainerCard')}>Trainer Card</MenuItem>
+          <MenuItem onClick={() => openWindow('battleHistory')}>Battle History</MenuItem>
           <MenuItem color="red.500" onClick={logout}>Log out</MenuItem>
         </MenuList>
       </Menu>

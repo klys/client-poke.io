@@ -47,6 +47,17 @@ export type BattlePublicSide = {
   party: BattlePublicPokemon[];
 };
 
+export type BattlePublicSummary = {
+  battleId: string;
+  kind: "wild" | "trainer";
+  winnerName: string | null;
+  loserName: string | null;
+  result: string;
+  startedAt: string;
+  endedAt: string | null;
+  log: string[];
+};
+
 export type BattlePublicState = {
   id: string;
   kind: "wild" | "trainer";
@@ -61,6 +72,7 @@ export type BattlePublicState = {
   turnEndsAt: string | null;
   log: string[];
   result: string | null;
+  summary: BattlePublicSummary | null;
 };
 
 export type BattlePrompt = {
