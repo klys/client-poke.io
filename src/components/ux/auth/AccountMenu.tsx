@@ -359,6 +359,7 @@ function TrainerCardWindow() {
         </Box>
       </HStack>
       <Divider my={4} borderColor="whiteAlpha.400" />
+      <Text fontWeight="800" color="yellow.100">${user?.money ?? 0}</Text>
       <Text minH="24px">{user?.description || 'No description set.'}</Text>
     </Box>
   );
@@ -377,7 +378,11 @@ function PokemonCard({ pokemon }: { pokemon: PokemonSummary }) {
       <Text mt={3} fontSize="sm">HP {pokemon.hp}/{pokemon.maxHp}</Text>
       <Progress value={(pokemon.hp / pokemon.maxHp) * 100} colorScheme="green" size="sm" borderRadius="8px" />
       <Text mt={3} fontSize="xs" color="gray.400">Moves</Text>
-      <Text fontSize="sm">{pokemon.moves.join(', ') || 'No moves learned.'}</Text>
+      <Text fontSize="sm">
+        {pokemon.moves
+          .map((move) => typeof pokemon.movePp?.[move] === 'number' ? `${move} (${pokemon.movePp[move]} PP)` : move)
+          .join(', ') || 'No moves learned.'}
+      </Text>
     </Box>
   );
 }

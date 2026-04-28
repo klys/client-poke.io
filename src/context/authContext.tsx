@@ -12,6 +12,7 @@ export type AuthUser = {
   profileImage: string
   description: string
   trainerGender: string
+  money: number
   inventory: InventoryItem[]
   pokemonParty: PokemonSummary[]
 }
@@ -33,6 +34,7 @@ export type PokemonSummary = {
   hp: number
   maxHp: number
   moves: string[]
+  movePp?: Record<string, number>
   experience: number
   experienceCurve: 'fast' | 'medium' | 'slow'
   nextLevelExperience: number
@@ -43,6 +45,8 @@ type AuthSessionPayload = {
   user: AuthUser | null
   token?: string
 }
+
+export const AUTH_SESSION_SYNC_EVENT = 'client-poke.io.auth-session';
 
 type AuthMessagePayload = {
   message: string
@@ -324,6 +328,31 @@ export const AuthProvider = (
       socket.disconnect();
     };
   }, [clearMessages, socketUrl, syncToken, toast]);
+
+  useEffect(() => {
+    const handleSessionSync = (event: Event) => {
+      const payload = (event as CustomEvent<AuthSessionPayload>).detail;
+
+      if (!payload || typeof payload.authenticated !== 'boolean') {
+        return;
+      }
+
+      setAuthReady(true);
+      setAuthenticated(payload.authenticated);
+      setUser(payload.user);
+      clearMessages();
+
+      if (payload.token) {
+        syncToken(payload.token);
+      }
+    };
+
+    window.addEventListener(AUTH_SESSION_SYNC_EVENT, handleSessionSync);
+
+    return () => {
+      window.removeEventListener(AUTH_SESSION_SYNC_EVENT, handleSessionSync);
+    };
+  }, [clearMessages, syncToken]);
 
   const value = useMemo<AuthContextValue>(() => ({
     socket: socketRef.current,

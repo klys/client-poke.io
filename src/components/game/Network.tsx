@@ -1,5 +1,7 @@
 import { useContext, useEffect, useRef } from "react";
+import { useToast } from "@chakra-ui/react";
 import { AppContext } from "../../context/appContext"
+import { AUTH_SESSION_SYNC_EVENT } from "../../context/authContext";
 import {
     getPlayableMapsCacheVersion,
     persistPlayableMapsSyncPayload,
@@ -18,6 +20,7 @@ function getStoredAuthToken() {
 }
 
 const Network = () => {
+    const toast = useToast();
     const {
         socket,
         addPlayer,
@@ -28,6 +31,10 @@ const Network = () => {
         setMyPlayer,
         playableMapsState,
         setPlayableMapsState,
+        setBattle,
+        clearBattle,
+        addBattlePrompt,
+        removeBattlePrompt,
     } = useContext(AppContext);
     const addPlayerRef = useRef(addPlayer);
     const removePlayerRef = useRef(removePlayer);
@@ -37,6 +44,11 @@ const Network = () => {
     const setMyPlayerRef = useRef(setMyPlayer);
     const playableMapsStateRef = useRef(playableMapsState);
     const setPlayableMapsStateRef = useRef(setPlayableMapsState);
+    const setBattleRef = useRef(setBattle);
+    const clearBattleRef = useRef(clearBattle);
+    const addBattlePromptRef = useRef(addBattlePrompt);
+    const removeBattlePromptRef = useRef(removeBattlePrompt);
+    const battleClearTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
         addPlayerRef.current = addPlayer;
@@ -47,6 +59,10 @@ const Network = () => {
         setMyPlayerRef.current = setMyPlayer;
         playableMapsStateRef.current = playableMapsState;
         setPlayableMapsStateRef.current = setPlayableMapsState;
+        setBattleRef.current = setBattle;
+        clearBattleRef.current = clearBattle;
+        addBattlePromptRef.current = addBattlePrompt;
+        removeBattlePromptRef.current = removeBattlePrompt;
     }, [
         addPlayer,
         removePlayer,
@@ -56,6 +72,10 @@ const Network = () => {
         setMyPlayer,
         playableMapsState,
         setPlayableMapsState,
+        setBattle,
+        clearBattle,
+        addBattlePrompt,
+        removeBattlePrompt,
     ]);
 
     useEffect(() => {
@@ -125,6 +145,83 @@ const Network = () => {
             });
         };
 
+        const handleBattleState = (data:any) => {
+            if (battleClearTimerRef.current !== null) {
+                window.clearTimeout(battleClearTimerRef.current);
+                battleClearTimerRef.current = null;
+            }
+
+            setBattleRef.current(data);
+
+            if (data?.status === "ended") {
+                battleClearTimerRef.current = window.setTimeout(() => {
+                    clearBattleRef.current();
+                    battleClearTimerRef.current = null;
+                }, 2400);
+            }
+        };
+
+        const handleBattleEnded = () => {
+            window.setTimeout(() => {
+                clearBattleRef.current();
+            }, 2400);
+        };
+
+        const handleBattleError = (data:any) => {
+            toast({
+                title: data?.message ?? "Battle action failed.",
+                status: "warning",
+                duration: 3000,
+                isClosable: true,
+                position: "top"
+            });
+        };
+
+        const handleChallengeReceived = (data:any) => {
+            addBattlePromptRef.current({
+                id: data.challengeId,
+                type: "battle",
+                fromPlayerId: data.fromPlayerId,
+                fromUsername: data.fromUsername
+            });
+        };
+
+        const handleTradeReceived = (data:any) => {
+            addBattlePromptRef.current({
+                id: data.requestId,
+                type: "trade",
+                fromPlayerId: data.fromPlayerId,
+                fromUsername: data.fromUsername
+            });
+        };
+
+        const handleChallengeClosed = (data:any) => {
+            if (data?.challengeId) {
+                removeBattlePromptRef.current(data.challengeId);
+            }
+        };
+
+        const handleTradeClosed = (data:any) => {
+            if (data?.requestId) {
+                removeBattlePromptRef.current(data.requestId);
+            }
+        };
+
+        const handleTradeAccepted = () => {
+            toast({
+                title: "Trade accepted.",
+                description: "The trading interface will be added later.",
+                status: "info",
+                duration: 3000,
+                isClosable: true,
+                position: "top"
+            });
+        };
+
+        const handleAuthSession = (data:any) => {
+            window.dispatchEvent(new CustomEvent(AUTH_SESSION_SYNC_EVENT, { detail: data }));
+        };
+
         if (socket.connected) {
             joinGame();
         }
@@ -138,6 +235,17 @@ const Network = () => {
         socket.on("addObject", handleAddObject)
         socket.on("playableMaps:state", handlePlayableMapsState)
         socket.on("playableMaps:version", handlePlayableMapsVersion)
+        socket.on("battle:state", handleBattleState)
+        socket.on("battle:ended", handleBattleEnded)
+        socket.on("battle:error", handleBattleError)
+        socket.on("battle:challenge-received", handleChallengeReceived)
+        socket.on("battle:challenge-declined", handleChallengeClosed)
+        socket.on("battle:challenge-expired", handleChallengeClosed)
+        socket.on("battle:trade-request-received", handleTradeReceived)
+        socket.on("battle:trade-accepted", handleTradeAccepted)
+        socket.on("battle:trade-declined", handleTradeClosed)
+        socket.on("battle:trade-expired", handleTradeClosed)
+        socket.on("auth:session", handleAuthSession)
 
         return () => {
             socket.off("connect", joinGame)
@@ -149,8 +257,23 @@ const Network = () => {
             socket.off("addObject", handleAddObject)
             socket.off("playableMaps:state", handlePlayableMapsState)
             socket.off("playableMaps:version", handlePlayableMapsVersion)
+            socket.off("battle:state", handleBattleState)
+            socket.off("battle:ended", handleBattleEnded)
+            socket.off("battle:error", handleBattleError)
+            socket.off("battle:challenge-received", handleChallengeReceived)
+            socket.off("battle:challenge-declined", handleChallengeClosed)
+            socket.off("battle:challenge-expired", handleChallengeClosed)
+            socket.off("battle:trade-request-received", handleTradeReceived)
+            socket.off("battle:trade-accepted", handleTradeAccepted)
+            socket.off("battle:trade-declined", handleTradeClosed)
+            socket.off("battle:trade-expired", handleTradeClosed)
+            socket.off("auth:session", handleAuthSession)
+            if (battleClearTimerRef.current !== null) {
+                window.clearTimeout(battleClearTimerRef.current);
+                battleClearTimerRef.current = null;
+            }
         }
-    }, [socket])
+    }, [socket, toast])
 
 
     return (<></>)

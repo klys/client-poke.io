@@ -32,7 +32,12 @@ function overlaps(first: Bounds, second: Bounds) {
 }
 
 function isPlayerBlocked(player: ActivePlayer, activeMap: PlayableMapRuntimeEntry) {
-  if (typeof player.x !== "number" || typeof player.y !== "number") {
+  if (
+    typeof player.x !== "number" ||
+    !Number.isFinite(player.x) ||
+    typeof player.y !== "number" ||
+    !Number.isFinite(player.y)
+  ) {
     return true;
   }
 
@@ -56,16 +61,73 @@ function isPlayerBlocked(player: ActivePlayer, activeMap: PlayableMapRuntimeEntr
 }
 
 function isPlayerOutsideMap(player: ActivePlayer, activeMap: PlayableMapRuntimeEntry) {
-  if (typeof player.x !== "number" || typeof player.y !== "number") {
+  if (
+    typeof player.x !== "number" ||
+    !Number.isFinite(player.x) ||
+    typeof player.y !== "number" ||
+    !Number.isFinite(player.y)
+  ) {
     return true;
   }
 
+  const position = clampPlayerToMap(player.x, player.y, activeMap);
+
+  return player.x !== position.x || player.y !== position.y;
+}
+
+function clampPlayerToMap(x: number, y: number, activeMap: PlayableMapRuntimeEntry) {
   const mapPixelWidth = activeMap.config.width * activeMap.config.cellSize;
   const mapPixelHeight = activeMap.config.height * activeMap.config.cellSize;
   const maxX = Math.max(0, mapPixelWidth - PLAYER_SIZE);
   const maxY = Math.max(0, mapPixelHeight - PLAYER_SIZE);
 
-  return player.x < 0 || player.y < 0 || player.x > maxX || player.y > maxY;
+  const safeX = Number.isFinite(x) ? x : 0;
+  const safeY = Number.isFinite(y) ? y : 0;
+
+  return {
+    x: Math.max(0, Math.min(Math.round(safeX), maxX)),
+    y: Math.max(0, Math.min(Math.round(safeY), maxY)),
+  };
+}
+
+function resolveValidPlayerPosition(player: ActivePlayer, activeMap: PlayableMapRuntimeEntry) {
+  const requestedX =
+    typeof player.x === "number" && Number.isFinite(player.x) ? player.x : 0;
+  const requestedY =
+    typeof player.y === "number" && Number.isFinite(player.y) ? player.y : 0;
+  const clampedPosition = clampPlayerToMap(requestedX, requestedY, activeMap);
+
+  if (!isPlayerBlocked({ ...player, ...clampedPosition }, activeMap)) {
+    return clampedPosition;
+  }
+
+  const stepSize = PLAYER_SIZE;
+  const mapPixelWidth = activeMap.config.width * activeMap.config.cellSize;
+  const mapPixelHeight = activeMap.config.height * activeMap.config.cellSize;
+  const maxX = Math.max(0, mapPixelWidth - PLAYER_SIZE);
+  const maxY = Math.max(0, mapPixelHeight - PLAYER_SIZE);
+  const maxRadius = Math.ceil(Math.max(maxX, maxY) / stepSize);
+
+  for (let radius = 1; radius <= maxRadius; radius += 1) {
+    for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
+      for (let offsetY = -radius; offsetY <= radius; offsetY += 1) {
+        if (Math.max(Math.abs(offsetX), Math.abs(offsetY)) !== radius) {
+          continue;
+        }
+
+        const candidate = {
+          x: Math.max(0, Math.min(clampedPosition.x + offsetX * stepSize, maxX)),
+          y: Math.max(0, Math.min(clampedPosition.y + offsetY * stepSize, maxY)),
+        };
+
+        if (!isPlayerBlocked({ ...player, ...candidate }, activeMap)) {
+          return candidate;
+        }
+      }
+    }
+  }
+
+  return clampedPosition;
 }
 
 const PlayerBoundaryGuard = () => {
@@ -95,9 +157,8 @@ const PlayerBoundaryGuard = () => {
       return;
     }
 
-    const requestedX = typeof currentPlayer.x === "number" ? currentPlayer.x : 0;
-    const requestedY = typeof currentPlayer.y === "number" ? currentPlayer.y : 0;
-    const requestKey = `${activeMap.item.id}:${requestedX}:${requestedY}`;
+    const nextPosition = resolveValidPlayerPosition(currentPlayer, activeMap);
+    const requestKey = `${activeMap.item.id}:${nextPosition.x}:${nextPosition.y}`;
 
     if (lastRelocationRequestRef.current === requestKey) {
       return;
@@ -106,8 +167,8 @@ const PlayerBoundaryGuard = () => {
     lastRelocationRequestRef.current = requestKey;
     socket.emit("player:teleport", {
       mapId: activeMap.item.id,
-      x: requestedX,
-      y: requestedY,
+      x: nextPosition.x,
+      y: nextPosition.y,
     });
   }, [activeMap, currentPlayer, socket]);
 

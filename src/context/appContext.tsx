@@ -2,6 +2,7 @@ import { createContext, useReducer, useState } from "react"
 import io, { Socket } from "socket.io-client"
 import Player from "../components/game/Player"
 import { loadPlayableMapsSnapshot } from "../components/game/playableMapRuntime"
+import type { BattlePrompt, BattlePublicState, TrainerCardPlayer } from "../components/ux/game/battleTypes"
 
 export type PlayerState = { // unused
     playerId: string
@@ -21,6 +22,9 @@ export type InitialStateType = {
     playableMapsState:any
     pointerAngle:number
     myplayer:string
+    battle: BattlePublicState | null
+    battlePrompts: BattlePrompt[]
+    selectedTrainer: TrainerCardPlayer | null
 }
 
 const createInitialState = (socket: Socket) => ({
@@ -35,7 +39,10 @@ const createInitialState = (socket: Socket) => ({
     pointerAngle: 0,
     life: 0,
     waiting:false,
-    myplayer:""
+    myplayer:"",
+    battle: null,
+    battlePrompts: [],
+    selectedTrainer: null
 })
 
 export const networkEvents = {
@@ -58,7 +65,12 @@ enum actions {
     START_WAIT = 'START_WAIT',
     STOP_WAIT = 'STOP_WAIT',
     SET_MYPLAYER = 'SET_MYPLAYER',
-    ADD_OBJECT = 'ADD_OBJECT'
+    ADD_OBJECT = 'ADD_OBJECT',
+    SET_BATTLE = 'SET_BATTLE',
+    CLEAR_BATTLE = 'CLEAR_BATTLE',
+    ADD_BATTLE_PROMPT = 'ADD_BATTLE_PROMPT',
+    REMOVE_BATTLE_PROMPT = 'REMOVE_BATTLE_PROMPT',
+    SET_SELECTED_TRAINER = 'SET_SELECTED_TRAINER'
 }
 
 // Actions are handle on this reducer
@@ -214,6 +226,36 @@ const reducer = (state:any, action:any) => {
                 ...state,
                 objects:state.objects
             }
+        case actions.SET_BATTLE:
+            return {
+                ...state,
+                battle: action.battle,
+                waiting: Boolean(action.battle && action.battle.status === "active")
+            }
+        case actions.CLEAR_BATTLE:
+            return {
+                ...state,
+                battle: null,
+                waiting: false
+            }
+        case actions.ADD_BATTLE_PROMPT:
+            return {
+                ...state,
+                battlePrompts: [
+                    ...state.battlePrompts.filter((prompt: BattlePrompt) => prompt.id !== action.prompt.id),
+                    action.prompt
+                ]
+            }
+        case actions.REMOVE_BATTLE_PROMPT:
+            return {
+                ...state,
+                battlePrompts: state.battlePrompts.filter((prompt: BattlePrompt) => prompt.id !== action.promptId)
+            }
+        case actions.SET_SELECTED_TRAINER:
+            return {
+                ...state,
+                selectedTrainer: action.trainer
+            }
             
     }
 }
@@ -244,6 +286,9 @@ export const Provider = ({ children, socketUrl }:{children:any, socketUrl:string
         waiting:state.waiting ?? false,
         myplayer:state.myplayer ?? "",
         objects:state.objects ?? [],
+        battle: state.battle ?? null,
+        battlePrompts: state.battlePrompts ?? [],
+        selectedTrainer: state.selectedTrainer ?? null,
         connect: () => {
             dispatch({ type: actions.CONNECT })
         },
@@ -294,6 +339,21 @@ export const Provider = ({ children, socketUrl }:{children:any, socketUrl:string
         },
         addObject: (objectData:any) => {
             dispatch({type: actions.ADD_OBJECT, objectData})
+        },
+        setBattle: (battle: BattlePublicState) => {
+            dispatch({type: actions.SET_BATTLE, battle})
+        },
+        clearBattle: () => {
+            dispatch({type: actions.CLEAR_BATTLE})
+        },
+        addBattlePrompt: (prompt: BattlePrompt) => {
+            dispatch({type: actions.ADD_BATTLE_PROMPT, prompt})
+        },
+        removeBattlePrompt: (promptId: string) => {
+            dispatch({type: actions.REMOVE_BATTLE_PROMPT, promptId})
+        },
+        setSelectedTrainer: (trainer: TrainerCardPlayer | null) => {
+            dispatch({type: actions.SET_SELECTED_TRAINER, trainer})
         }
     }
 

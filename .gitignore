@@ -27,3 +27,5 @@ public/config.json
 
 # agents
 contracts.json
+blueprint
+prompt

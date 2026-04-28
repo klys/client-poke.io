@@ -9,6 +9,8 @@ import UserControl from "./UserControl"
 import Map from "./Map"
 import AccountMenu from "../ux/auth/AccountMenu";
 import StartupPokemonSelection from "../ux/game/StartupPokemonSelection";
+import BattleOverlay from "../ux/game/BattleOverlay";
+import { BattlePrompts, TrainerInteractionCard } from "../ux/game/TrainerInteractions";
 
 
 const Game = ({ socketUrl }:{ socketUrl:string }) => {
@@ -36,8 +38,11 @@ const Game = ({ socketUrl }:{ socketUrl:string }) => {
             <PlayerBoundaryGuard />
             <UserControl />
             <Map>
+                <Players />
             </Map>
-            <Players />
+            <TrainerInteractionCard />
+            <BattlePrompts />
+            <BattleOverlay />
                         
         </Provider>
         </div>

@@ -64,7 +64,7 @@ const buildSpritePath = (direction: Direction, isWalking: boolean) =>
 
 const Player = (props: any) => {
   const [death, setDeath] = useState(false);
-  const { socket, movePlayer, myplayer } = useContext(AppContext);
+  const { socket, movePlayer, myplayer, setSelectedTrainer } = useContext(AppContext);
   const playerInfo = props.playerInfo ?? {};
   const activeMapId = typeof props.activeMapId === "string" ? props.activeMapId : null;
   const playerId = playerInfo.playerId;
@@ -79,6 +79,7 @@ const Player = (props: any) => {
   const [pos, setPos] = useState<Position>(() => initialPosition);
   const [direction, setDirection] = useState<Direction>(() => getDirectionFromAngle(initialPosition.angle));
   const [isWalking, setIsWalking] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   const posRef = useRef(initialPosition);
   const deathRef = useRef(death);
@@ -305,18 +306,59 @@ const Player = (props: any) => {
   const spritePath = buildSpritePath(direction, isWalking);
   const spriteLabel = `${isWalking ? "walking" : "standing"} ${direction}`;
   const isVisibleOnActiveMap = !activeMapId || pos.currentMapId === activeMapId;
+  const trainerName = playerInfo.username || playerInfo.name || "Trainer";
+  const isCurrentPlayer = myplayer === playerId;
 
   return (
     <div
       id={playerId}
       hidden={death || !isVisibleOnActiveMap}
+      onPointerEnter={() => setIsHovered(true)}
+      onPointerLeave={() => setIsHovered(false)}
+      onClick={(event) => {
+        if (isCurrentPlayer) {
+          return;
+        }
+
+        event.stopPropagation();
+        setSelectedTrainer({
+          playerId,
+          username: playerInfo.username,
+          name: playerInfo.name,
+          profileImage: playerInfo.profileImage,
+          description: playerInfo.description,
+          currentMapId: pos.currentMapId
+        });
+      }}
       style={{
         position: "absolute",
         top: `${pos.y}px`,
         left: `${pos.x}px`,
-        zIndex: 999
+        zIndex: 999,
+        cursor: isCurrentPlayer ? "default" : "pointer"
       }}
     >
+      {!isCurrentPlayer && isHovered ? (
+        <div
+          style={{
+            position: "absolute",
+            bottom: "34px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            padding: "3px 7px",
+            borderRadius: "6px",
+            background: "rgba(17, 24, 39, 0.92)",
+            border: "1px solid rgba(255,255,255,0.28)",
+            color: "#fff",
+            fontSize: "12px",
+            fontWeight: 700,
+            whiteSpace: "nowrap",
+            pointerEvents: "none"
+          }}
+        >
+          {trainerName}
+        </div>
+      ) : null}
       <img
         src={spritePath}
         alt={`Player ${spriteLabel}`}
