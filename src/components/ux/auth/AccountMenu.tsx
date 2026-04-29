@@ -297,8 +297,14 @@ function SettingsWindow({
 }
 
 function BagWindow() {
-  const { user } = useAuth();
+  const {
+    user,
+    useInventoryItem: requestUseInventoryItem,
+    teachInventoryMove,
+    throwAwayInventoryItem
+  } = useAuth();
   const items = user?.inventory ?? [];
+  const party = user?.pokemonParty ?? [];
   const categories: Array<{ key: InventoryItem['category'] | 'all'; label: string }> = [
     { key: 'all', label: 'All' },
     { key: 'usable', label: 'Usable' },
@@ -306,6 +312,50 @@ function BagWindow() {
     { key: 'moves', label: 'Moves' },
     { key: 'quest', label: 'Quest Items' }
   ];
+  const selectPokemonTarget = (item: InventoryItem) => {
+    if (party.length === 0) {
+      window.alert('You do not have Pokemon in your party.');
+      return null;
+    }
+
+    const promptText = party
+      .map((pokemon, index) => `${index + 1}. ${pokemon.name} HP ${pokemon.hp}/${pokemon.maxHp}`)
+      .join('\n');
+    const selection = window.prompt(`Select a Pokemon for ${item.name}:\n${promptText}`);
+    const selectedIndex = selection ? Number.parseInt(selection, 10) - 1 : -1;
+
+    return party[selectedIndex]?.id ?? null;
+  };
+
+  const handleUse = (item: InventoryItem) => {
+    const targetPokemonId = selectPokemonTarget(item);
+
+    if (targetPokemonId) {
+      requestUseInventoryItem({ itemId: item.id, targetPokemonId });
+    }
+  };
+
+  const handleTeach = (item: InventoryItem) => {
+    const targetPokemonId = selectPokemonTarget(item);
+
+    if (targetPokemonId) {
+      teachInventoryMove({ itemId: item.id, targetPokemonId });
+    }
+  };
+
+  const handleThrowAway = (item: InventoryItem) => {
+    const quantityText = window.prompt(`How many ${item.name} do you want to throw away?`, '1');
+    const quantity = quantityText ? Number.parseInt(quantityText, 10) : Number.NaN;
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return;
+    }
+
+    throwAwayInventoryItem({
+      itemId: item.id,
+      quantity: Math.min(item.quantity, Math.round(quantity))
+    });
+  };
 
   return (
     <Tabs colorScheme="teal" variant="soft-rounded">
@@ -335,6 +385,27 @@ function BagWindow() {
                       <Badge>x{item.quantity}</Badge>
                     </HStack>
                     <Text color="gray.300" fontSize="sm">{item.description}</Text>
+                    <HStack mt={3} spacing={2} flexWrap="wrap">
+                      {item.category === 'usable' || item.category === 'berries' ? (
+                        <Button size="xs" colorScheme="teal" onClick={() => handleUse(item)}>
+                          Use
+                        </Button>
+                      ) : null}
+                      {item.category === 'moves' ? (
+                        <Button size="xs" colorScheme="purple" onClick={() => handleTeach(item)}>
+                          Teach
+                        </Button>
+                      ) : null}
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        color="white"
+                        borderColor="whiteAlpha.400"
+                        onClick={() => handleThrowAway(item)}
+                      >
+                        Throw Away
+                      </Button>
+                    </HStack>
                   </Box>
                 ))}
                 {filteredItems.length === 0 ? <Text color="gray.400">No items in this pocket.</Text> : null}

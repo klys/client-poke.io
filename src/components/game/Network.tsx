@@ -28,6 +28,8 @@ const Network = () => {
         addProjectil,
         removeProjectil,
         addObject,
+        addGroundItem,
+        removeGroundItem,
         setMyPlayer,
         playableMapsState,
         setPlayableMapsState,
@@ -41,6 +43,8 @@ const Network = () => {
     const addProjectilRef = useRef(addProjectil);
     const removeProjectilRef = useRef(removeProjectil);
     const addObjectRef = useRef(addObject);
+    const addGroundItemRef = useRef(addGroundItem);
+    const removeGroundItemRef = useRef(removeGroundItem);
     const setMyPlayerRef = useRef(setMyPlayer);
     const playableMapsStateRef = useRef(playableMapsState);
     const setPlayableMapsStateRef = useRef(setPlayableMapsState);
@@ -56,6 +60,8 @@ const Network = () => {
         addProjectilRef.current = addProjectil;
         removeProjectilRef.current = removeProjectil;
         addObjectRef.current = addObject;
+        addGroundItemRef.current = addGroundItem;
+        removeGroundItemRef.current = removeGroundItem;
         setMyPlayerRef.current = setMyPlayer;
         playableMapsStateRef.current = playableMapsState;
         setPlayableMapsStateRef.current = setPlayableMapsState;
@@ -69,6 +75,8 @@ const Network = () => {
         addProjectil,
         removeProjectil,
         addObject,
+        addGroundItem,
+        removeGroundItem,
         setMyPlayer,
         playableMapsState,
         setPlayableMapsState,
@@ -111,6 +119,16 @@ const Network = () => {
         const handleAddObject = (data:any) => {
             console.log("addObject", data)
             addObjectRef.current(data)
+        };
+
+        const handleGroundItemDropped = (data:any) => {
+            addGroundItemRef.current(data);
+        };
+
+        const handleGroundItemPickedUp = (data:any) => {
+            if (typeof data?.groundItemId === "string") {
+                removeGroundItemRef.current(data.groundItemId);
+            }
         };
 
         const handleMyPlayer = (data:any) => {
@@ -233,6 +251,8 @@ const Network = () => {
         socket.on("shotProjectil", handleShotProjectil)
         socket.on("explodeProjectil", handleExplodeProjectil)
         socket.on("addObject", handleAddObject)
+        socket.on("world:item-dropped", handleGroundItemDropped)
+        socket.on("world:item-picked-up", handleGroundItemPickedUp)
         socket.on("playableMaps:state", handlePlayableMapsState)
         socket.on("playableMaps:version", handlePlayableMapsVersion)
         socket.on("battle:state", handleBattleState)
@@ -255,6 +275,8 @@ const Network = () => {
             socket.off("shotProjectil", handleShotProjectil)
             socket.off("explodeProjectil", handleExplodeProjectil)
             socket.off("addObject", handleAddObject)
+            socket.off("world:item-dropped", handleGroundItemDropped)
+            socket.off("world:item-picked-up", handleGroundItemPickedUp)
             socket.off("playableMaps:state", handlePlayableMapsState)
             socket.off("playableMaps:version", handlePlayableMapsVersion)
             socket.off("battle:state", handleBattleState)

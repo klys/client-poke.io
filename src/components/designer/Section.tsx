@@ -138,11 +138,31 @@ const SKILL_GFX_APPLY_TO_OPTIONS: DesignerSkillGfxApplyTo[] = [
   "selectable friend",
 ];
 const ITEM_TYPE_OPTIONS: DesignerItemType[] = [
+  "medicine",
   "usable",
+  "battle items",
   "pokeball",
+  "hold items",
   "skill item",
+  "machines",
+  "general items",
   "berries",
   "quest item",
+];
+const ITEM_EFFECT_KIND_OPTIONS: DesignerGameItemProfile["effectKind"][] = [
+  "none",
+  "heal-hp",
+  "stat-modifier",
+  "teach-move",
+  "catch-modifier",
+  "hold-effect",
+  "key-item",
+];
+const ITEM_USE_CONDITION_OPTIONS: DesignerGameItemProfile["useCondition"][] = [
+  "none",
+  "target-missing-hp",
+  "target-can-learn-move",
+  "battle-only",
 ];
 const POKEMON_ELEMENTS = [
   "Fire",
@@ -255,6 +275,10 @@ interface SkillGfxFormState {
 interface ItemFormState {
   iconSrc: string;
   description: string;
+  pokemonDbCategory: string;
+  effectText: string;
+  effectKind: DesignerGameItemProfile["effectKind"];
+  useCondition: DesignerGameItemProfile["useCondition"];
   type: DesignerItemType;
   statModifiers: Record<keyof DesignerItemStatModifiers, string>;
   skillId: string;
@@ -397,6 +421,10 @@ function createDefaultItemFormState(): ItemFormState {
   return {
     iconSrc: "",
     description: "",
+    pokemonDbCategory: "Medicine",
+    effectText: "",
+    effectKind: "heal-hp",
+    useCondition: "target-missing-hp",
     type: ITEM_TYPE_OPTIONS[0],
     statModifiers: { ...DEFAULT_ITEM_STAT_MODIFIERS },
     skillId: "",
@@ -703,6 +731,14 @@ function isItemType(value: unknown): value is DesignerItemType {
   return typeof value === "string" && ITEM_TYPE_OPTIONS.includes(value as DesignerItemType);
 }
 
+function isItemEffectKind(value: unknown): value is DesignerGameItemProfile["effectKind"] {
+  return typeof value === "string" && ITEM_EFFECT_KIND_OPTIONS.includes(value as DesignerGameItemProfile["effectKind"]);
+}
+
+function isItemUseCondition(value: unknown): value is DesignerGameItemProfile["useCondition"] {
+  return typeof value === "string" && ITEM_USE_CONDITION_OPTIONS.includes(value as DesignerGameItemProfile["useCondition"]);
+}
+
 function sanitizeItemStatModifiers(value: unknown): DesignerItemStatModifiers {
   const candidate =
     value && typeof value === "object"
@@ -739,6 +775,11 @@ function sanitizeGameItemProfile(value: unknown): DesignerGameItemProfile | unde
   return {
     iconSrc: typeof candidate.iconSrc === "string" ? candidate.iconSrc : "",
     description: typeof candidate.description === "string" ? candidate.description : "",
+    pokemonDbCategory:
+      typeof candidate.pokemonDbCategory === "string" ? candidate.pokemonDbCategory : "",
+    effectText: typeof candidate.effectText === "string" ? candidate.effectText : "",
+    effectKind: isItemEffectKind(candidate.effectKind) ? candidate.effectKind : "none",
+    useCondition: isItemUseCondition(candidate.useCondition) ? candidate.useCondition : "none",
     type: isItemType(candidate.type) ? candidate.type : ITEM_TYPE_OPTIONS[0],
     statModifiers: sanitizeItemStatModifiers(candidate.statModifiers),
     skillId: typeof candidate.skillId === "string" ? candidate.skillId : "",
@@ -1737,13 +1778,13 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     (!!newGameItemForm.iconSrc &&
       Object.values(newGameItemForm.statModifiers).every((value) => parseItemStatModifier(value) !== null) &&
       parseItemBonusRatio(newGameItemForm.pokeballBonusRatio) !== null &&
-      (newGameItemForm.type !== "skill item" || Boolean(newGameItemForm.skillId)));
+      (!["skill item", "machines"].includes(newGameItemForm.type) || Boolean(newGameItemForm.skillId)));
   const isEditGameItemFormValid =
     !isItemsSection ||
     (!!editGameItemForm.iconSrc &&
       Object.values(editGameItemForm.statModifiers).every((value) => parseItemStatModifier(value) !== null) &&
       parseItemBonusRatio(editGameItemForm.pokeballBonusRatio) !== null &&
-      (editGameItemForm.type !== "skill item" || Boolean(editGameItemForm.skillId)));
+      (!["skill item", "machines"].includes(editGameItemForm.type) || Boolean(editGameItemForm.skillId)));
   const isSkillFormValid =
     !isSkillsSection ||
     (newSkillForm.elements.length > 0 &&
@@ -1900,6 +1941,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         ? {
             iconSrc: itemProfile.iconSrc,
             description: itemProfile.description,
+            pokemonDbCategory: itemProfile.pokemonDbCategory,
+            effectText: itemProfile.effectText,
+            effectKind: itemProfile.effectKind,
+            useCondition: itemProfile.useCondition,
             type: itemProfile.type,
             statModifiers: {
               hp: String(itemProfile.statModifiers.hp),
@@ -2391,7 +2436,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       !formState.iconSrc ||
       POKEMON_STAT_FIELDS.some((field) => typeof statModifiers[field.key] !== "number") ||
       pokeballBonusRatio === null ||
-      (formState.type === "skill item" && !formState.skillId)
+      ((formState.type === "skill item" || formState.type === "machines") && !formState.skillId)
     ) {
       return undefined;
     }
@@ -2401,6 +2446,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     return {
       iconSrc: formState.iconSrc,
       description: formState.description.trim(),
+      pokemonDbCategory: formState.pokemonDbCategory.trim(),
+      effectText: formState.effectText.trim(),
+      effectKind: formState.effectKind,
+      useCondition: formState.useCondition,
       type: formState.type,
       statModifiers: {
         hp: statModifiers.hp ?? 0,
@@ -2410,8 +2459,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         specialDefense: statModifiers.specialDefense ?? 0,
         speed: statModifiers.speed ?? 0,
       },
-      skillId: formState.type === "skill item" ? skill?.id ?? "" : "",
-      skillName: formState.type === "skill item" ? skill?.name ?? "" : "",
+      skillId: formState.type === "skill item" || formState.type === "machines" ? skill?.id ?? "" : "",
+      skillName: formState.type === "skill item" || formState.type === "machines" ? skill?.name ?? "" : "",
       pokeballBonusElements:
         formState.type === "pokeball" ? formState.pokeballBonusElements : [],
       pokeballBonusRatio: formState.type === "pokeball" ? pokeballBonusRatio : 0,
@@ -3598,7 +3647,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         };
       });
     };
-    const showStatModifiers = formState.type === "usable" || formState.type === "berries";
+    const showStatModifiers =
+      formState.type === "usable" ||
+      formState.type === "medicine" ||
+      formState.type === "battle items" ||
+      formState.type === "berries";
 
     return (
       <>
@@ -3664,6 +3717,53 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               minH="96px"
             />
           </FormControl>
+          <FormControl>
+            <FormLabel>PokemonDB Category</FormLabel>
+            <Input
+              value={formState.pokemonDbCategory}
+              onChange={(event) => updateField("pokemonDbCategory", event.target.value)}
+              placeholder="Medicine, Berries, Machines..."
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel>Effect Kind</FormLabel>
+            <Select
+              value={formState.effectKind}
+              onChange={(event) =>
+                updateField("effectKind", event.target.value as DesignerGameItemProfile["effectKind"])
+              }
+            >
+              {ITEM_EFFECT_KIND_OPTIONS.map((effectKind) => (
+                <option key={effectKind} value={effectKind}>
+                  {effectKind}
+                </option>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl>
+            <FormLabel>Use Condition</FormLabel>
+            <Select
+              value={formState.useCondition}
+              onChange={(event) =>
+                updateField("useCondition", event.target.value as DesignerGameItemProfile["useCondition"])
+              }
+            >
+              {ITEM_USE_CONDITION_OPTIONS.map((condition) => (
+                <option key={condition} value={condition}>
+                  {condition}
+                </option>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl>
+            <FormLabel>Effect Text</FormLabel>
+            <Textarea
+              value={formState.effectText}
+              onChange={(event) => updateField("effectText", event.target.value)}
+              placeholder="Paste or summarize the PokemonDB effect text"
+              minH="96px"
+            />
+          </FormControl>
         </SimpleGrid>
 
         {showStatModifiers ? (
@@ -3691,7 +3791,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           </Box>
         ) : null}
 
-        {formState.type === "skill item" ? (
+        {formState.type === "skill item" || formState.type === "machines" ? (
           <FormControl isRequired>
             <FormLabel>Pokemon Skill</FormLabel>
             <Select

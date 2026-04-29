@@ -11,7 +11,7 @@ import {
 //import { point_direction } from "./gameMath";
 
 const Map = ({children}:{children:any}) => {
-    const { setMouse, players, myplayer, playableMapsState } = useContext(AppContext);
+    const { setMouse, players, myplayer, playableMapsState, groundItems } = useContext(AppContext);
 
     const mapRef = useRef<HTMLDivElement | null>(null);
     const currentPlayer: any =
@@ -69,6 +69,22 @@ const Map = ({children}:{children:any}) => {
                         alt={object.name}
                     />
                 ))
+                : null}
+            {activeMapConfig
+                ? (groundItems ?? [])
+                    .filter((item: any) => item.mapId === activeMap?.item.id)
+                    .map((item: any) => (
+                        <GameObject
+                            key={item.id}
+                            x={item.x}
+                            y={item.y}
+                            imageSrc={item.iconSrc || "/objects/Rock.png"}
+                            width={item.width ?? 32}
+                            height={item.height ?? 32}
+                            alt={item.itemName}
+                            label={`${item.itemName} x${item.quantity}`}
+                        />
+                    ))
                 : null}
             {(children) ? children : null}
         </div>

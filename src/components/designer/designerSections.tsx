@@ -122,8 +122,13 @@ export interface DesignerSkillGfxProfile {
 
 export type DesignerItemType =
   | "usable"
+  | "medicine"
+  | "battle items"
   | "pokeball"
+  | "hold items"
   | "skill item"
+  | "machines"
+  | "general items"
   | "berries"
   | "quest item";
 
@@ -139,6 +144,10 @@ export interface DesignerItemStatModifiers {
 export interface DesignerGameItemProfile {
   iconSrc: string;
   description: string;
+  pokemonDbCategory: string;
+  effectText: string;
+  effectKind: "none" | "heal-hp" | "stat-modifier" | "teach-move" | "catch-modifier" | "hold-effect" | "key-item";
+  useCondition: "none" | "target-missing-hp" | "target-can-learn-move" | "battle-only";
   type: DesignerItemType;
   statModifiers: DesignerItemStatModifiers;
   skillId: string;
@@ -795,7 +804,7 @@ export const designerSections: DesignerSectionDefinition[] = [
     itemLabelPlural: "items",
     categoryLabel: "type",
     icon: "items",
-    defaultCategories: ["usable", "pokeball", "skill item", "berries", "quest item"],
+    defaultCategories: ["medicine", "berries", "machines", "pokeball", "hold items", "general items", "quest item"],
     demoItems: [
       {
         id: "item-potion-plus",
@@ -818,17 +827,20 @@ export const designerSections: DesignerSectionDefinition[] = [
     ],
     createDetails: (_name, category, _index, options) => [
       detail("Type", options?.itemProfile?.type ?? category),
+      detail("PokemonDB Category", options?.itemProfile?.pokemonDbCategory || category),
       detail("Icon", options?.itemProfile?.iconSrc ? "Uploaded" : "Required"),
       detail("Description", options?.itemProfile?.description || "None"),
+      detail("Use Condition", options?.itemProfile?.useCondition || "none"),
       detail(
         "Effect",
-        options?.itemProfile?.type === "skill item"
+        options?.itemProfile?.effectText ||
+        (options?.itemProfile?.type === "skill item" || options?.itemProfile?.type === "machines"
           ? `Learn ${options.itemProfile.skillName || "None"}`
           : options?.itemProfile?.type === "pokeball"
             ? `${options.itemProfile.pokeballBonusElements.join(", ") || "Any"} +${options.itemProfile.pokeballBonusRatio}% catch`
-            : options?.itemProfile?.type === "usable" || options?.itemProfile?.type === "berries"
+            : options?.itemProfile?.type === "usable" || options?.itemProfile?.type === "medicine" || options?.itemProfile?.type === "berries"
               ? formatItemStatModifiers(options.itemProfile.statModifiers)
-              : "None"
+              : "None")
       ),
     ],
   },

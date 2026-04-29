@@ -15,6 +15,7 @@ export type InitialStateType = {
     socket: Socket
     players: any[]
     objects: any[]
+    groundItems: any[]
     //playersIds: {}
     projectiles: any[]
     mouse: {}
@@ -31,6 +32,7 @@ const createInitialState = (socket: Socket) => ({
     socket,
     players: [],
     objects: [],
+    groundItems: [],
     //playersIds: {},
     projectiles:[],
     mouse:{x:-1,y:-1},
@@ -66,6 +68,8 @@ enum actions {
     STOP_WAIT = 'STOP_WAIT',
     SET_MYPLAYER = 'SET_MYPLAYER',
     ADD_OBJECT = 'ADD_OBJECT',
+    ADD_GROUND_ITEM = 'ADD_GROUND_ITEM',
+    REMOVE_GROUND_ITEM = 'REMOVE_GROUND_ITEM',
     SET_BATTLE = 'SET_BATTLE',
     CLEAR_BATTLE = 'CLEAR_BATTLE',
     ADD_BATTLE_PROMPT = 'ADD_BATTLE_PROMPT',
@@ -226,6 +230,19 @@ const reducer = (state:any, action:any) => {
                 ...state,
                 objects:state.objects
             }
+        case actions.ADD_GROUND_ITEM:
+            return {
+                ...state,
+                groundItems: [
+                    ...(state.groundItems ?? []).filter((item: any) => item.id !== action.groundItem.id),
+                    action.groundItem
+                ]
+            }
+        case actions.REMOVE_GROUND_ITEM:
+            return {
+                ...state,
+                groundItems: (state.groundItems ?? []).filter((item: any) => item.id !== action.groundItemId)
+            }
         case actions.SET_BATTLE:
             return {
                 ...state,
@@ -286,6 +303,7 @@ export const Provider = ({ children, socketUrl }:{children:any, socketUrl:string
         waiting:state.waiting ?? false,
         myplayer:state.myplayer ?? "",
         objects:state.objects ?? [],
+        groundItems: state.groundItems ?? [],
         battle: state.battle ?? null,
         battlePrompts: state.battlePrompts ?? [],
         selectedTrainer: state.selectedTrainer ?? null,
@@ -339,6 +357,12 @@ export const Provider = ({ children, socketUrl }:{children:any, socketUrl:string
         },
         addObject: (objectData:any) => {
             dispatch({type: actions.ADD_OBJECT, objectData})
+        },
+        addGroundItem: (groundItem:any) => {
+            dispatch({type: actions.ADD_GROUND_ITEM, groundItem})
+        },
+        removeGroundItem: (groundItemId:string) => {
+            dispatch({type: actions.REMOVE_GROUND_ITEM, groundItemId})
         },
         setBattle: (battle: BattlePublicState) => {
             dispatch({type: actions.SET_BATTLE, battle})
