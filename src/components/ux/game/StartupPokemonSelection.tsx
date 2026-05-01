@@ -4,9 +4,11 @@ import {
   Box,
   Button,
   FormControl,
+  FormHelperText,
   FormLabel,
   Heading,
   HStack,
+  Input,
   Radio,
   RadioGroup,
   SimpleGrid,
@@ -16,6 +18,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../../context/authContext';
 import type { DesignerItemSeed, DesignerPokemonProfile } from '../../designer/designerSections';
+import { sanitizePokemonNicknameInput, validatePokemonNickname } from './pokemonName';
 
 type StarterPokemon = {
   id: string;
@@ -41,6 +44,7 @@ const StartupPokemonSelection = () => {
   const { authReady, authenticated, chooseStarter, socket, user } = useAuth();
   const [gender, setGender] = useState(user?.trainerGender || '');
   const [selectedPokemonId, setSelectedPokemonId] = useState('');
+  const [nickname, setNickname] = useState('');
   const [starters, setStarters] = useState<StarterPokemon[]>([]);
   const [startersReady, setStartersReady] = useState(false);
 
@@ -77,6 +81,29 @@ const StartupPokemonSelection = () => {
     () => starters.find((pokemon) => pokemon.id === selectedPokemonId) ?? null,
     [selectedPokemonId, starters]
   );
+  const nicknameError = nickname ? validatePokemonNickname(nickname) : null;
+
+  const selectStarterPokemon = (pokemon: StarterPokemon) => {
+    setSelectedPokemonId(pokemon.id);
+
+    if (selectedPokemonId === pokemon.id && nickname) {
+      return;
+    }
+
+    const value = window.prompt(`Select a name for ${pokemon.name}. Letters only, no spaces, max 10 characters.`, nickname);
+    if (value === null) {
+      return;
+    }
+
+    const nextNickname = value.trim();
+    const validationMessage = validatePokemonNickname(nextNickname);
+    if (validationMessage) {
+      window.alert(validationMessage);
+      return;
+    }
+
+    setNickname(nextNickname);
+  };
 
   return (
     <Box minH="100vh" bg="#050505" color="white" display="flex" alignItems="center" justifyContent="center" p={4}>
@@ -111,7 +138,7 @@ const StartupPokemonSelection = () => {
                   borderRadius="8px"
                   border={selectedPokemonId === pokemon.id ? '2px solid #38b2ac' : '1px solid rgba(255,255,255,0.14)'}
                   bg={selectedPokemonId === pokemon.id ? 'rgba(20, 184, 166, 0.16)' : 'whiteAlpha.100'}
-                  onClick={() => setSelectedPokemonId(pokemon.id)}
+                  onClick={() => selectStarterPokemon(pokemon)}
                 >
                   <HStack spacing={3}>
                     <Avatar name={pokemon.name} src={pokemon.profile.iconImageSrc} />
@@ -133,16 +160,31 @@ const StartupPokemonSelection = () => {
             ) : null}
           </Box>
 
+          <FormControl isInvalid={Boolean(nicknameError)}>
+            <FormLabel>Pokemon name</FormLabel>
+            <Input
+              value={nickname}
+              maxLength={10}
+              placeholder="Letters only"
+              onChange={(event) => setNickname(sanitizePokemonNicknameInput(event.target.value))}
+            />
+            <FormHelperText color={nicknameError ? 'red.200' : 'gray.300'}>
+              {nicknameError ?? 'This name is permanent once your Pokemon joins your team.'}
+            </FormHelperText>
+          </FormControl>
+
           <Button
             colorScheme="teal"
             size="lg"
-            isDisabled={!gender || !selectedPokemon}
+            isDisabled={!gender || !selectedPokemon || Boolean(validatePokemonNickname(nickname))}
             onClick={() => {
-              if (!selectedPokemon) {
+              const validationMessage = validatePokemonNickname(nickname);
+
+              if (!selectedPokemon || validationMessage) {
                 return;
               }
 
-              chooseStarter({ gender, pokemonId: selectedPokemon.id });
+              chooseStarter({ gender, pokemonId: selectedPokemon.id, nickname: nickname.trim() });
             }}
           >
             Start with {selectedPokemon?.name ?? 'Pokemon'}

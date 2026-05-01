@@ -55,6 +55,11 @@ import {
   type DesignerItemSeed,
   type DesignerSectionKey,
 } from "./designerSections";
+import {
+  getDesignerSectionStorageKey,
+  getLegacyDesignerSectionStorageKey,
+  persistStoredDesignerSectionPayload,
+} from "./designerCache";
 
 interface DesignerSectionState {
   categories: string[];
@@ -548,14 +553,6 @@ function findCategoryName(categories: string[], target: string) {
   );
 }
 
-function getStorageKey(sectionKey: DesignerSectionKey) {
-  return `designer:section:${sectionKey}`;
-}
-
-function getLegacyStorageKey(sectionKey: DesignerSectionKey) {
-  return `designer-demo:${sectionKey}`;
-}
-
 function isValidMapObjectType(value: unknown): value is DesignerMapObjectType {
   return (
     typeof value === "string" &&
@@ -995,7 +992,9 @@ function loadRegionNames() {
   }
 
   try {
-    const raw = window.localStorage.getItem(getStorageKey("regions"));
+    const raw =
+      window.localStorage.getItem(getDesignerSectionStorageKey("regions")) ??
+      window.localStorage.getItem(getLegacyDesignerSectionStorageKey("regions"));
     if (!raw) {
       return fallbackRegions;
     }
@@ -1103,8 +1102,8 @@ function readStoredPayload(sectionKey: DesignerSectionKey): StoredDesignerSectio
 
   try {
     const raw =
-      window.localStorage.getItem(getStorageKey(sectionKey)) ??
-      window.localStorage.getItem(getLegacyStorageKey(sectionKey));
+      window.localStorage.getItem(getDesignerSectionStorageKey(sectionKey)) ??
+      window.localStorage.getItem(getLegacyDesignerSectionStorageKey(sectionKey));
     if (!raw) {
       return {
         state: fallback,
@@ -1152,7 +1151,7 @@ function persistStoredPayload(
     return;
   }
 
-  window.localStorage.setItem(getStorageKey(sectionKey), JSON.stringify(payload));
+  persistStoredDesignerSectionPayload(sectionKey, payload);
 }
 
 function buildImportedSectionState(

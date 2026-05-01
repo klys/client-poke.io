@@ -9,6 +9,9 @@ import {
   FormLabel,
   Grid,
   HStack,
+  Icon,
+  IconButton,
+  Image,
   Input,
   Link,
   Menu,
@@ -29,8 +32,17 @@ import {
 } from '@chakra-ui/react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAuth, type BattleHistoryEntry, type InventoryItem, type PokemonSummary } from '../../../context/authContext';
+import {
+  DESIGNER_CACHE_UPDATED_EVENT,
+  readStoredDesignerSectionPayload,
+  type DesignerCacheUpdateDetail
+} from '../../designer/designerCache';
+import type { DesignerItemSeed, DesignerPokemonProfile } from '../../designer/designerSections';
+import { getPokemonDisplayName, validatePokemonNickname } from '../game/pokemonName';
 
 type WindowKey = 'account' | 'settings' | 'bag' | 'pokemons' | 'trainerCard' | 'battleHistory';
+type PokemonStatsWindowId = `pokemonStats:${string}`;
+type OpenWindowId = WindowKey | PokemonStatsWindowId;
 
 type WindowPosition = {
   x: number;
@@ -38,12 +50,15 @@ type WindowPosition = {
 };
 
 type DraggableWindowProps = {
-  id: WindowKey;
+  id: OpenWindowId;
   title: string;
   dragEnabled: boolean;
   position: WindowPosition;
-  onMove: (id: WindowKey, position: WindowPosition) => void;
-  onClose: (id: WindowKey) => void;
+  desktopWidth?: string;
+  zIndex: number;
+  onMove: (id: OpenWindowId, position: WindowPosition) => void;
+  onFocus: (id: OpenWindowId) => void;
+  onClose: (id: OpenWindowId) => void;
   children: ReactNode;
 };
 
@@ -68,9 +83,91 @@ const DEFAULT_POSITIONS: Record<WindowKey, WindowPosition> = {
 const WINDOW_POSITIONS_KEY = 'client-poke.io.ux.windowPositions';
 const DRAG_SETTING_KEY = 'client-poke.io.ux.dragWindows';
 const BUG_REPORT_URL = 'https://github.com/klys/pokecraft/issues';
+const POKEMON_STATS_WINDOW_POSITION: WindowPosition = { x: 224, y: 96 };
+const POKEMON_STATS_WINDOW_OFFSET = 28;
+
+type PokemonCatalogEntry = {
+  id: string;
+  name: string;
+  profile: DesignerPokemonProfile;
+};
 
 function stopUxEvent(event: React.SyntheticEvent) {
   event.stopPropagation();
+}
+
+function toPokemonCatalogEntry(item: DesignerItemSeed): PokemonCatalogEntry | null {
+  if (!item.pokemonProfile) {
+    return null;
+  }
+
+  return {
+    id: item.id,
+    name: item.name,
+    profile: item.pokemonProfile
+  };
+}
+
+function readPokemonCatalog() {
+  return readStoredDesignerSectionPayload('pokemons').state.items
+    .map(toPokemonCatalogEntry)
+    .filter(Boolean) as PokemonCatalogEntry[];
+}
+
+function usePokemonCatalog() {
+  const [catalog, setCatalog] = useState<PokemonCatalogEntry[]>(() => readPokemonCatalog());
+
+  useEffect(() => {
+    const syncCatalog = () => {
+      setCatalog(readPokemonCatalog());
+    };
+
+    const handleDesignerCacheUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<DesignerCacheUpdateDetail>).detail;
+
+      if (detail?.sectionKey === 'pokemons') {
+        syncCatalog();
+      }
+    };
+
+    syncCatalog();
+    window.addEventListener(DESIGNER_CACHE_UPDATED_EVENT, handleDesignerCacheUpdate);
+
+    return () => {
+      window.removeEventListener(DESIGNER_CACHE_UPDATED_EVENT, handleDesignerCacheUpdate);
+    };
+  }, []);
+
+  return useMemo(
+    () => new Map(catalog.map((pokemon) => [pokemon.id, pokemon])),
+    [catalog]
+  );
+}
+
+function resolvePokemonCatalogEntry(
+  pokemon: PokemonSummary,
+  pokemonCatalog: Map<string, PokemonCatalogEntry>
+) {
+  return pokemonCatalog.get(pokemon.sourcePokemonId ?? '') ?? pokemonCatalog.get(pokemon.id) ?? null;
+}
+
+function MoreActionsIcon() {
+  return (
+    <Icon viewBox="0 0 24 24" boxSize={4}>
+      <circle cx="6.5" cy="12" r="1.75" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.75" fill="currentColor" />
+      <circle cx="17.5" cy="12" r="1.75" fill="currentColor" />
+    </Icon>
+  );
+}
+
+function PokemonStatTile({ label, value }: { label: string; value: string }) {
+  return (
+    <Box bg="whiteAlpha.100" border="1px solid rgba(255,255,255,0.12)" p={3} borderRadius="8px">
+      <Text fontSize="xs" color="gray.400">{label}</Text>
+      <Text fontWeight="700">{value}</Text>
+    </Box>
+  );
 }
 
 function loadStoredPositions() {
@@ -81,10 +178,22 @@ function loadStoredPositions() {
     return {
       ...DEFAULT_POSITIONS,
       ...(parsed && typeof parsed === 'object' ? parsed : {})
-    } as Record<WindowKey, WindowPosition>;
+    } as Record<string, WindowPosition>;
   } catch {
     return DEFAULT_POSITIONS;
   }
+}
+
+function createPokemonStatsWindowId(pokemonId: string): PokemonStatsWindowId {
+  return `pokemonStats:${pokemonId}`;
+}
+
+function isPokemonStatsWindowId(value: OpenWindowId): value is PokemonStatsWindowId {
+  return value.startsWith('pokemonStats:');
+}
+
+function getPokemonIdFromStatsWindow(value: PokemonStatsWindowId) {
+  return value.slice('pokemonStats:'.length);
 }
 
 function DraggableWindow({
@@ -92,7 +201,10 @@ function DraggableWindow({
   title,
   dragEnabled,
   position,
+  desktopWidth = '460px',
+  zIndex,
   onMove,
+  onFocus,
   onClose,
   children
 }: DraggableWindowProps) {
@@ -105,6 +217,7 @@ function DraggableWindow({
   } | null>(null);
 
   const startDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    onFocus(id);
     stopUxEvent(event);
 
     if (!dragEnabled) {
@@ -129,7 +242,10 @@ function DraggableWindow({
     }
 
     stopUxEvent(event);
-    const maxX = Math.max(8, window.innerWidth - 320);
+    const desktopWidthValue = desktopWidth.endsWith('px')
+      ? Number.parseInt(desktopWidth, 10)
+      : 460;
+    const maxX = Math.max(8, window.innerWidth - Math.min(desktopWidthValue, window.innerWidth - 24));
     const maxY = Math.max(8, window.innerHeight - 120);
 
     onMove(id, {
@@ -149,7 +265,7 @@ function DraggableWindow({
       position="fixed"
       left={{ base: 3, md: `${position.x}px` }}
       top={{ base: 20, md: `${position.y}px` }}
-      width={{ base: 'calc(100vw - 24px)', md: '460px' }}
+      width={{ base: 'calc(100vw - 24px)', md: desktopWidth }}
       maxW="calc(100vw - 24px)"
       maxH="calc(100vh - 96px)"
       overflow="hidden"
@@ -158,10 +274,13 @@ function DraggableWindow({
       borderRadius="8px"
       boxShadow="0 24px 60px rgba(0,0,0,0.42)"
       color="white"
-      zIndex={3600}
+      zIndex={zIndex}
       onClick={stopUxEvent}
       onMouseDown={stopUxEvent}
-      onPointerDown={stopUxEvent}
+      onPointerDown={(event) => {
+        onFocus(id);
+        stopUxEvent(event);
+      }}
       data-game-ux="true"
     >
       <HStack
@@ -319,7 +438,7 @@ function BagWindow() {
     }
 
     const promptText = party
-      .map((pokemon, index) => `${index + 1}. ${pokemon.name} HP ${pokemon.hp}/${pokemon.maxHp}`)
+      .map((pokemon, index) => `${index + 1}. ${getPokemonDisplayName(pokemon)} HP ${pokemon.hp}/${pokemon.maxHp}`)
       .join('\n');
     const selection = window.prompt(`Select a Pokemon for ${item.name}:\n${promptText}`);
     const selectedIndex = selection ? Number.parseInt(selection, 10) - 1 : -1;
@@ -489,18 +608,192 @@ function BattleHistoryWindow() {
   );
 }
 
-function PokemonCard({ pokemon }: { pokemon: PokemonSummary }) {
+function PokemonStatsWindow({
+  pokemon,
+  catalogEntry
+}: {
+  pokemon: PokemonSummary;
+  catalogEntry: PokemonCatalogEntry | null;
+}) {
+  const experienceProgress = pokemon.nextLevelExperience > 0
+    ? Math.min((pokemon.experience / pokemon.nextLevelExperience) * 100, 100)
+    : 0;
+
+  return (
+    <VStack align="stretch" spacing={4}>
+      <HStack spacing={4} align="center">
+        <Avatar
+          name={getPokemonDisplayName(pokemon)}
+          src={catalogEntry?.profile.iconImageSrc}
+          bg="whiteAlpha.200"
+        />
+        <Box minW={0}>
+          <Text fontWeight="800" noOfLines={1}>{getPokemonDisplayName(pokemon)}</Text>
+          <Text color="gray.300" fontSize="sm" noOfLines={1}>
+            {pokemon.nickname ? `Species: ${pokemon.name}` : pokemon.name}
+          </Text>
+        </Box>
+      </HStack>
+      <Box
+        p={4}
+        borderRadius="10px"
+        bg="linear-gradient(135deg, rgba(20, 184, 166, 0.18) 0%, rgba(59, 130, 246, 0.12) 100%)"
+        border="1px solid rgba(255,255,255,0.1)"
+      >
+        <HStack align="center" spacing={4}>
+          {catalogEntry?.profile.frontImageSrc ? (
+            <Image
+              src={catalogEntry.profile.frontImageSrc}
+              alt={pokemon.name}
+              boxSize="88px"
+              objectFit="contain"
+              style={{ imageRendering: 'pixelated' }}
+              flexShrink={0}
+            />
+          ) : (
+            <Avatar
+              name={pokemon.name}
+              src={catalogEntry?.profile.iconImageSrc}
+              size="xl"
+              bg="whiteAlpha.200"
+              flexShrink={0}
+            />
+          )}
+          <Box minW={0} flex="1">
+            <HStack spacing={2} flexWrap="wrap">
+              <Badge colorScheme="teal">Lv {pokemon.level}</Badge>
+              {pokemon.types.map((type) => <Badge key={type}>{type}</Badge>)}
+            </HStack>
+            <Text mt={3} fontSize="sm">HP {pokemon.hp}/{pokemon.maxHp}</Text>
+            <Progress
+              value={pokemon.maxHp > 0 ? (pokemon.hp / pokemon.maxHp) * 100 : 0}
+              colorScheme="green"
+              size="sm"
+              borderRadius="8px"
+            />
+            <Text mt={3} fontSize="sm">EXP {pokemon.experience}/{pokemon.nextLevelExperience}</Text>
+            <Progress value={experienceProgress} colorScheme="teal" size="sm" borderRadius="8px" />
+          </Box>
+        </HStack>
+      </Box>
+
+      <SimpleGrid columns={{ base: 2, sm: 3 }} spacing={3}>
+        <PokemonStatTile label="Level" value={String(pokemon.level)} />
+        <PokemonStatTile label="Experience Curve" value={pokemon.experienceCurve} />
+        <PokemonStatTile label="Experience" value={`${pokemon.experience}/${pokemon.nextLevelExperience}`} />
+        <PokemonStatTile label="HP" value={`${pokemon.hp}/${pokemon.maxHp}`} />
+        <PokemonStatTile
+          label="Attack"
+          value={catalogEntry ? String(catalogEntry.profile.attack) : 'Unknown'}
+        />
+        <PokemonStatTile
+          label="Defense"
+          value={catalogEntry ? String(catalogEntry.profile.defense) : 'Unknown'}
+        />
+        <PokemonStatTile
+          label="Sp. Attack"
+          value={catalogEntry ? String(catalogEntry.profile.specialAttack) : 'Unknown'}
+        />
+        <PokemonStatTile
+          label="Sp. Defense"
+          value={catalogEntry ? String(catalogEntry.profile.specialDefense) : 'Unknown'}
+        />
+        <PokemonStatTile
+          label="Speed"
+          value={catalogEntry ? String(catalogEntry.profile.speed) : 'Unknown'}
+        />
+      </SimpleGrid>
+
+      <Box bg="whiteAlpha.100" border="1px solid rgba(255,255,255,0.12)" p={3} borderRadius="8px">
+        <Text fontSize="xs" color="gray.400">Moves</Text>
+        <Text mt={1} fontSize="sm">
+          {pokemon.moves
+            .map((move) => typeof pokemon.movePp?.[move] === 'number' ? `${move} (${pokemon.movePp[move]} PP)` : move)
+            .join(', ') || 'No moves learned.'}
+        </Text>
+      </Box>
+
+      {!catalogEntry ? (
+        <Text color="yellow.200" fontSize="sm">
+          Extra stat art was not found in the local Pokemon catalog, so this card is using the party data only.
+        </Text>
+      ) : null}
+    </VStack>
+  );
+}
+
+function PokemonCard({
+  pokemon,
+  catalogEntry,
+  onOpenStats
+}: {
+  pokemon: PokemonSummary;
+  catalogEntry: PokemonCatalogEntry | null;
+  onOpenStats: (pokemonId: string) => void;
+}) {
+  const { namePokemon } = useAuth();
+  const handleSelectName = () => {
+    const value = window.prompt(`Select a name for ${pokemon.name}. Letters only, no spaces, max 10 characters.`);
+    if (value === null) {
+      return;
+    }
+
+    const nickname = value.trim();
+    const validationMessage = validatePokemonNickname(nickname);
+    if (validationMessage) {
+      window.alert(validationMessage);
+      return;
+    }
+
+    namePokemon({ pokemonId: pokemon.id, nickname });
+  };
+
   return (
     <Box bg="whiteAlpha.100" border="1px solid rgba(255,255,255,0.12)" p={3} borderRadius="8px">
-      <HStack justify="space-between">
-        <Text fontWeight="800">{pokemon.name}</Text>
-        <Badge colorScheme="teal">Lv {pokemon.level}</Badge>
+      <HStack justify="space-between" align="start" spacing={3}>
+        <HStack spacing={3} minW={0} align="start">
+          <Avatar
+            size="sm"
+            name={pokemon.name}
+            src={catalogEntry?.profile.iconImageSrc}
+            bg="whiteAlpha.200"
+            flexShrink={0}
+          />
+          <Box minW={0}>
+            <Text fontWeight="800" noOfLines={1}>{getPokemonDisplayName(pokemon)}</Text>
+            {pokemon.nickname ? <Text color="gray.400" fontSize="xs">Real name: {pokemon.name}</Text> : null}
+          </Box>
+        </HStack>
+        <HStack spacing={2} align="start">
+          <Badge colorScheme="teal">Lv {pokemon.level}</Badge>
+          <Menu placement="bottom-end">
+            <MenuButton
+              as={IconButton}
+              aria-label={`Open options for ${getPokemonDisplayName(pokemon)}`}
+              size="xs"
+              variant="ghost"
+              color="white"
+              icon={<MoreActionsIcon />}
+            />
+            <MenuList color="gray.900">
+              <MenuItem onClick={() => onOpenStats(pokemon.id)}>Stats</MenuItem>
+              <MenuItem onClick={handleSelectName}>{pokemon.nickname ? 'Rename' : 'Select Name'}</MenuItem>
+            </MenuList>
+          </Menu>
+        </HStack>
       </HStack>
       <HStack mt={2}>
         {pokemon.types.map((type) => <Badge key={type}>{type}</Badge>)}
       </HStack>
       <Text mt={3} fontSize="sm">HP {pokemon.hp}/{pokemon.maxHp}</Text>
       <Progress value={(pokemon.hp / pokemon.maxHp) * 100} colorScheme="green" size="sm" borderRadius="8px" />
+      <Text mt={3} fontSize="sm">EXP {pokemon.experience}/{pokemon.nextLevelExperience}</Text>
+      <Progress
+        value={pokemon.nextLevelExperience > 0 ? Math.min((pokemon.experience / pokemon.nextLevelExperience) * 100, 100) : 0}
+        colorScheme="teal"
+        size="sm"
+        borderRadius="8px"
+      />
       <Text mt={3} fontSize="xs" color="gray.400">Moves</Text>
       <Text fontSize="sm">
         {pokemon.moves
@@ -511,17 +804,42 @@ function PokemonCard({ pokemon }: { pokemon: PokemonSummary }) {
   );
 }
 
-function PokemonsWindow() {
-  const { user } = useAuth();
-  const party = (user?.pokemonParty ?? []).slice(0, 6);
-
+function PokemonsWindow({
+  party,
+  pokemonCatalog,
+  onOpenStats
+}: {
+  party: PokemonSummary[];
+  pokemonCatalog: Map<string, PokemonCatalogEntry>;
+  onOpenStats: (pokemonId: string) => void;
+}) {
   return (
     <VStack align="stretch" spacing={3}>
       <Text color="gray.300">Pokemon on hand: {party.length}/6</Text>
       <Grid templateColumns={{ base: '1fr', sm: '1fr 1fr' }} gap={3}>
-        {party.map((pokemon) => <PokemonCard key={pokemon.id} pokemon={pokemon} />)}
+        {party.map((pokemon) => (
+          <PokemonCard
+            key={pokemon.id}
+            pokemon={pokemon}
+            catalogEntry={resolvePokemonCatalogEntry(pokemon, pokemonCatalog)}
+            onOpenStats={onOpenStats}
+          />
+        ))}
       </Grid>
       {party.length === 0 ? <Text color="gray.400">No Pokemon in your party yet.</Text> : null}
+    </VStack>
+  );
+}
+
+function PokemonStatsFallback({ pokemonId }: { pokemonId: string }) {
+  return (
+    <VStack align="stretch" spacing={3}>
+      <Text color="gray.300">
+        Pokemon `{pokemonId}` is no longer in your party, so this stats window cannot be updated.
+      </Text>
+      <Text color="gray.500" fontSize="sm">
+        You can close this window or reopen the Pokemon list to inspect a different party member.
+      </Text>
     </VStack>
   );
 }
@@ -529,28 +847,78 @@ function PokemonsWindow() {
 const AccountMenu = () => {
   const toast = useToast();
   const { logout, user } = useAuth();
-  const [openWindows, setOpenWindows] = useState<WindowKey[]>([]);
-  const [positions, setPositions] = useState<Record<WindowKey, WindowPosition>>(() => loadStoredPositions());
+  const pokemonCatalog = usePokemonCatalog();
+  const party = (user?.pokemonParty ?? []).slice(0, 6);
+  const [openWindows, setOpenWindows] = useState<OpenWindowId[]>([]);
+  const [positions, setPositions] = useState<Record<string, WindowPosition>>(() => loadStoredPositions());
   const [dragEnabled, setDragEnabledState] = useState(() => window.localStorage.getItem(DRAG_SETTING_KEY) !== '0');
 
   const orderedWindows = useMemo(() => openWindows, [openWindows]);
 
-  const openWindow = (windowKey: WindowKey) => {
+  const openWindow = (windowKey: OpenWindowId) => {
     setOpenWindows((current) =>
-      current.includes(windowKey) ? current : [...current, windowKey]
+      current.includes(windowKey)
+        ? [...current.filter((item) => item !== windowKey), windowKey]
+        : [...current, windowKey]
     );
   };
 
-  const closeWindow = (windowKey: WindowKey) => {
+  const closeWindow = (windowKey: OpenWindowId) => {
     setOpenWindows((current) => current.filter((item) => item !== windowKey));
   };
 
-  const moveWindow = (windowKey: WindowKey, position: WindowPosition) => {
+  const focusWindow = (windowKey: OpenWindowId) => {
+    setOpenWindows((current) => {
+      if (!current.includes(windowKey) || current[current.length - 1] === windowKey) {
+        return current;
+      }
+
+      return [...current.filter((item) => item !== windowKey), windowKey];
+    });
+  };
+
+  const moveWindow = (windowKey: OpenWindowId, position: WindowPosition) => {
     setPositions((current) => {
       const next = { ...current, [windowKey]: position };
       window.localStorage.setItem(WINDOW_POSITIONS_KEY, JSON.stringify(next));
       return next;
     });
+  };
+
+  const openPokemonStatsWindow = (pokemonId: string) => {
+    const windowId = createPokemonStatsWindowId(pokemonId);
+
+    setPositions((current) => {
+      if (current[windowId]) {
+        return current;
+      }
+
+      const statsWindowCount = openWindows.filter(isPokemonStatsWindowId).length;
+      const next = {
+        ...current,
+        [windowId]: {
+          x: Math.max(
+            8,
+            Math.min(
+              POKEMON_STATS_WINDOW_POSITION.x + (statsWindowCount * POKEMON_STATS_WINDOW_OFFSET),
+              Math.max(8, window.innerWidth - 780)
+            )
+          ),
+          y: Math.max(
+            8,
+            Math.min(
+              POKEMON_STATS_WINDOW_POSITION.y + (statsWindowCount * POKEMON_STATS_WINDOW_OFFSET),
+              Math.max(8, window.innerHeight - 180)
+            )
+          )
+        }
+      };
+
+      window.localStorage.setItem(WINDOW_POSITIONS_KEY, JSON.stringify(next));
+      return next;
+    });
+
+    openWindow(windowId);
   };
 
   const setDragEnabled = (value: boolean) => {
@@ -564,7 +932,48 @@ const AccountMenu = () => {
     toast({ title: 'Window positions reset.', status: 'success', duration: 2000, position: 'top' });
   };
 
-  const renderWindow = (windowKey: WindowKey) => {
+  useEffect(() => {
+    const partyIds = new Set(party.map((pokemon) => pokemon.id));
+
+    setOpenWindows((current) => {
+      const next = current.filter((windowId) => (
+        !isPokemonStatsWindowId(windowId) || partyIds.has(getPokemonIdFromStatsWindow(windowId))
+      ));
+
+      return next.length === current.length ? current : next;
+    });
+  }, [party]);
+
+  const getWindowTitle = (windowKey: OpenWindowId) => {
+    if (!isPokemonStatsWindowId(windowKey)) {
+      return WINDOW_TITLES[windowKey];
+    }
+
+    const pokemon = party.find((entry) => entry.id === getPokemonIdFromStatsWindow(windowKey));
+    return pokemon ? `${getPokemonDisplayName(pokemon)} Stats` : 'Pokemon Stats';
+  };
+
+  const getWindowDesktopWidth = (windowKey: OpenWindowId) => (
+    isPokemonStatsWindowId(windowKey) ? '760px' : '460px'
+  );
+
+  const renderWindow = (windowKey: OpenWindowId) => {
+    if (isPokemonStatsWindowId(windowKey)) {
+      const pokemonId = getPokemonIdFromStatsWindow(windowKey);
+      const pokemon = party.find((entry) => entry.id === pokemonId) ?? null;
+
+      if (!pokemon) {
+        return <PokemonStatsFallback pokemonId={pokemonId} />;
+      }
+
+      return (
+        <PokemonStatsWindow
+          pokemon={pokemon}
+          catalogEntry={resolvePokemonCatalogEntry(pokemon, pokemonCatalog)}
+        />
+      );
+    }
+
     if (windowKey === 'account') {
       return <AccountWindow />;
     }
@@ -584,7 +993,13 @@ const AccountMenu = () => {
     }
 
     if (windowKey === 'pokemons') {
-      return <PokemonsWindow />;
+      return (
+        <PokemonsWindow
+          party={party}
+          pokemonCatalog={pokemonCatalog}
+          onOpenStats={openPokemonStatsWindow}
+        />
+      );
     }
 
     if (windowKey === 'battleHistory') {
@@ -629,10 +1044,13 @@ const AccountMenu = () => {
         <DraggableWindow
           key={windowKey}
           id={windowKey}
-          title={WINDOW_TITLES[windowKey]}
+          title={getWindowTitle(windowKey)}
           dragEnabled={dragEnabled}
-          position={positions[windowKey] ?? DEFAULT_POSITIONS[windowKey]}
+          position={positions[windowKey] ?? DEFAULT_POSITIONS[windowKey as WindowKey] ?? POKEMON_STATS_WINDOW_POSITION}
+          desktopWidth={getWindowDesktopWidth(windowKey)}
+          zIndex={3600 + orderedWindows.indexOf(windowKey)}
           onMove={moveWindow}
+          onFocus={focusWindow}
           onClose={closeWindow}
         >
           {renderWindow(windowKey)}

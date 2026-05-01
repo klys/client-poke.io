@@ -30,6 +30,7 @@ export type PokemonSummary = {
   id: string
   sourcePokemonId?: string
   name: string
+  nickname?: string
   level: number
   types: string[]
   hp: number
@@ -108,6 +109,7 @@ type UpdateProfilePayload = {
 type ChooseStarterPayload = {
   gender: string
   pokemonId: string
+  nickname: string
 }
 
 type AuthContextValue = {
@@ -128,6 +130,7 @@ type AuthContextValue = {
   changePassword: (payload: ChangePasswordPayload) => void
   updateProfile: (payload: UpdateProfilePayload) => void
   chooseStarter: (payload: ChooseStarterPayload) => void
+  namePokemon: (payload: { pokemonId: string; nickname: string }) => void
   useInventoryItem: (payload: { itemId: string; targetPokemonId: string }) => void
   teachInventoryMove: (payload: { itemId: string; targetPokemonId: string }) => void
   throwAwayInventoryItem: (payload: { itemId: string; quantity: number }) => void
@@ -387,6 +390,7 @@ export const AuthProvider = (
     changePassword: (payload) => emitAuthEvent('auth:change-password', payload),
     updateProfile: (payload) => emitAuthEvent('auth:update-profile', payload),
     chooseStarter: (payload) => emitAuthEvent('auth:choose-starter', payload),
+    namePokemon: (payload) => emitAuthEvent('pokemon:name', payload),
     useInventoryItem: (payload) => emitAuthEvent('inventory:use-item', payload),
     teachInventoryMove: (payload) => emitAuthEvent('inventory:teach-move', payload),
     throwAwayInventoryItem: (payload) => emitAuthEvent('inventory:throw-away', payload),

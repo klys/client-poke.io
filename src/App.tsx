@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { RouterProvider } from 'react-router-dom';
+import DesignerDataBootstrap from './components/designer/DesignerDataBootstrap';
 import { createAppRouter, type RuntimeConfig } from './endpoint';
 import { AuthProvider } from './context/authContext';
 
@@ -50,6 +51,7 @@ function App() {
 
   return (
     <AuthProvider socketUrl={config.backendUrl}>
+      <DesignerDataBootstrap />
       <RouterProvider router={router} />
     </AuthProvider>
   );

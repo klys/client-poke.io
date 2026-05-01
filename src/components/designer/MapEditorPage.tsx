@@ -26,6 +26,7 @@ import { useAuth } from "../../context/authContext";
 import {
   buildPlayableMapsSnapshot,
   getPlayableMapsCacheVersion,
+  loadPlayableMapsState,
   persistPlayableMapsSyncPayload,
   sanitizePlayableMapsSyncPayload,
 } from "../game/playableMapRuntime";
@@ -45,20 +46,18 @@ import {
   type DesignerPlayableMapConfig,
   type DesignerPlayableMapType,
 } from "./designerSections";
+import {
+  DESIGNER_CACHE_UPDATED_EVENT,
+  persistStoredDesignerSectionPayload,
+  readStoredDesignerSectionPayload,
+  type DesignerCacheUpdateDetail,
+} from "./designerCache";
 
 type DesignerSectionState = {
   categories: string[];
   items: DesignerItemSeed[];
 };
 
-const STORAGE_KEY = "designer:section:mapsEditor";
-const LEGACY_STORAGE_KEY = "designer-demo:mapsEditor";
-const OBJECTS_STORAGE_KEY = "designer:section:objects";
-const LEGACY_OBJECTS_STORAGE_KEY = "designer-demo:objects";
-const POKEMONS_STORAGE_KEY = "designer:section:pokemons";
-const LEGACY_POKEMONS_STORAGE_KEY = "designer-demo:pokemons";
-const REGION_STORAGE_KEY = "designer:section:regions";
-const LEGACY_REGION_STORAGE_KEY = "designer-demo:regions";
 const MAP_EDITOR_STORAGE_PREFIX = "designer:mapEditor:";
 const LEGACY_MAP_EDITOR_STORAGE_PREFIX = "designer-demo:mapEditor:";
 const MAP_CELL_SIZE_OPTIONS = [8, 16, 32, 64, 128] as const;
@@ -342,41 +341,11 @@ function normalizePokemonCatalogItem(item: DesignerItemSeed): MapEditorPokemonCa
   };
 }
 
-function unwrapStoredSectionState(value: unknown): Partial<DesignerSectionState> {
-  if (!value || typeof value !== "object") {
-    return {};
-  }
-
-  const candidate = value as Partial<DesignerSectionState> & {
-    state?: Partial<DesignerSectionState>;
-  };
-
-  return candidate.state ?? candidate;
-}
-
 function loadObjectCatalog() {
   const fallback: MapEditorObjectCatalogItem[] = [];
 
-  if (typeof window === "undefined") {
-    return fallback;
-  }
-
   try {
-    const raw =
-      window.localStorage.getItem(OBJECTS_STORAGE_KEY) ??
-      window.localStorage.getItem(LEGACY_OBJECTS_STORAGE_KEY);
-
-    if (!raw) {
-      return fallback;
-    }
-
-    const parsed = unwrapStoredSectionState(JSON.parse(raw));
-
-    if (!Array.isArray(parsed.items)) {
-      return fallback;
-    }
-
-    const items = parsed.items
+    const items = readStoredDesignerSectionPayload("objects").state.items
       .filter(
         (item): item is DesignerItemSeed =>
           typeof item?.id === "string" &&
@@ -395,26 +364,8 @@ function loadObjectCatalog() {
 function loadPokemonCatalog() {
   const fallback: MapEditorPokemonCatalogItem[] = [];
 
-  if (typeof window === "undefined") {
-    return fallback;
-  }
-
   try {
-    const raw =
-      window.localStorage.getItem(POKEMONS_STORAGE_KEY) ??
-      window.localStorage.getItem(LEGACY_POKEMONS_STORAGE_KEY);
-
-    if (!raw) {
-      return fallback;
-    }
-
-    const parsed = unwrapStoredSectionState(JSON.parse(raw));
-
-    if (!Array.isArray(parsed.items)) {
-      return fallback;
-    }
-
-    const items = parsed.items
+    const items = readStoredDesignerSectionPayload("pokemons").state.items
       .filter(
         (item): item is DesignerItemSeed =>
           typeof item?.id === "string" &&
@@ -500,24 +451,10 @@ function readBackgroundImage(
 function loadRegionNames() {
   const fallback: string[] = [];
 
-  if (typeof window === "undefined") {
-    return fallback;
-  }
-
   try {
-    const raw =
-      window.localStorage.getItem(REGION_STORAGE_KEY) ??
-      window.localStorage.getItem(LEGACY_REGION_STORAGE_KEY);
-    if (!raw) {
-      return fallback;
-    }
-
-    const parsed = unwrapStoredSectionState(JSON.parse(raw));
-    const regionNames = Array.isArray(parsed.items)
-      ? parsed.items
-          .map((item) => (typeof item?.name === "string" ? item.name.trim() : ""))
-          .filter(Boolean)
-      : [];
+    const regionNames = readStoredDesignerSectionPayload("regions").state.items
+      .map((item) => (typeof item?.name === "string" ? item.name.trim() : ""))
+      .filter(Boolean);
 
     return regionNames.length > 0 ? regionNames : fallback;
   } catch {
@@ -531,30 +468,17 @@ function loadMapsState() {
     items: [],
   };
 
-  if (typeof window === "undefined") {
-    return fallback;
-  }
-
   try {
-    const raw =
-      window.localStorage.getItem(STORAGE_KEY) ??
-      window.localStorage.getItem(LEGACY_STORAGE_KEY);
-    if (!raw) {
-      return fallback;
-    }
-
-    const parsed = unwrapStoredSectionState(JSON.parse(raw));
-
-    if (!Array.isArray(parsed.categories) || !Array.isArray(parsed.items)) {
-      return fallback;
-    }
+    const storedState = readStoredDesignerSectionPayload("mapsEditor").state;
 
     return {
-      categories: parsed.categories.filter(
-        (category): category is string => typeof category === "string"
-      ),
+      categories: Array.isArray(storedState.categories)
+        ? storedState.categories.filter(
+            (category): category is string => typeof category === "string"
+          )
+        : fallback.categories,
       items: syncPlayableMapItems(
-        parsed.items.filter(
+        storedState.items.filter(
           (item): item is DesignerItemSeed =>
             typeof item?.id === "string" &&
             typeof item?.name === "string" &&
@@ -569,28 +493,25 @@ function loadMapsState() {
 }
 
 function saveMapsState(nextState: DesignerSectionState) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      state: nextState,
-      version: getPlayableMapsCacheVersion(),
-      updatedAt: null,
-      updatedByUsername: null,
-    })
-  );
+  persistStoredDesignerSectionPayload("mapsEditor", {
+    state: nextState,
+    version: getPlayableMapsCacheVersion(),
+    updatedAt: null,
+    updatedByUsername: null,
+  });
 }
 
 export default function MapEditorPage() {
   const { mapId = "" } = useParams();
   const toast = useToast();
   const { authReady, authenticated, socket } = useAuth();
-  const regionNames = useMemo(() => loadRegionNames(), []);
-  const objectCatalog = useMemo(() => loadObjectCatalog(), []);
-  const pokemonCatalog = useMemo(() => loadPokemonCatalog(), []);
+  const [regionNames, setRegionNames] = useState<string[]>(() => loadRegionNames());
+  const [objectCatalog, setObjectCatalog] = useState<MapEditorObjectCatalogItem[]>(
+    () => loadObjectCatalog()
+  );
+  const [pokemonCatalog, setPokemonCatalog] = useState<MapEditorPokemonCatalogItem[]>(
+    () => loadPokemonCatalog()
+  );
   const [mapsState, setMapsState] = useState<DesignerSectionState>(() => loadMapsState());
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
   const [editorData, setEditorData] = useState<PlayableMapEditorData>(() =>
@@ -707,6 +628,54 @@ export default function MapEditorPage() {
     hasValidOptionalCoordinatePair(initialPositionX, initialPositionY);
 
   useEffect(() => {
+    const handleDesignerCacheUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<DesignerCacheUpdateDetail>).detail;
+
+      if (!detail?.sectionKey) {
+        return;
+      }
+
+      if (detail.sectionKey === "objects") {
+        setObjectCatalog(loadObjectCatalog());
+        return;
+      }
+
+      if (detail.sectionKey === "pokemons") {
+        setPokemonCatalog(loadPokemonCatalog());
+        return;
+      }
+
+      if (detail.sectionKey === "regions") {
+        setRegionNames(loadRegionNames());
+        return;
+      }
+
+      if (detail.sectionKey !== "mapsEditor") {
+        return;
+      }
+
+      const nextMapsState = loadMapsState();
+
+      setMapsState(nextMapsState);
+
+      if (isEditorDirty) {
+        return;
+      }
+
+      const nextEditorData = loadMapEditorData(mapId);
+
+      setEditorData(nextEditorData);
+      setSavedEditorData(nextEditorData);
+    };
+
+    window.addEventListener(DESIGNER_CACHE_UPDATED_EVENT, handleDesignerCacheUpdate);
+
+    return () => {
+      window.removeEventListener(DESIGNER_CACHE_UPDATED_EVENT, handleDesignerCacheUpdate);
+    };
+  }, [isEditorDirty, mapId]);
+
+  useEffect(() => {
     if (!authReady || !authenticated || !socket) {
       return;
     }
@@ -714,7 +683,7 @@ export default function MapEditorPage() {
     const joinMapsRoom = () => {
       socket.emit("designer:maps:join", {
         version: getPlayableMapsCacheVersion(),
-        seedState: buildPlayableMapsSnapshot(loadMapsState()),
+        seedState: buildPlayableMapsSnapshot(loadPlayableMapsState()),
       });
     };
 

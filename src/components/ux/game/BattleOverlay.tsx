@@ -13,6 +13,7 @@ import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, SyntheticEvent } from "react";
 import { AppContext } from "../../../context/appContext";
 import type { BattleAction, BattlePublicItem, BattlePublicPokemon, BattlePublicState } from "./battleTypes";
+import { getPokemonDisplayName } from "./pokemonName";
 
 type BattleView = "menu" | "fight" | "bag" | "bagTarget" | "pokemon";
 
@@ -48,7 +49,7 @@ function PokemonStatusBox({
     >
       <HStack justify="space-between" align="center">
         <Text fontSize={{ base: "md", sm: "lg", md: "2xl" }} fontWeight="900" noOfLines={1}>
-          {pokemon.name}
+          {getPokemonDisplayName(pokemon)}
         </Text>
         <Badge colorScheme="purple" fontSize="0.8rem">Lv {pokemon.level}</Badge>
       </HStack>
@@ -96,7 +97,7 @@ function PokemonSprite({
       {src ? (
         <img
           src={src}
-          alt={pokemon.name}
+          alt={getPokemonDisplayName(pokemon)}
           style={{
             maxWidth: "min(42vw, 260px)",
             maxHeight: "min(24vh, 240px)",
@@ -258,7 +259,7 @@ export default function BattleOverlay() {
   const promptLog = battle.result
     ?? (battle.waitingForOpponent
       ? `You chose ${selectedActionLabel}. Waiting for the other trainer...`
-      : `What will ${battle.self.activePokemon.name} do?`);
+      : `What will ${getPokemonDisplayName(battle.self.activePokemon)} do?`);
   const visibleLogs = battle.log.length > 0 && !battle.waitingForOpponent
     ? battle.log
     : [...battle.log, promptLog];
@@ -444,7 +445,7 @@ export default function BattleOverlay() {
                       });
                     }}
                   >
-                    <Text as="span" noOfLines={1}>{pokemon.name}</Text>
+                    <Text as="span" noOfLines={1}>{getPokemonDisplayName(pokemon)}</Text>
                     <Text as="span" fontSize="xs">HP {pokemon.hp}/{pokemon.maxHp}</Text>
                   </Button>
                 ))}
@@ -465,7 +466,7 @@ export default function BattleOverlay() {
                     isDisabled={pokemon.id === battle.self.activePokemon.id || pokemon.hp <= 0 || actionDisabled}
                     onClick={() => sendAction({ type: "pokemon", pokemonId: pokemon.id })}
                   >
-                    <Text as="span" noOfLines={1}>{pokemon.name}</Text>
+                    <Text as="span" noOfLines={1}>{getPokemonDisplayName(pokemon)}</Text>
                     <Text as="span" fontSize="xs">HP {pokemon.hp}/{pokemon.maxHp}</Text>
                   </Button>
                 ))}

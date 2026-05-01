@@ -20,6 +20,7 @@ export type BattlePublicMove = {
 export type BattlePublicPokemon = {
   id: string;
   name: string;
+  nickname?: string;
   level: number;
   types: string[];
   hp: number;

@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { dispatchDesignerCacheUpdated } from "../designer/designerCache";
 import {
   designerSectionsByKey,
   type DesignerItemSeed,
@@ -399,6 +400,8 @@ export function persistPlayableMapsSyncPayload(payload: PlayableMapsSyncPayload)
       );
     }
   });
+
+  dispatchDesignerCacheUpdated("mapsEditor");
 }
 
 function resolvePlayableMapsSnapshot(snapshot?: PlayableMapsStateSnapshot) {
