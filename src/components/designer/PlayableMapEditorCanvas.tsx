@@ -15,6 +15,8 @@ import {
 } from "@chakra-ui/react";
 import {
   type DesignerMapObjectType,
+  type DesignerNpcAiType,
+  type DesignerNpcType,
 } from "./designerSections";
 
 export interface MapEditorObjectCatalogItem {
@@ -36,6 +38,15 @@ export interface MapEditorPokemonCatalogItem {
   id: string;
   name: string;
   category: string;
+}
+
+export interface MapEditorNpcCatalogItem {
+  id: string;
+  name: string;
+  category: string;
+  previewImageSrc: string;
+  npcType: DesignerNpcType;
+  aiType: DesignerNpcAiType;
 }
 
 export interface MapEditorObjectPlacement {
@@ -79,11 +90,24 @@ export interface MapEditorGrassPlacement {
   encounterRate: number;
 }
 
+export interface MapEditorNpcPlacement {
+  id: string;
+  npcId: string;
+  name: string;
+  category: string;
+  previewImageSrc: string;
+  npcType: DesignerNpcType;
+  aiType: DesignerNpcAiType;
+  x: number;
+  y: number;
+}
+
 export interface PlayableMapEditorData {
   version: 1;
   objects: MapEditorObjectPlacement[];
   portals: MapEditorPortalPlacement[];
   grass: MapEditorGrassPlacement[];
+  npcs: MapEditorNpcPlacement[];
 }
 
 interface PlayableMapEditorCanvasProps {
@@ -96,6 +120,7 @@ interface PlayableMapEditorCanvasProps {
   backgroundStyle: React.CSSProperties;
   objectCatalog: MapEditorObjectCatalogItem[];
   pokemonCatalog: MapEditorPokemonCatalogItem[];
+  npcCatalog: MapEditorNpcCatalogItem[];
   maps: MapEditorMapSummary[];
   currentMapId: string;
   value: PlayableMapEditorData;
@@ -103,7 +128,7 @@ interface PlayableMapEditorCanvasProps {
   isDirty: boolean;
 }
 
-type EditorTool = "selector" | "object" | "portal" | "grass";
+type EditorTool = "selector" | "object" | "portal" | "grass" | "npc";
 
 interface GridCell {
   x: number;
@@ -137,12 +162,18 @@ interface ClipboardGrassPlacement extends MapEditorGrassPlacement {
   offsetY: number;
 }
 
+interface ClipboardNpcPlacement extends MapEditorNpcPlacement {
+  offsetX: number;
+  offsetY: number;
+}
+
 interface MapEditorClipboard {
   width: number;
   height: number;
   objects: ClipboardObjectPlacement[];
   portals: ClipboardPortalPlacement[];
   grass: ClipboardGrassPlacement[];
+  npcs: ClipboardNpcPlacement[];
 }
 
 interface PendingTransform {
@@ -227,6 +258,7 @@ function createEmptyEditorData(): PlayableMapEditorData {
     objects: [],
     portals: [],
     grass: [],
+    npcs: [],
   };
 }
 
@@ -260,6 +292,13 @@ function buildClipboardFromBounds(
         offsetX: item.x - bounds.startX,
         offsetY: item.y - bounds.startY,
       })),
+    npcs: data.npcs
+      .filter((item) => isCellInsideBounds({ x: item.x, y: item.y }, bounds))
+      .map((item) => ({
+        ...item,
+        offsetX: item.x - bounds.startX,
+        offsetY: item.y - bounds.startY,
+      })),
   };
 }
 
@@ -276,6 +315,9 @@ function removeItemsInsideBounds(
       (item) => !isCellInsideBounds({ x: item.x, y: item.y }, bounds)
     ),
     grass: data.grass.filter(
+      (item) => !isCellInsideBounds({ x: item.x, y: item.y }, bounds)
+    ),
+    npcs: data.npcs.filter(
       (item) => !isCellInsideBounds({ x: item.x, y: item.y }, bounds)
     ),
   };
@@ -409,12 +451,33 @@ export function sanitizePlayableMapEditorData(value: unknown): PlayableMapEditor
           encounterRate: clampEncounterRate(item.encounterRate),
         }))
     : [];
+  const npcs = Array.isArray(candidate.npcs)
+    ? candidate.npcs
+        .filter(
+          (item): item is MapEditorNpcPlacement =>
+            typeof item?.id === "string" &&
+            typeof item?.npcId === "string" &&
+            typeof item?.name === "string" &&
+            typeof item?.category === "string" &&
+            typeof item?.previewImageSrc === "string" &&
+            typeof item?.npcType === "string" &&
+            typeof item?.aiType === "string" &&
+            typeof item?.x === "number" &&
+            typeof item?.y === "number"
+        )
+        .map((item) => ({
+          ...item,
+          x: Math.max(0, Math.round(item.x)),
+          y: Math.max(0, Math.round(item.y)),
+        }))
+    : [];
 
   return {
     version: 1,
     objects,
     portals,
     grass,
+    npcs,
   };
 }
 
@@ -428,6 +491,7 @@ export default function PlayableMapEditorCanvas({
   backgroundStyle,
   objectCatalog,
   pokemonCatalog,
+  npcCatalog,
   maps,
   currentMapId,
   value,
@@ -443,6 +507,7 @@ export default function PlayableMapEditorCanvas({
   const [pendingTransform, setPendingTransform] = useState<PendingTransform | null>(null);
   const [selectedPortalId, setSelectedPortalId] = useState<string | null>(null);
   const [selectedGrassId, setSelectedGrassId] = useState<string | null>(null);
+  const [selectedNpcId, setSelectedNpcId] = useState<string | null>(null);
   const objectCategories = useMemo(
     () => Array.from(new Set(objectCatalog.map((item) => item.category))).sort(),
     [objectCatalog]
@@ -458,6 +523,19 @@ export default function PlayableMapEditorCanvas({
     [activeObjectCategory, objectCatalog]
   );
   const [activeObjectId, setActiveObjectId] = useState(availableObjects[0]?.id ?? "");
+  const npcCategories = useMemo(
+    () => Array.from(new Set(npcCatalog.map((item) => item.category))).sort(),
+    [npcCatalog]
+  );
+  const [activeNpcCategory, setActiveNpcCategory] = useState(npcCategories[0] ?? "");
+  const availableNpcs = useMemo(
+    () =>
+      npcCatalog.filter((item) =>
+        activeNpcCategory ? item.category === activeNpcCategory : true
+      ),
+    [activeNpcCategory, npcCatalog]
+  );
+  const [activeNpcId, setActiveNpcId] = useState(availableNpcs[0]?.id ?? "");
   const [activeGrassPokemonIds, setActiveGrassPokemonIds] = useState<string[]>(
     pokemonCatalog[0] ? [pokemonCatalog[0].id] : []
   );
@@ -484,6 +562,18 @@ export default function PlayableMapEditorCanvas({
   }, [activeObjectId, availableObjects]);
 
   useEffect(() => {
+    if (!npcCategories.includes(activeNpcCategory)) {
+      setActiveNpcCategory(npcCategories[0] ?? "");
+    }
+  }, [activeNpcCategory, npcCategories]);
+
+  useEffect(() => {
+    if (!availableNpcs.some((item) => item.id === activeNpcId)) {
+      setActiveNpcId(availableNpcs[0]?.id ?? "");
+    }
+  }, [activeNpcId, availableNpcs]);
+
+  useEffect(() => {
     if (
       selectedPortalId &&
       !value.portals.some((portal) => portal.id === selectedPortalId)
@@ -500,6 +590,12 @@ export default function PlayableMapEditorCanvas({
       setSelectedGrassId(null);
     }
   }, [selectedGrassId, value.grass]);
+
+  useEffect(() => {
+    if (selectedNpcId && !value.npcs.some((npc) => npc.id === selectedNpcId)) {
+      setSelectedNpcId(null);
+    }
+  }, [selectedNpcId, value.npcs]);
 
   useEffect(() => {
     if (pokemonCatalog.length === 0) {
@@ -529,6 +625,10 @@ export default function PlayableMapEditorCanvas({
     () => objectCatalog.find((item) => item.id === activeObjectId) ?? null,
     [activeObjectId, objectCatalog]
   );
+  const activeNpc = useMemo(
+    () => npcCatalog.find((item) => item.id === activeNpcId) ?? null,
+    [activeNpcId, npcCatalog]
+  );
   const filteredPokemonCatalog = useMemo(() => {
     const normalizedSearch = pokemonSearchTerm.trim().toLowerCase();
 
@@ -553,6 +653,10 @@ export default function PlayableMapEditorCanvas({
   const selectedGrass = useMemo(
     () => value.grass.find((grassCell) => grassCell.id === selectedGrassId) ?? null,
     [selectedGrassId, value.grass]
+  );
+  const selectedNpc = useMemo(
+    () => value.npcs.find((npc) => npc.id === selectedNpcId) ?? null,
+    [selectedNpcId, value.npcs]
   );
   const selectedContents = useMemo(
     () =>
@@ -680,9 +784,19 @@ export default function PlayableMapEditorCanvas({
       }))
       .filter((item) => item.x >= 0 && item.y >= 0 && item.x < mapWidth && item.y < mapHeight)
       .map(({ offsetX: _offsetX, offsetY: _offsetY, ...item }) => item);
+    const nextNpcs = pendingTransform.clipboard.npcs
+      .map((item) => ({
+        ...item,
+        id: pendingTransform.type === "move" ? item.id : createEditorId("npc"),
+        x: targetCell.x + item.offsetX,
+        y: targetCell.y + item.offsetY,
+      }))
+      .filter((item) => item.x >= 0 && item.y >= 0 && item.x < mapWidth && item.y < mapHeight)
+      .map(({ offsetX: _offsetX, offsetY: _offsetY, ...item }) => item);
     const objectTargetKeys = new Set(nextObjects.map((item) => getCellKey(item.x, item.y)));
     const portalTargetKeys = new Set(nextPortals.map((item) => getCellKey(item.x, item.y)));
     const grassTargetKeys = new Set(nextGrass.map((item) => getCellKey(item.x, item.y)));
+    const npcTargetKeys = new Set(nextNpcs.map((item) => getCellKey(item.x, item.y)));
 
     setNextValue({
       ...baseValue,
@@ -703,6 +817,10 @@ export default function PlayableMapEditorCanvas({
           (item) => !grassTargetKeys.has(getCellKey(item.x, item.y))
         ),
         ...nextGrass,
+      ],
+      npcs: [
+        ...baseValue.npcs.filter((item) => !npcTargetKeys.has(getCellKey(item.x, item.y))),
+        ...nextNpcs,
       ],
     });
     setSelectionBounds({
@@ -743,6 +861,7 @@ export default function PlayableMapEditorCanvas({
       endX: cell.x,
       endY: cell.y,
     });
+    setSelectedNpcId(null);
   };
 
   const placeOrSelectPortalAtCell = (cell: GridCell) => {
@@ -770,6 +889,58 @@ export default function PlayableMapEditorCanvas({
       ],
     });
     setSelectedPortalId(nextPortal.id);
+    setSelectedNpcId(null);
+    setSelectionBounds({
+      startX: cell.x,
+      startY: cell.y,
+      endX: cell.x,
+      endY: cell.y,
+    });
+  };
+
+  const placeOrSelectNpcAtCell = (cell: GridCell) => {
+    const existingNpc =
+      value.npcs.find((item) => item.x === cell.x && item.y === cell.y) ?? null;
+
+    if (existingNpc && (!activeNpc || existingNpc.npcId === activeNpc.id)) {
+      setSelectedNpcId(existingNpc.id);
+      setSelectedPortalId(null);
+      setSelectedGrassId(null);
+      setSelectionBounds({
+        startX: cell.x,
+        startY: cell.y,
+        endX: cell.x,
+        endY: cell.y,
+      });
+      return;
+    }
+
+    if (!activeNpc) {
+      return;
+    }
+
+    const nextNpc: MapEditorNpcPlacement = {
+      id: existingNpc?.id ?? createEditorId("npc"),
+      npcId: activeNpc.id,
+      name: activeNpc.name,
+      category: activeNpc.category,
+      previewImageSrc: activeNpc.previewImageSrc,
+      npcType: activeNpc.npcType,
+      aiType: activeNpc.aiType,
+      x: cell.x,
+      y: cell.y,
+    };
+
+    setNextValue({
+      ...value,
+      npcs: [
+        ...value.npcs.filter((item) => getCellKey(item.x, item.y) !== getCellKey(cell.x, cell.y)),
+        nextNpc,
+      ],
+    });
+    setSelectedNpcId(nextNpc.id);
+    setSelectedPortalId(null);
+    setSelectedGrassId(null);
     setSelectionBounds({
       startX: cell.x,
       startY: cell.y,
@@ -807,6 +978,7 @@ export default function PlayableMapEditorCanvas({
 
     if (nextGrassCells.length === 1) {
       setSelectedGrassId(nextGrassCells[0].id);
+      setSelectedNpcId(null);
       setSelectionBounds({
         startX: nextGrassCells[0].x,
         startY: nextGrassCells[0].y,
@@ -816,6 +988,7 @@ export default function PlayableMapEditorCanvas({
     } else {
       setSelectionBounds(bounds);
       setSelectedGrassId(null);
+      setSelectedNpcId(null);
     }
   };
 
@@ -873,6 +1046,31 @@ export default function PlayableMapEditorCanvas({
     setSelectedGrassId(null);
   };
 
+  const updateSelectedNpc = (
+    updater: (npc: MapEditorNpcPlacement) => MapEditorNpcPlacement
+  ) => {
+    if (!selectedNpcId) {
+      return;
+    }
+
+    setNextValue({
+      ...value,
+      npcs: value.npcs.map((npc) => (npc.id === selectedNpcId ? updater(npc) : npc)),
+    });
+  };
+
+  const removeSelectedNpc = () => {
+    if (!selectedNpcId) {
+      return;
+    }
+
+    setNextValue({
+      ...value,
+      npcs: value.npcs.filter((npc) => npc.id !== selectedNpcId),
+    });
+    setSelectedNpcId(null);
+  };
+
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
       return;
@@ -903,7 +1101,13 @@ export default function PlayableMapEditorCanvas({
         current: cell,
       });
       setSelectedPortalId(null);
+      setSelectedNpcId(null);
       event.currentTarget.setPointerCapture(event.pointerId);
+      return;
+    }
+
+    if (activeTool === "npc") {
+      placeOrSelectNpcAtCell(cell);
       return;
     }
 
@@ -912,6 +1116,7 @@ export default function PlayableMapEditorCanvas({
       current: cell,
     });
     setSelectedPortalId(null);
+    setSelectedNpcId(null);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -966,9 +1171,16 @@ export default function PlayableMapEditorCanvas({
               grassCell.x === nextBounds.startX && grassCell.y === nextBounds.startY
           ) ?? null
         : null;
+    const npcAtSelection =
+      nextBounds.startX === nextBounds.endX && nextBounds.startY === nextBounds.endY
+        ? value.npcs.find(
+            (npc) => npc.x === nextBounds.startX && npc.y === nextBounds.startY
+          ) ?? null
+        : null;
 
     setSelectedPortalId(portalAtSelection?.id ?? null);
     setSelectedGrassId(grassAtSelection?.id ?? null);
+    setSelectedNpcId(npcAtSelection?.id ?? null);
   };
 
   const toolLabel =
@@ -984,7 +1196,11 @@ export default function PlayableMapEditorCanvas({
           : "Select an object to place."
         : activeTool === "portal"
           ? "Click a cell to place or select a portal cell."
-          : "Drag to paint grass cells with the active encounter setup.";
+          : activeTool === "grass"
+            ? "Drag to paint grass cells with the active encounter setup."
+            : activeNpc
+              ? `Click to place ${activeNpc.name}.`
+              : "Create an NPC in the designer, then place it here.";
 
   return (
     <Flex direction={{ base: "column", xl: "row" }} gap={5}>
@@ -1007,7 +1223,7 @@ export default function PlayableMapEditorCanvas({
             >
               Tools
             </Text>
-            <SimpleGrid columns={4} spacing={2}>
+            <SimpleGrid columns={5} spacing={2}>
               <Button
                 size="sm"
                 colorScheme={activeTool === "selector" ? "green" : undefined}
@@ -1039,6 +1255,14 @@ export default function PlayableMapEditorCanvas({
                 onClick={() => setActiveTool("grass")}
               >
                 Grass
+              </Button>
+              <Button
+                size="sm"
+                colorScheme={activeTool === "npc" ? "green" : undefined}
+                variant={activeTool === "npc" ? "solid" : "outline"}
+                onClick={() => setActiveTool("npc")}
+              >
+                NPCs
               </Button>
             </SimpleGrid>
             <Text mt={3} fontSize="sm" color="#55645a">
@@ -1111,6 +1335,7 @@ export default function PlayableMapEditorCanvas({
                   setPendingTransform(null);
                   setSelectedPortalId(null);
                   setSelectedGrassId(null);
+                  setSelectedNpcId(null);
                 }}
               >
                 Clear
@@ -1118,7 +1343,7 @@ export default function PlayableMapEditorCanvas({
             </SimpleGrid>
             <Text mt={3} fontSize="sm" color="#55645a">
               {activeSelectionBounds
-                ? `${getBoundsSize(activeSelectionBounds).width} x ${getBoundsSize(activeSelectionBounds).height} cells selected • ${selectedContents?.objects.length ?? 0} objects • ${selectedContents?.portals.length ?? 0} portals • ${selectedContents?.grass.length ?? 0} grass`
+                ? `${getBoundsSize(activeSelectionBounds).width} x ${getBoundsSize(activeSelectionBounds).height} cells selected • ${selectedContents?.objects.length ?? 0} objects • ${selectedContents?.portals.length ?? 0} portals • ${selectedContents?.grass.length ?? 0} grass • ${selectedContents?.npcs.length ?? 0} NPCs`
                 : "No selection yet."}
             </Text>
           </Box>
@@ -1209,6 +1434,104 @@ export default function PlayableMapEditorCanvas({
                     </Flex>
                   ))}
                 </Stack>
+              </Box>
+            </>
+          ) : null}
+
+          {activeTool === "npc" ? (
+            <>
+              <Divider />
+              <Box>
+                <Text
+                  fontSize="xs"
+                  fontWeight="700"
+                  textTransform="uppercase"
+                  letterSpacing="0.14em"
+                  color="#5e7a61"
+                  mb={2}
+                >
+                  NPC Tool
+                </Text>
+                {npcCatalog.length > 0 ? (
+                  <>
+                    <FormControl mb={3}>
+                      <FormLabel>Category</FormLabel>
+                      <Select
+                        value={activeNpcCategory}
+                        onChange={(event) => setActiveNpcCategory(event.target.value)}
+                      >
+                        {npcCategories.map((category) => (
+                          <option key={category} value={category}>
+                            {category}
+                          </option>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <Stack spacing={2} maxH="260px" overflowY="auto">
+                      {availableNpcs.map((npc) => (
+                        <Flex
+                          key={npc.id}
+                          align="center"
+                          gap={3}
+                          p={2.5}
+                          borderRadius="14px"
+                          borderWidth="1px"
+                          borderColor={
+                            npc.id === activeNpcId
+                              ? "rgba(46, 91, 55, 0.44)"
+                              : "rgba(35, 49, 39, 0.12)"
+                          }
+                          bg={
+                            npc.id === activeNpcId
+                              ? "rgba(232, 244, 228, 0.96)"
+                              : "rgba(255,255,255,0.78)"
+                          }
+                          cursor="pointer"
+                          onClick={() => setActiveNpcId(npc.id)}
+                        >
+                          <Flex
+                            align="center"
+                            justify="center"
+                            w="56px"
+                            h="56px"
+                            borderRadius="12px"
+                            bg="rgba(35, 49, 39, 0.06)"
+                            overflow="hidden"
+                            flexShrink={0}
+                          >
+                            {npc.previewImageSrc ? (
+                              <Box
+                                as="img"
+                                src={npc.previewImageSrc}
+                                alt={`${npc.name} preview`}
+                                maxW="56px"
+                                maxH="56px"
+                                objectFit="contain"
+                                style={{ imageRendering: "pixelated" }}
+                              />
+                            ) : (
+                              <Text fontSize="xs" textAlign="center" color="#55645a" px={2}>
+                                No Image
+                              </Text>
+                            )}
+                          </Flex>
+                          <Box minW={0}>
+                            <Text fontWeight="700" color="#233127" noOfLines={1}>
+                              {npc.name}
+                            </Text>
+                            <Text fontSize="sm" color="#55645a">
+                              {npc.npcType} • {npc.aiType}
+                            </Text>
+                          </Box>
+                        </Flex>
+                      ))}
+                    </Stack>
+                  </>
+                ) : (
+                  <Text fontSize="sm" color="#55645a">
+                    Create NPCs in the designer section first, then place them on this map.
+                  </Text>
+                )}
               </Box>
             </>
           ) : null}
@@ -1651,6 +1974,67 @@ export default function PlayableMapEditorCanvas({
             </>
           ) : null}
 
+          {selectedNpc ? (
+            <>
+              <Divider />
+              <Box>
+                <Text
+                  fontSize="xs"
+                  fontWeight="700"
+                  textTransform="uppercase"
+                  letterSpacing="0.14em"
+                  color="#5e7a61"
+                  mb={2}
+                >
+                  NPC Cell
+                </Text>
+                <Text fontSize="sm" color="#55645a" mb={3}>
+                  Cell X {selectedNpc.x}, Y {selectedNpc.y}
+                </Text>
+                <Stack spacing={3}>
+                  <FormControl>
+                    <FormLabel>Assigned NPC</FormLabel>
+                    <Select
+                      value={selectedNpc.npcId}
+                      onChange={(event) => {
+                        const nextNpc = npcCatalog.find((item) => item.id === event.target.value);
+
+                        if (!nextNpc) {
+                          return;
+                        }
+
+                        updateSelectedNpc((npc) => ({
+                          ...npc,
+                          npcId: nextNpc.id,
+                          name: nextNpc.name,
+                          category: nextNpc.category,
+                          previewImageSrc: nextNpc.previewImageSrc,
+                          npcType: nextNpc.npcType,
+                          aiType: nextNpc.aiType,
+                        }));
+                      }}
+                    >
+                      {npcCatalog.map((npc) => (
+                        <option key={npc.id} value={npc.id}>
+                          {npc.name} ({npc.category})
+                        </option>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <Text fontSize="sm" color="#55645a">
+                    Type: {selectedNpc.npcType}
+                  </Text>
+                  <Text fontSize="sm" color="#55645a">
+                    AI: {selectedNpc.aiType}
+                  </Text>
+                  <Button colorScheme="red" variant="outline" onClick={removeSelectedNpc}>
+                    Remove NPC
+                  </Button>
+                </Stack>
+              </Box>
+            </>
+          ) : null}
+
           <Divider />
 
           <Box>
@@ -1672,6 +2056,9 @@ export default function PlayableMapEditorCanvas({
             </Text>
             <Text fontSize="sm" color="#55645a">
               Grass cells: {value.grass.length}
+            </Text>
+            <Text fontSize="sm" color="#55645a">
+              NPCs: {value.npcs.length}
             </Text>
             <Text fontSize="sm" color={isDirty ? "#8b5a20" : "#55645a"}>
               {isDirty ? "Unsaved changes" : "All changes saved"}
@@ -1811,6 +2198,48 @@ export default function PlayableMapEditorCanvas({
               </Flex>
             ))}
 
+            {value.npcs.map((npc) => (
+              <Flex
+                key={npc.id}
+                position="absolute"
+                left={`${npc.x * cellSize}px`}
+                top={`${npc.y * cellSize}px`}
+                width={`${cellSize}px`}
+                height={`${cellSize}px`}
+                align="center"
+                justify="center"
+                border={
+                  npc.id === selectedNpcId
+                    ? "2px solid rgba(14, 116, 144, 0.95)"
+                    : "1px solid rgba(8, 145, 178, 0.5)"
+                }
+                bg={
+                  npc.id === selectedNpcId
+                    ? "rgba(6, 182, 212, 0.26)"
+                    : "rgba(6, 182, 212, 0.14)"
+                }
+                pointerEvents="none"
+                zIndex={4}
+                overflow="hidden"
+              >
+                {npc.previewImageSrc ? (
+                  <Box
+                    as="img"
+                    src={npc.previewImageSrc}
+                    alt={`${npc.name} npc`}
+                    width={`${cellSize}px`}
+                    height={`${cellSize}px`}
+                    objectFit="contain"
+                    style={{ imageRendering: "pixelated" }}
+                  />
+                ) : (
+                  <Text fontSize="10px" fontWeight="800" color="#0f172a">
+                    N
+                  </Text>
+                )}
+              </Flex>
+            ))}
+
             <Box
               position="absolute"
               inset={0}
@@ -1937,6 +2366,25 @@ export default function PlayableMapEditorCanvas({
                   whiteSpace="nowrap"
                 >
                   Portal: {getPortalLabel(selectedPortal, maps)}
+                </Box>
+              ) : null}
+
+              {selectedNpc ? (
+                <Box
+                  position="absolute"
+                  left={`${selectedNpc.x * cellSize}px`}
+                  top={`${Math.max(0, selectedNpc.y * cellSize - 34)}px`}
+                  px={2.5}
+                  py={1.5}
+                  borderRadius="12px"
+                  bg="rgba(8, 47, 73, 0.88)"
+                  color="white"
+                  fontSize="xs"
+                  fontWeight="700"
+                  pointerEvents="none"
+                  whiteSpace="nowrap"
+                >
+                  NPC: {selectedNpc.name}
                 </Box>
               ) : null}
             </Box>

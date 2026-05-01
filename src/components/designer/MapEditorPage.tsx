@@ -32,6 +32,7 @@ import {
 } from "../game/playableMapRuntime";
 import PlayableMapEditorCanvas, {
   type MapEditorMapSummary,
+  type MapEditorNpcCatalogItem,
   type MapEditorObjectCatalogItem,
   type MapEditorPokemonCatalogItem,
   type PlayableMapEditorData,
@@ -341,6 +342,52 @@ function normalizePokemonCatalogItem(item: DesignerItemSeed): MapEditorPokemonCa
   };
 }
 
+function normalizeNpcCatalogItem(item: DesignerItemSeed): MapEditorNpcCatalogItem {
+  const npcProfile =
+    item.npcProfile && typeof item.npcProfile === "object"
+      ? (item.npcProfile as {
+          aiType?: string;
+          npcType?: string;
+          graphics?: {
+            chestImageSrc?: string;
+            standingDownSrc?: string;
+            standingUpSrc?: string;
+            standingLeftSrc?: string;
+            standingRightSrc?: string;
+            trainerFrontImageSrc?: string;
+          };
+        })
+      : null;
+  const graphics = npcProfile?.graphics;
+
+  return {
+    id: item.id,
+    name: item.name,
+    category: item.category,
+    previewImageSrc:
+      (npcProfile?.npcType === "chest"
+        ? graphics?.chestImageSrc
+        : graphics?.standingDownSrc ||
+          graphics?.standingUpSrc ||
+          graphics?.standingLeftSrc ||
+          graphics?.standingRightSrc ||
+          graphics?.trainerFrontImageSrc) ?? "",
+    npcType:
+      npcProfile?.npcType === "trainer" ||
+      npcProfile?.npcType === "store" ||
+      npcProfile?.npcType === "chest" ||
+      npcProfile?.npcType === "healer"
+        ? npcProfile.npcType
+        : "healer",
+    aiType:
+      npcProfile?.aiType === "moving" ||
+      npcProfile?.aiType === "scriptable" ||
+      npcProfile?.aiType === "standing"
+        ? npcProfile.aiType
+        : "standing",
+  };
+}
+
 function loadObjectCatalog() {
   const fallback: MapEditorObjectCatalogItem[] = [];
 
@@ -374,6 +421,26 @@ function loadPokemonCatalog() {
           Array.isArray(item?.details)
       )
       .map(normalizePokemonCatalogItem);
+
+    return items.length > 0 ? items : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function loadNpcCatalog() {
+  const fallback: MapEditorNpcCatalogItem[] = [];
+
+  try {
+    const items = readStoredDesignerSectionPayload("npcs").state.items
+      .filter(
+        (item): item is DesignerItemSeed =>
+          typeof item?.id === "string" &&
+          typeof item?.name === "string" &&
+          typeof item?.category === "string" &&
+          Array.isArray(item?.details)
+      )
+      .map(normalizeNpcCatalogItem);
 
     return items.length > 0 ? items : fallback;
   } catch {
@@ -512,6 +579,7 @@ export default function MapEditorPage() {
   const [pokemonCatalog, setPokemonCatalog] = useState<MapEditorPokemonCatalogItem[]>(
     () => loadPokemonCatalog()
   );
+  const [npcCatalog, setNpcCatalog] = useState<MapEditorNpcCatalogItem[]>(() => loadNpcCatalog());
   const [mapsState, setMapsState] = useState<DesignerSectionState>(() => loadMapsState());
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
   const [editorData, setEditorData] = useState<PlayableMapEditorData>(() =>
@@ -645,6 +713,11 @@ export default function MapEditorPage() {
         return;
       }
 
+      if (detail.sectionKey === "npcs") {
+        setNpcCatalog(loadNpcCatalog());
+        return;
+      }
+
       if (detail.sectionKey === "regions") {
         setRegionNames(loadRegionNames());
         return;
@@ -760,7 +833,7 @@ export default function MapEditorPage() {
     publishMapsState(mapsState);
     toast({
       title: "Map editor changes saved.",
-      description: `${editorData.objects.length} objects and ${editorData.portals.length} portals stored for this map.`,
+      description: `${editorData.objects.length} objects, ${editorData.portals.length} portals, and ${editorData.npcs.length} NPCs stored for this map.`,
       status: "success",
       duration: 3000,
       isClosable: true,
@@ -935,7 +1008,7 @@ export default function MapEditorPage() {
               </Text>
             </Box>
             <Text fontSize="sm" color="#4d6652">
-              Selector, grass, object placement, and portal tools all edit the saved map editor data.
+              Selector, grass, object placement, portal tools, and NPC placement all edit the saved map editor data.
             </Text>
           </Flex>
 
@@ -950,6 +1023,7 @@ export default function MapEditorPage() {
               backgroundStyle={mapSurfaceBackgroundStyle}
               objectCatalog={objectCatalog}
               pokemonCatalog={pokemonCatalog}
+              npcCatalog={npcCatalog}
               maps={mapSummaries}
               currentMapId={mapId}
               value={editorData}

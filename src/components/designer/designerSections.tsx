@@ -166,6 +166,59 @@ export interface DesignerGameItemProfile {
   pokeballBonusRatio: number;
 }
 
+export type DesignerNpcAiType = "standing" | "moving" | "scriptable";
+
+export type DesignerNpcType = "healer" | "trainer" | "store" | "chest";
+
+export interface DesignerNpcGraphicsProfile {
+  standingUpSrc: string;
+  standingDownSrc: string;
+  standingLeftSrc: string;
+  standingRightSrc: string;
+  walkingUpSrc: string;
+  walkingDownSrc: string;
+  walkingLeftSrc: string;
+  walkingRightSrc: string;
+  chestImageSrc: string;
+  trainerFrontImageSrc: string;
+}
+
+export interface DesignerNpcTrainerPokemon {
+  pokemonId: string;
+  pokemonName: string;
+  level: number;
+}
+
+export interface DesignerNpcStoreItem {
+  itemId: string;
+  itemName: string;
+  quantity: number;
+  price: number;
+}
+
+export interface DesignerNpcChestItem {
+  itemId: string;
+  itemName: string;
+  quantity: number;
+}
+
+export interface DesignerNpcProfile {
+  aiType: DesignerNpcAiType;
+  npcType: DesignerNpcType;
+  movementIntervalMinSeconds: number;
+  movementIntervalMaxSeconds: number;
+  movementStepMin: number;
+  movementStepMax: number;
+  scriptSource: string;
+  healPrice: number;
+  trainerPokemons: DesignerNpcTrainerPokemon[];
+  storeMoney: number;
+  storeItems: DesignerNpcStoreItem[];
+  chestSlotCapacity: number;
+  chestItems: DesignerNpcChestItem[];
+  graphics: DesignerNpcGraphicsProfile;
+}
+
 export interface DesignerItemCreateOptions {
   mapObjectAsset?: DesignerMapObjectAsset;
   playableMapConfig?: DesignerPlayableMapConfig;
@@ -174,6 +227,7 @@ export interface DesignerItemCreateOptions {
   skillGfxProfile?: DesignerSkillGfxProfile;
   levelingCurveProfile?: DesignerLevelingCurveProfile;
   itemProfile?: DesignerGameItemProfile;
+  npcProfile?: DesignerNpcProfile;
 }
 
 export interface DesignerItemSeed {
@@ -188,6 +242,7 @@ export interface DesignerItemSeed {
   skillGfxProfile?: DesignerSkillGfxProfile;
   levelingCurveProfile?: DesignerLevelingCurveProfile;
   itemProfile?: DesignerGameItemProfile;
+  npcProfile?: DesignerNpcProfile;
 }
 
 export interface DesignerPlayableMapConfig {
@@ -487,6 +542,40 @@ const skillGfxDetailValue = (
   key: keyof DesignerSkillGfxProfile,
   fallback: string | number
 ) => String(options?.skillGfxProfile?.[key] ?? fallback);
+
+function formatNpcMoney(value: number | undefined) {
+  return `$${(value ?? 0).toLocaleString()}`;
+}
+
+function getNpcGraphicsSummary(profile?: DesignerNpcProfile) {
+  if (!profile) {
+    return "Missing";
+  }
+
+  if (profile.npcType === "chest") {
+    return profile.graphics.chestImageSrc ? "Chest image ready" : "Chest image required";
+  }
+
+  const directionalImages = [
+    profile.graphics.standingUpSrc,
+    profile.graphics.standingDownSrc,
+    profile.graphics.standingLeftSrc,
+    profile.graphics.standingRightSrc,
+    profile.graphics.walkingUpSrc,
+    profile.graphics.walkingDownSrc,
+    profile.graphics.walkingLeftSrc,
+    profile.graphics.walkingRightSrc,
+  ];
+  const hasDirectionalSet = directionalImages.every((value) => value.length > 0);
+
+  if (profile.npcType === "trainer") {
+    return hasDirectionalSet && profile.graphics.trainerFrontImageSrc
+      ? "World + battle images ready"
+      : "Battle/world images missing";
+  }
+
+  return hasDirectionalSet ? "World images ready" : "World images missing";
+}
 
 function formatItemStatModifiers(modifiers?: DesignerItemStatModifiers) {
   if (!modifiers) {
@@ -1073,25 +1162,135 @@ export const designerSections: DesignerSectionDefinition[] = [
         id: "npc-prof-cedar",
         name: "Prof. Cedar",
         category: "Quest Givers",
-        details: [detail("Role", "Mentor"), detail("Map", "Bloomharbor"), detail("Mood", "Calm")],
+        details: [
+          detail("AI", "standing"),
+          detail("Type", "healer"),
+          detail("Behavior", "Heals for $20"),
+          detail("Graphics", "World images ready"),
+        ],
+        npcProfile: {
+          aiType: "standing",
+          npcType: "healer",
+          movementIntervalMinSeconds: 5,
+          movementIntervalMaxSeconds: 60,
+          movementStepMin: 1,
+          movementStepMax: 5,
+          scriptSource: "",
+          healPrice: 20,
+          trainerPokemons: [],
+          storeMoney: 10000000,
+          storeItems: [],
+          chestSlotCapacity: 10,
+          chestItems: [],
+          graphics: {
+            standingUpSrc: "",
+            standingDownSrc: "",
+            standingLeftSrc: "",
+            standingRightSrc: "",
+            walkingUpSrc: "",
+            walkingDownSrc: "",
+            walkingLeftSrc: "",
+            walkingRightSrc: "",
+            chestImageSrc: "",
+            trainerFrontImageSrc: "",
+          },
+        },
       },
       {
         id: "npc-mira-merchant",
         name: "Mira Merchant",
         category: "Vendors",
-        details: [detail("Role", "Shopkeeper"), detail("Map", "Bloomharbor"), detail("Mood", "Busy")],
+        details: [
+          detail("AI", "standing"),
+          detail("Type", "store"),
+          detail("Behavior", "0 store items"),
+          detail("Graphics", "World images ready"),
+        ],
+        npcProfile: {
+          aiType: "standing",
+          npcType: "store",
+          movementIntervalMinSeconds: 5,
+          movementIntervalMaxSeconds: 60,
+          movementStepMin: 1,
+          movementStepMax: 5,
+          scriptSource: "",
+          healPrice: 20,
+          trainerPokemons: [],
+          storeMoney: 10000000,
+          storeItems: [],
+          chestSlotCapacity: 10,
+          chestItems: [],
+          graphics: {
+            standingUpSrc: "",
+            standingDownSrc: "",
+            standingLeftSrc: "",
+            standingRightSrc: "",
+            walkingUpSrc: "",
+            walkingDownSrc: "",
+            walkingLeftSrc: "",
+            walkingRightSrc: "",
+            chestImageSrc: "",
+            trainerFrontImageSrc: "",
+          },
+        },
       },
       {
         id: "npc-korin",
         name: "Korin",
         category: "Trainers",
-        details: [detail("Role", "Duelist"), detail("Map", "Sungrass Plains"), detail("Mood", "Focused")],
+        details: [
+          detail("AI", "moving"),
+          detail("Type", "trainer"),
+          detail("Behavior", "1 battle pokemon"),
+          detail("Graphics", "Battle/world images missing"),
+        ],
+        npcProfile: {
+          aiType: "moving",
+          npcType: "trainer",
+          movementIntervalMinSeconds: 5,
+          movementIntervalMaxSeconds: 60,
+          movementStepMin: 1,
+          movementStepMax: 5,
+          scriptSource: "",
+          healPrice: 20,
+          trainerPokemons: [{ pokemonId: "pokemon-flameling", pokemonName: "Flameling", level: 12 }],
+          storeMoney: 10000000,
+          storeItems: [],
+          chestSlotCapacity: 10,
+          chestItems: [],
+          graphics: {
+            standingUpSrc: "",
+            standingDownSrc: "",
+            standingLeftSrc: "",
+            standingRightSrc: "",
+            walkingUpSrc: "",
+            walkingDownSrc: "",
+            walkingLeftSrc: "",
+            walkingRightSrc: "",
+            chestImageSrc: "",
+            trainerFrontImageSrc: "",
+          },
+        },
       },
     ],
-    createDetails: (_name, category, index) => [
-      detail("Role", ["Mentor", "Shopkeeper", "Duelist"][index % 3]),
-      detail("Map", ["Bloomharbor", "Sungrass Plains", "Amber Cavern"][index % 3]),
-      detail("Mood", category === "Vendors" ? "Busy" : "Calm"),
+    createDetails: (_name, category, index, options) => [
+      detail("AI", options?.npcProfile?.aiType ?? (index % 2 === 0 ? "moving" : "standing")),
+      detail("Type", options?.npcProfile?.npcType ?? (category === "Trainers" ? "trainer" : "healer")),
+      detail(
+        "Behavior",
+        options?.npcProfile?.npcType === "healer"
+          ? `Heals for ${formatNpcMoney(options.npcProfile.healPrice)}`
+          : options?.npcProfile?.npcType === "trainer"
+            ? `${options.npcProfile.trainerPokemons.length} battle pokemon`
+            : options?.npcProfile?.npcType === "store"
+              ? `${options.npcProfile.storeItems.length} store items`
+              : options?.npcProfile?.npcType === "chest"
+                ? `${options.npcProfile.chestSlotCapacity} slots`
+                : options?.npcProfile?.aiType === "scriptable"
+                  ? "Custom script"
+                  : "Configured",
+      ),
+      detail("Graphics", getNpcGraphicsSummary(options?.npcProfile)),
     ],
   },
 ];

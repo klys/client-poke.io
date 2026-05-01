@@ -43,6 +43,13 @@ import {
   type DesignerGameItemProfile,
   type DesignerItemStatModifiers,
   type DesignerItemType,
+  type DesignerNpcAiType,
+  type DesignerNpcChestItem,
+  type DesignerNpcGraphicsProfile,
+  type DesignerNpcProfile,
+  type DesignerNpcStoreItem,
+  type DesignerNpcTrainerPokemon,
+  type DesignerNpcType,
   type DesignerPokemonProfile,
   type DesignerPokemonSkillAssignment,
   type DesignerPokemonSkillProfile,
@@ -236,6 +243,15 @@ const DEFAULT_ITEM_STAT_MODIFIERS: Record<keyof DesignerItemStatModifiers, strin
   specialDefense: "0",
   speed: "0",
 };
+const NPC_AI_TYPE_OPTIONS: DesignerNpcAiType[] = ["standing", "moving", "scriptable"];
+const NPC_TYPE_OPTIONS: DesignerNpcType[] = ["healer", "trainer", "store", "chest"];
+const DEFAULT_NPC_STORE_MONEY = 10000000;
+const DEFAULT_NPC_CHEST_SLOTS = 10;
+const DEFAULT_NPC_HEAL_PRICE = 20;
+const DEFAULT_NPC_MOVEMENT_INTERVAL_MIN = 5;
+const DEFAULT_NPC_MOVEMENT_INTERVAL_MAX = 60;
+const DEFAULT_NPC_MOVEMENT_STEP_MIN = 1;
+const DEFAULT_NPC_MOVEMENT_STEP_MAX = 5;
 
 interface PokemonFormState {
   hp: string;
@@ -289,6 +305,42 @@ interface ItemFormState {
   skillId: string;
   pokeballBonusElements: string[];
   pokeballBonusRatio: string;
+}
+
+interface NpcTrainerPokemonFormEntry {
+  pokemonId: string;
+  pokemonName: string;
+  level: string;
+}
+
+interface NpcStoreItemFormEntry {
+  itemId: string;
+  itemName: string;
+  quantity: string;
+  price: string;
+}
+
+interface NpcChestItemFormEntry {
+  itemId: string;
+  itemName: string;
+  quantity: string;
+}
+
+interface NpcFormState {
+  aiType: DesignerNpcAiType;
+  npcType: DesignerNpcType;
+  movementIntervalMinSeconds: string;
+  movementIntervalMaxSeconds: string;
+  movementStepMin: string;
+  movementStepMax: string;
+  scriptSource: string;
+  healPrice: string;
+  trainerPokemons: NpcTrainerPokemonFormEntry[];
+  storeMoney: string;
+  storeItems: NpcStoreItemFormEntry[];
+  chestSlotCapacity: string;
+  chestItems: NpcChestItemFormEntry[];
+  graphics: DesignerNpcGraphicsProfile;
 }
 
 function createUniqueMapId() {
@@ -438,6 +490,40 @@ function createDefaultItemFormState(): ItemFormState {
   };
 }
 
+function createDefaultNpcGraphicsProfile(): DesignerNpcGraphicsProfile {
+  return {
+    standingUpSrc: "",
+    standingDownSrc: "",
+    standingLeftSrc: "",
+    standingRightSrc: "",
+    walkingUpSrc: "",
+    walkingDownSrc: "",
+    walkingLeftSrc: "",
+    walkingRightSrc: "",
+    chestImageSrc: "",
+    trainerFrontImageSrc: "",
+  };
+}
+
+function createDefaultNpcFormState(): NpcFormState {
+  return {
+    aiType: "standing",
+    npcType: "healer",
+    movementIntervalMinSeconds: String(DEFAULT_NPC_MOVEMENT_INTERVAL_MIN),
+    movementIntervalMaxSeconds: String(DEFAULT_NPC_MOVEMENT_INTERVAL_MAX),
+    movementStepMin: String(DEFAULT_NPC_MOVEMENT_STEP_MIN),
+    movementStepMax: String(DEFAULT_NPC_MOVEMENT_STEP_MAX),
+    scriptSource: "",
+    healPrice: String(DEFAULT_NPC_HEAL_PRICE),
+    trainerPokemons: [],
+    storeMoney: String(DEFAULT_NPC_STORE_MONEY),
+    storeItems: [],
+    chestSlotCapacity: String(DEFAULT_NPC_CHEST_SLOTS),
+    chestItems: [],
+    graphics: createDefaultNpcGraphicsProfile(),
+  };
+}
+
 function parsePokemonStat(value: string) {
   const parsedValue = Number.parseInt(value, 10);
 
@@ -477,6 +563,22 @@ function parseItemStatModifier(value: string) {
 }
 
 function parseItemBonusRatio(value: string) {
+  const parsedValue = Number.parseInt(value, 10);
+
+  return Number.isFinite(parsedValue) && parsedValue >= 0
+    ? Math.round(parsedValue)
+    : null;
+}
+
+function parsePositiveInteger(value: string) {
+  const parsedValue = Number.parseInt(value, 10);
+
+  return Number.isFinite(parsedValue) && parsedValue > 0
+    ? Math.round(parsedValue)
+    : null;
+}
+
+function parseNonNegativeInteger(value: string) {
   const parsedValue = Number.parseInt(value, 10);
 
   return Number.isFinite(parsedValue) && parsedValue >= 0
@@ -791,6 +893,195 @@ function sanitizeGameItemProfile(value: unknown): DesignerGameItemProfile | unde
   };
 }
 
+function isNpcAiType(value: unknown): value is DesignerNpcAiType {
+  return typeof value === "string" && NPC_AI_TYPE_OPTIONS.includes(value as DesignerNpcAiType);
+}
+
+function isNpcType(value: unknown): value is DesignerNpcType {
+  return typeof value === "string" && NPC_TYPE_OPTIONS.includes(value as DesignerNpcType);
+}
+
+function sanitizeNpcGraphicsProfile(value: unknown): DesignerNpcGraphicsProfile {
+  const candidate =
+    value && typeof value === "object"
+      ? (value as Partial<DesignerNpcGraphicsProfile>)
+      : {};
+
+  return {
+    standingUpSrc: typeof candidate.standingUpSrc === "string" ? candidate.standingUpSrc : "",
+    standingDownSrc:
+      typeof candidate.standingDownSrc === "string" ? candidate.standingDownSrc : "",
+    standingLeftSrc:
+      typeof candidate.standingLeftSrc === "string" ? candidate.standingLeftSrc : "",
+    standingRightSrc:
+      typeof candidate.standingRightSrc === "string" ? candidate.standingRightSrc : "",
+    walkingUpSrc: typeof candidate.walkingUpSrc === "string" ? candidate.walkingUpSrc : "",
+    walkingDownSrc:
+      typeof candidate.walkingDownSrc === "string" ? candidate.walkingDownSrc : "",
+    walkingLeftSrc:
+      typeof candidate.walkingLeftSrc === "string" ? candidate.walkingLeftSrc : "",
+    walkingRightSrc:
+      typeof candidate.walkingRightSrc === "string" ? candidate.walkingRightSrc : "",
+    chestImageSrc: typeof candidate.chestImageSrc === "string" ? candidate.chestImageSrc : "",
+    trainerFrontImageSrc:
+      typeof candidate.trainerFrontImageSrc === "string"
+        ? candidate.trainerFrontImageSrc
+        : "",
+  };
+}
+
+function sanitizeNpcTrainerPokemons(value: unknown): DesignerNpcTrainerPokemon[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seenPokemonIds = new Set<string>();
+
+  return value
+    .filter((item): item is Partial<DesignerNpcTrainerPokemon> => Boolean(item) && typeof item === "object")
+    .map((item) => ({
+      pokemonId: typeof item.pokemonId === "string" ? item.pokemonId.trim() : "",
+      pokemonName: typeof item.pokemonName === "string" ? normalizeCategoryName(item.pokemonName) : "",
+      level:
+        typeof item.level === "number" && Number.isFinite(item.level) && item.level > 0
+          ? Math.round(item.level)
+          : 1,
+    }))
+    .filter((item) => {
+      if (!item.pokemonId || !item.pokemonName || seenPokemonIds.has(item.pokemonId)) {
+        return false;
+      }
+
+      seenPokemonIds.add(item.pokemonId);
+      return true;
+    });
+}
+
+function sanitizeNpcStoreItems(value: unknown): DesignerNpcStoreItem[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seenItemIds = new Set<string>();
+
+  return value
+    .filter((item): item is Partial<DesignerNpcStoreItem> => Boolean(item) && typeof item === "object")
+    .map((item) => ({
+      itemId: typeof item.itemId === "string" ? item.itemId.trim() : "",
+      itemName: typeof item.itemName === "string" ? normalizeCategoryName(item.itemName) : "",
+      quantity:
+        typeof item.quantity === "number" && Number.isFinite(item.quantity) && item.quantity > 0
+          ? Math.round(item.quantity)
+          : 1,
+      price:
+        typeof item.price === "number" && Number.isFinite(item.price) && item.price >= 0
+          ? Math.round(item.price)
+          : 0,
+    }))
+    .filter((item) => {
+      if (!item.itemId || !item.itemName || seenItemIds.has(item.itemId)) {
+        return false;
+      }
+
+      seenItemIds.add(item.itemId);
+      return true;
+    });
+}
+
+function sanitizeNpcChestItems(value: unknown): DesignerNpcChestItem[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seenItemIds = new Set<string>();
+
+  return value
+    .filter((item): item is Partial<DesignerNpcChestItem> => Boolean(item) && typeof item === "object")
+    .map((item) => ({
+      itemId: typeof item.itemId === "string" ? item.itemId.trim() : "",
+      itemName: typeof item.itemName === "string" ? normalizeCategoryName(item.itemName) : "",
+      quantity:
+        typeof item.quantity === "number" && Number.isFinite(item.quantity) && item.quantity > 0
+          ? Math.round(item.quantity)
+          : 1,
+    }))
+    .filter((item) => {
+      if (!item.itemId || !item.itemName || seenItemIds.has(item.itemId)) {
+        return false;
+      }
+
+      seenItemIds.add(item.itemId);
+      return true;
+    });
+}
+
+function sanitizeNpcProfile(value: unknown): DesignerNpcProfile | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const candidate = value as Partial<DesignerNpcProfile>;
+  const movementIntervalMinSeconds =
+    typeof candidate.movementIntervalMinSeconds === "number" &&
+    Number.isFinite(candidate.movementIntervalMinSeconds) &&
+    candidate.movementIntervalMinSeconds > 0
+      ? Math.round(candidate.movementIntervalMinSeconds)
+      : DEFAULT_NPC_MOVEMENT_INTERVAL_MIN;
+  const movementIntervalMaxSeconds =
+    typeof candidate.movementIntervalMaxSeconds === "number" &&
+    Number.isFinite(candidate.movementIntervalMaxSeconds) &&
+    candidate.movementIntervalMaxSeconds > 0
+      ? Math.max(
+          movementIntervalMinSeconds,
+          Math.round(candidate.movementIntervalMaxSeconds)
+        )
+      : DEFAULT_NPC_MOVEMENT_INTERVAL_MAX;
+  const movementStepMin =
+    typeof candidate.movementStepMin === "number" &&
+    Number.isFinite(candidate.movementStepMin) &&
+    candidate.movementStepMin > 0
+      ? Math.round(candidate.movementStepMin)
+      : DEFAULT_NPC_MOVEMENT_STEP_MIN;
+  const movementStepMax =
+    typeof candidate.movementStepMax === "number" &&
+    Number.isFinite(candidate.movementStepMax) &&
+    candidate.movementStepMax > 0
+      ? Math.max(movementStepMin, Math.round(candidate.movementStepMax))
+      : DEFAULT_NPC_MOVEMENT_STEP_MAX;
+
+  return {
+    aiType: isNpcAiType(candidate.aiType) ? candidate.aiType : "standing",
+    npcType: isNpcType(candidate.npcType) ? candidate.npcType : "healer",
+    movementIntervalMinSeconds,
+    movementIntervalMaxSeconds,
+    movementStepMin,
+    movementStepMax,
+    scriptSource: typeof candidate.scriptSource === "string" ? candidate.scriptSource : "",
+    healPrice:
+      typeof candidate.healPrice === "number" &&
+      Number.isFinite(candidate.healPrice) &&
+      candidate.healPrice >= 0
+        ? Math.round(candidate.healPrice)
+        : DEFAULT_NPC_HEAL_PRICE,
+    trainerPokemons: sanitizeNpcTrainerPokemons(candidate.trainerPokemons),
+    storeMoney:
+      typeof candidate.storeMoney === "number" &&
+      Number.isFinite(candidate.storeMoney) &&
+      candidate.storeMoney >= 0
+        ? Math.round(candidate.storeMoney)
+        : DEFAULT_NPC_STORE_MONEY,
+    storeItems: sanitizeNpcStoreItems(candidate.storeItems),
+    chestSlotCapacity:
+      typeof candidate.chestSlotCapacity === "number" &&
+      Number.isFinite(candidate.chestSlotCapacity) &&
+      candidate.chestSlotCapacity > 0
+        ? Math.round(candidate.chestSlotCapacity)
+        : DEFAULT_NPC_CHEST_SLOTS,
+    chestItems: sanitizeNpcChestItems(candidate.chestItems),
+    graphics: sanitizeNpcGraphicsProfile(candidate.graphics),
+  };
+}
+
 function sanitizeSkillGfxProfile(value: unknown): DesignerSkillGfxProfile | undefined {
   if (!value || typeof value !== "object") {
     return undefined;
@@ -1068,6 +1359,10 @@ function sanitizeSectionState(
         sectionKey === "skillsGfx"
           ? sanitizeSkillGfxProfile(item.skillGfxProfile)
           : undefined,
+      npcProfile:
+        sectionKey === "npcs"
+          ? sanitizeNpcProfile(item.npcProfile)
+          : undefined,
       pokemonProfile:
         sectionKey === "pokemons"
           ? sanitizePokemonProfile(item.pokemonProfile, item)
@@ -1197,6 +1492,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const isMapsSection = sectionKey === "mapsEditor";
   const isSkillGfxSection = sectionKey === "skillsGfx";
   const isItemsSection = sectionKey === "items";
+  const isNpcsSection = sectionKey === "npcs";
   const isPokemonSection = sectionKey === "pokemons";
   const isSkillsSection = sectionKey === "skills";
   const isGenericRealtimeSection = !isMapsSection;
@@ -1215,6 +1511,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   );
   const [passiveStateCatalogState, setPassiveStateCatalogState] = useState<DesignerSectionState>(() =>
     loadStoredState("passiveStates")
+  );
+  const [itemCatalogState, setItemCatalogState] = useState<DesignerSectionState>(() =>
+    loadStoredState("items")
+  );
+  const [pokemonCatalogState, setPokemonCatalogState] = useState<DesignerSectionState>(() =>
+    loadStoredState("pokemons")
   );
   const [sectionCacheVersion, setSectionCacheVersion] = useState<number | null>(
     () => readStoredPayload(sectionKey).version
@@ -1276,6 +1578,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const [newSkillForm, setNewSkillForm] = useState<SkillFormState>(
     createDefaultSkillFormState
   );
+  const [newNpcForm, setNewNpcForm] = useState<NpcFormState>(createDefaultNpcFormState);
   const [editMapObjectImage, setEditMapObjectImage] = useState("");
   const [editMapObjectWidth, setEditMapObjectWidth] = useState(
     String(DEFAULT_MAP_OBJECT_SIZE)
@@ -1294,6 +1597,13 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const [editSkillForm, setEditSkillForm] = useState<SkillFormState>(
     createDefaultSkillFormState
   );
+  const [editNpcForm, setEditNpcForm] = useState<NpcFormState>(createDefaultNpcFormState);
+  const [newNpcTrainerPokemonId, setNewNpcTrainerPokemonId] = useState("");
+  const [editNpcTrainerPokemonId, setEditNpcTrainerPokemonId] = useState("");
+  const [newNpcStoreItemId, setNewNpcStoreItemId] = useState("");
+  const [editNpcStoreItemId, setEditNpcStoreItemId] = useState("");
+  const [newNpcChestItemId, setNewNpcChestItemId] = useState("");
+  const [editNpcChestItemId, setEditNpcChestItemId] = useState("");
   const [newMapCellSize, setNewMapCellSize] = useState(String(DEFAULT_MAP_CELL_SIZE));
   const [newMapSizePreset, setNewMapSizePreset] =
     useState<DesignerMapSizePreset>(DEFAULT_MAP_SIZE_PRESET);
@@ -1379,6 +1689,18 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setPassiveStateCatalogState(
       sectionKey === "passiveStates" ? nextStoredState : loadStoredState("passiveStates")
     );
+    setItemCatalogState(
+      sectionKey === "items" ? nextStoredState : loadStoredState("items")
+    );
+    setPokemonCatalogState(
+      sectionKey === "pokemons" ? nextStoredState : loadStoredState("pokemons")
+    );
+    setNewNpcTrainerPokemonId("");
+    setEditNpcTrainerPokemonId("");
+    setNewNpcStoreItemId("");
+    setEditNpcStoreItemId("");
+    setNewNpcChestItemId("");
+    setEditNpcChestItemId("");
     shouldBroadcastRef.current = false;
   }, [sectionKey]);
 
@@ -1443,6 +1765,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       const catalogSectionKeys: DesignerSectionKey[] = [
         ...(isPokemonSection || isItemsSection ? (["skills"] as DesignerSectionKey[]) : []),
         ...(isSkillsSection ? (["skillsGfx", "passiveStates"] as DesignerSectionKey[]) : []),
+        ...(isNpcsSection ? (["items", "pokemons"] as DesignerSectionKey[]) : []),
       ];
 
       catalogSectionKeys.forEach((catalogSectionKey) => {
@@ -1491,6 +1814,32 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         setPassiveStateCatalogState(nextPassiveState);
         persistStoredPayload("passiveStates", {
           state: nextPassiveState,
+          version: payload.version,
+          updatedAt: payload.updatedAt,
+          updatedByUsername: payload.updatedByUsername,
+        });
+        return;
+      }
+
+      if (isNpcsSection && payload.sectionKey === "items") {
+        const nextItemsState = sanitizeSectionState("items", payload.state);
+
+        setItemCatalogState(nextItemsState);
+        persistStoredPayload("items", {
+          state: nextItemsState,
+          version: payload.version,
+          updatedAt: payload.updatedAt,
+          updatedByUsername: payload.updatedByUsername,
+        });
+        return;
+      }
+
+      if (isNpcsSection && payload.sectionKey === "pokemons") {
+        const nextPokemonsState = sanitizeSectionState("pokemons", payload.state);
+
+        setPokemonCatalogState(nextPokemonsState);
+        persistStoredPayload("pokemons", {
+          state: nextPokemonsState,
           version: payload.version,
           updatedAt: payload.updatedAt,
           updatedByUsername: payload.updatedByUsername,
@@ -1564,12 +1913,16 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         socket.emit("designer:section:leave", { sectionKey: "skillsGfx" });
         socket.emit("designer:section:leave", { sectionKey: "passiveStates" });
       }
+      if (isNpcsSection) {
+        socket.emit("designer:section:leave", { sectionKey: "items" });
+        socket.emit("designer:section:leave", { sectionKey: "pokemons" });
+      }
       socket.off("designer:section:state", handleObjectsState);
       socket.off("designer:section:version", handleSectionVersion);
       socket.off("designer:section:error", handleObjectsError);
       socket.off("connect", joinSectionRoom);
     };
-  }, [authReady, authenticated, isGenericRealtimeSection, isItemsSection, isPokemonSection, isSkillsSection, sectionKey, socket, toast]);
+  }, [authReady, authenticated, isGenericRealtimeSection, isItemsSection, isNpcsSection, isPokemonSection, isSkillsSection, sectionKey, socket, toast]);
 
   useEffect(() => {
     if (!isMapsSection) {
@@ -1818,6 +2171,68 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       MAP_CELL_SIZE_OPTIONS.includes(Number.parseInt(editMapCellSize, 10) as 8 | 16 | 32 | 64 | 128) &&
       hasValidEditMapDimensions &&
       hasValidEditInitialPosition);
+  const isNpcGraphicsFormValid = (formState: NpcFormState) => {
+    if (formState.npcType === "chest") {
+      return Boolean(formState.graphics.chestImageSrc);
+    }
+
+    const hasWorldImages = [
+      formState.graphics.standingUpSrc,
+      formState.graphics.standingDownSrc,
+      formState.graphics.standingLeftSrc,
+      formState.graphics.standingRightSrc,
+      formState.graphics.walkingUpSrc,
+      formState.graphics.walkingDownSrc,
+      formState.graphics.walkingLeftSrc,
+      formState.graphics.walkingRightSrc,
+    ].every(Boolean);
+
+    if (formState.npcType === "trainer") {
+      return hasWorldImages && Boolean(formState.graphics.trainerFrontImageSrc);
+    }
+
+    return hasWorldImages;
+  };
+  const isNpcFormValid =
+    !isNpcsSection ||
+    (parsePositiveInteger(newNpcForm.movementIntervalMinSeconds) !== null &&
+      parsePositiveInteger(newNpcForm.movementIntervalMaxSeconds) !== null &&
+      parsePositiveInteger(newNpcForm.movementStepMin) !== null &&
+      parsePositiveInteger(newNpcForm.movementStepMax) !== null &&
+      parseNonNegativeInteger(newNpcForm.healPrice) !== null &&
+      parseNonNegativeInteger(newNpcForm.storeMoney) !== null &&
+      parsePositiveInteger(newNpcForm.chestSlotCapacity) !== null &&
+      newNpcForm.trainerPokemons.every((entry) => parsePositiveInteger(entry.level) !== null) &&
+      newNpcForm.storeItems.every(
+        (entry) =>
+          parsePositiveInteger(entry.quantity) !== null &&
+          parseNonNegativeInteger(entry.price) !== null
+      ) &&
+      newNpcForm.chestItems.every((entry) => parsePositiveInteger(entry.quantity) !== null) &&
+      newNpcForm.chestItems.length <=
+        (parsePositiveInteger(newNpcForm.chestSlotCapacity) ?? DEFAULT_NPC_CHEST_SLOTS) &&
+      (newNpcForm.npcType !== "trainer" || newNpcForm.trainerPokemons.length > 0) &&
+      isNpcGraphicsFormValid(newNpcForm));
+  const isEditNpcFormValid =
+    !isNpcsSection ||
+    (parsePositiveInteger(editNpcForm.movementIntervalMinSeconds) !== null &&
+      parsePositiveInteger(editNpcForm.movementIntervalMaxSeconds) !== null &&
+      parsePositiveInteger(editNpcForm.movementStepMin) !== null &&
+      parsePositiveInteger(editNpcForm.movementStepMax) !== null &&
+      parseNonNegativeInteger(editNpcForm.healPrice) !== null &&
+      parseNonNegativeInteger(editNpcForm.storeMoney) !== null &&
+      parsePositiveInteger(editNpcForm.chestSlotCapacity) !== null &&
+      editNpcForm.trainerPokemons.every((entry) => parsePositiveInteger(entry.level) !== null) &&
+      editNpcForm.storeItems.every(
+        (entry) =>
+          parsePositiveInteger(entry.quantity) !== null &&
+          parseNonNegativeInteger(entry.price) !== null
+      ) &&
+      editNpcForm.chestItems.every((entry) => parsePositiveInteger(entry.quantity) !== null) &&
+      editNpcForm.chestItems.length <=
+        (parsePositiveInteger(editNpcForm.chestSlotCapacity) ?? DEFAULT_NPC_CHEST_SLOTS) &&
+      (editNpcForm.npcType !== "trainer" || editNpcForm.trainerPokemons.length > 0) &&
+      isNpcGraphicsFormValid(editNpcForm));
 
   const categorySummary = useMemo(
     () =>
@@ -1878,6 +2293,65 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         .sort((left, right) => left.category.localeCompare(right.category) || left.name.localeCompare(right.name)),
     [passiveStateCatalogState.items]
   );
+  const npcItemCatalog = useMemo(
+    () =>
+      itemCatalogState.items
+        .filter((item) => item.id.trim() && item.name.trim())
+        .map((item) => ({
+          id: item.id,
+          name: item.name,
+          category: item.category,
+        }))
+        .sort((left, right) => left.category.localeCompare(right.category) || left.name.localeCompare(right.name)),
+    [itemCatalogState.items]
+  );
+  const npcPokemonCatalog = useMemo(
+    () =>
+      pokemonCatalogState.items
+        .filter((item) => item.id.trim() && item.name.trim())
+        .map((item) => ({
+          id: item.id,
+          name: item.name,
+          category: item.category,
+        }))
+        .sort((left, right) => left.category.localeCompare(right.category) || left.name.localeCompare(right.name)),
+    [pokemonCatalogState.items]
+  );
+
+  useEffect(() => {
+    if (!npcPokemonCatalog.some((item) => item.id === newNpcTrainerPokemonId)) {
+      setNewNpcTrainerPokemonId(npcPokemonCatalog[0]?.id ?? "");
+    }
+
+    if (!npcPokemonCatalog.some((item) => item.id === editNpcTrainerPokemonId)) {
+      setEditNpcTrainerPokemonId(npcPokemonCatalog[0]?.id ?? "");
+    }
+
+    if (!npcItemCatalog.some((item) => item.id === newNpcStoreItemId)) {
+      setNewNpcStoreItemId(npcItemCatalog[0]?.id ?? "");
+    }
+
+    if (!npcItemCatalog.some((item) => item.id === editNpcStoreItemId)) {
+      setEditNpcStoreItemId(npcItemCatalog[0]?.id ?? "");
+    }
+
+    if (!npcItemCatalog.some((item) => item.id === newNpcChestItemId)) {
+      setNewNpcChestItemId(npcItemCatalog[0]?.id ?? "");
+    }
+
+    if (!npcItemCatalog.some((item) => item.id === editNpcChestItemId)) {
+      setEditNpcChestItemId(npcItemCatalog[0]?.id ?? "");
+    }
+  }, [
+    editNpcChestItemId,
+    editNpcStoreItemId,
+    editNpcTrainerPokemonId,
+    newNpcChestItemId,
+    newNpcStoreItemId,
+    newNpcTrainerPokemonId,
+    npcItemCatalog,
+    npcPokemonCatalog,
+  ]);
 
   const deleteCategoryOptions = useMemo(() => {
     return [UNCATEGORIZED, ...sectionState.categories.filter((category) => category !== deletingCategory && category !== UNCATEGORIZED)];
@@ -1916,6 +2390,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setNewMapBackgroundImage("");
     setNewMapBackgroundImageMode(DEFAULT_MAP_BACKGROUND_IMAGE_MODE);
     setNewMapIsInitial(DEFAULT_IS_INITIAL_MAP);
+    setNewNpcForm(createDefaultNpcFormState());
+    setNewNpcTrainerPokemonId(npcPokemonCatalog[0]?.id ?? "");
+    setNewNpcStoreItemId(npcItemCatalog[0]?.id ?? "");
+    setNewNpcChestItemId(npcItemCatalog[0]?.id ?? "");
     setIsAddOpen(true);
   };
 
@@ -1929,6 +2407,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     const mapObjectAsset = sanitizeMapObjectAsset(item.mapObjectAsset);
     const playableMapConfig = sanitizePlayableMapConfig(item.playableMapConfig, regionNames);
     const skillGfxProfile = sanitizeSkillGfxProfile(item.skillGfxProfile);
+    const npcProfile = sanitizeNpcProfile(item.npcProfile);
     const pokemonProfile = sanitizePokemonProfile(item.pokemonProfile, item);
     const pokemonSkillProfile = sanitizePokemonSkillProfile(item.pokemonSkillProfile, item);
 
@@ -2010,6 +2489,44 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           }
         : createDefaultSkillFormState()
     );
+    setEditNpcForm(
+      npcProfile
+        ? {
+            aiType: npcProfile.aiType,
+            npcType: npcProfile.npcType,
+            movementIntervalMinSeconds: String(npcProfile.movementIntervalMinSeconds),
+            movementIntervalMaxSeconds: String(npcProfile.movementIntervalMaxSeconds),
+            movementStepMin: String(npcProfile.movementStepMin),
+            movementStepMax: String(npcProfile.movementStepMax),
+            scriptSource: npcProfile.scriptSource,
+            healPrice: String(npcProfile.healPrice),
+            trainerPokemons: npcProfile.trainerPokemons.map((pokemon) => ({
+              pokemonId: pokemon.pokemonId,
+              pokemonName: pokemon.pokemonName,
+              level: String(pokemon.level),
+            })),
+            storeMoney: String(npcProfile.storeMoney),
+            storeItems: npcProfile.storeItems.map((storeItem) => ({
+              itemId: storeItem.itemId,
+              itemName: storeItem.itemName,
+              quantity: String(storeItem.quantity),
+              price: String(storeItem.price),
+            })),
+            chestSlotCapacity: String(npcProfile.chestSlotCapacity),
+            chestItems: npcProfile.chestItems.map((chestItem) => ({
+              itemId: chestItem.itemId,
+              itemName: chestItem.itemName,
+              quantity: String(chestItem.quantity),
+            })),
+            graphics: {
+              ...npcProfile.graphics,
+            },
+          }
+        : createDefaultNpcFormState()
+    );
+    setEditNpcTrainerPokemonId(npcPokemonCatalog[0]?.id ?? "");
+    setEditNpcStoreItemId(npcItemCatalog[0]?.id ?? "");
+    setEditNpcChestItemId(npcItemCatalog[0]?.id ?? "");
     setEditMapCellSize(String(playableMapConfig?.cellSize || DEFAULT_MAP_CELL_SIZE));
     setEditMapSizePreset(playableMapConfig?.sizePreset || DEFAULT_MAP_SIZE_PRESET);
     setEditMapCustomWidth(String(playableMapConfig?.width || 500));
@@ -2342,6 +2859,34 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     reader.readAsDataURL(file);
   };
 
+  const handleNpcGraphicChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+    onImageChange: (value: string) => void
+  ) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      onImageChange("");
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      window.alert("Please upload an image file for the NPC graphic.");
+      event.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        onImageChange(reader.result);
+      }
+    };
+
+    reader.readAsDataURL(file);
+  };
+
   const buildPokemonProfile = (
     formState: PokemonFormState
   ): DesignerPokemonProfile | undefined => {
@@ -2395,6 +2940,116 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       frontImageSrc: formState.frontImageSrc,
       backImageSrc: formState.backImageSrc,
       iconImageSrc: formState.iconImageSrc,
+    };
+  };
+
+  const buildNpcProfile = (
+    formState: NpcFormState
+  ): DesignerNpcProfile | undefined => {
+    const movementIntervalMinSeconds = parsePositiveInteger(
+      formState.movementIntervalMinSeconds
+    );
+    const movementIntervalMaxSeconds = parsePositiveInteger(
+      formState.movementIntervalMaxSeconds
+    );
+    const movementStepMin = parsePositiveInteger(formState.movementStepMin);
+    const movementStepMax = parsePositiveInteger(formState.movementStepMax);
+    const healPrice = parseNonNegativeInteger(formState.healPrice);
+    const storeMoney = parseNonNegativeInteger(formState.storeMoney);
+    const chestSlotCapacity = parsePositiveInteger(formState.chestSlotCapacity);
+
+    if (
+      movementIntervalMinSeconds === null ||
+      movementIntervalMaxSeconds === null ||
+      movementStepMin === null ||
+      movementStepMax === null ||
+      healPrice === null ||
+      storeMoney === null ||
+      chestSlotCapacity === null ||
+      !isNpcGraphicsFormValid(formState)
+    ) {
+      return undefined;
+    }
+
+    const trainerPokemons = formState.trainerPokemons
+      .map((pokemon) => {
+        const catalogPokemon = npcPokemonCatalog.find((item) => item.id === pokemon.pokemonId);
+        const level = parsePositiveInteger(pokemon.level);
+
+        if (!catalogPokemon || level === null) {
+          return null;
+        }
+
+        return {
+          pokemonId: catalogPokemon.id,
+          pokemonName: catalogPokemon.name,
+          level,
+        };
+      })
+      .filter((pokemon): pokemon is DesignerNpcTrainerPokemon => pokemon !== null);
+    const storeItems = formState.storeItems
+      .map((storeItem) => {
+        const catalogItem = npcItemCatalog.find((item) => item.id === storeItem.itemId);
+        const quantity = parsePositiveInteger(storeItem.quantity);
+        const price = parseNonNegativeInteger(storeItem.price);
+
+        if (!catalogItem || quantity === null || price === null) {
+          return null;
+        }
+
+        return {
+          itemId: catalogItem.id,
+          itemName: catalogItem.name,
+          quantity,
+          price,
+        };
+      })
+      .filter((storeItem): storeItem is DesignerNpcStoreItem => storeItem !== null);
+    const chestItems = formState.chestItems
+      .map((chestItem) => {
+        const catalogItem = npcItemCatalog.find((item) => item.id === chestItem.itemId);
+        const quantity = parsePositiveInteger(chestItem.quantity);
+
+        if (!catalogItem || quantity === null) {
+          return null;
+        }
+
+        return {
+          itemId: catalogItem.id,
+          itemName: catalogItem.name,
+          quantity,
+        };
+      })
+      .filter((chestItem): chestItem is DesignerNpcChestItem => chestItem !== null);
+
+    if (formState.npcType === "trainer" && trainerPokemons.length === 0) {
+      return undefined;
+    }
+
+    if (chestItems.length > chestSlotCapacity) {
+      return undefined;
+    }
+
+    return {
+      aiType: formState.aiType,
+      npcType: formState.npcType,
+      movementIntervalMinSeconds,
+      movementIntervalMaxSeconds: Math.max(
+        movementIntervalMinSeconds,
+        movementIntervalMaxSeconds
+      ),
+      movementStepMin,
+      movementStepMax: Math.max(movementStepMin, movementStepMax),
+      scriptSource: formState.scriptSource,
+      healPrice,
+      trainerPokemons,
+      storeMoney,
+      storeItems,
+      chestSlotCapacity,
+      chestItems,
+      graphics: {
+        ...formState.graphics,
+      },
     };
   };
 
@@ -2513,6 +3168,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     const name = newItemName.trim();
     const itemProfile = isItemsSection ? buildGameItemProfile(newGameItemForm) : undefined;
     const skillGfxProfile = isSkillGfxSection ? buildSkillGfxProfile(newSkillGfxForm) : undefined;
+    const npcProfile = isNpcsSection ? buildNpcProfile(newNpcForm) : undefined;
     const pokemonProfile = isPokemonSection ? buildPokemonProfile(newPokemonForm) : undefined;
     const pokemonSkillProfile = isSkillsSection ? buildPokemonSkillProfile(newSkillForm) : undefined;
     const category =
@@ -2528,6 +3184,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       !name ||
       (isItemsSection && !isGameItemFormValid) ||
       (isSkillGfxSection && !isSkillGfxFormValid) ||
+      (isNpcsSection && !isNpcFormValid) ||
       (isPokemonSection && !isPokemonFormValid) ||
       (isSkillsSection && !isSkillFormValid) ||
       (isObjectsSection && !isMapObjectFormValid) ||
@@ -2577,6 +3234,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           mapObjectAsset,
           playableMapConfig,
           skillGfxProfile,
+          npcProfile,
           pokemonProfile,
           pokemonSkillProfile,
         }),
@@ -2584,6 +3242,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         mapObjectAsset,
         playableMapConfig,
         skillGfxProfile,
+        npcProfile,
         pokemonProfile,
         pokemonSkillProfile,
       };
@@ -2608,6 +3267,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     const name = editItemName.trim();
     const itemProfile = isItemsSection ? buildGameItemProfile(editGameItemForm) : undefined;
     const skillGfxProfile = isSkillGfxSection ? buildSkillGfxProfile(editSkillGfxForm) : undefined;
+    const npcProfile = isNpcsSection ? buildNpcProfile(editNpcForm) : undefined;
     const pokemonProfile = isPokemonSection ? buildPokemonProfile(editPokemonForm) : undefined;
     const pokemonSkillProfile = isSkillsSection ? buildPokemonSkillProfile(editSkillForm) : undefined;
     const category =
@@ -2624,6 +3284,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       !name ||
       (isItemsSection && !isEditGameItemFormValid) ||
       (isSkillGfxSection && !isEditSkillGfxFormValid) ||
+      (isNpcsSection && !isEditNpcFormValid) ||
       (isPokemonSection && !isEditPokemonFormValid) ||
       (isSkillsSection && !isEditSkillFormValid) ||
       (isObjectsSection && !isEditMapObjectFormValid) ||
@@ -2673,6 +3334,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 mapObjectAsset,
                 playableMapConfig,
                 skillGfxProfile,
+                npcProfile,
                 pokemonProfile,
                 pokemonSkillProfile,
               }),
@@ -2680,6 +3342,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               mapObjectAsset,
               playableMapConfig,
               skillGfxProfile,
+              npcProfile,
               pokemonProfile,
               pokemonSkillProfile,
             }
@@ -3258,6 +3921,688 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               Enter both initial position coordinates or leave both empty to use the map center.
             </Text>
           ) : null}
+        </Box>
+      </>
+    );
+  };
+
+  const renderNpcFields = (
+    formState: NpcFormState,
+    onFormChange: React.Dispatch<React.SetStateAction<NpcFormState>>,
+    trainerPokemonToAdd: string,
+    onTrainerPokemonToAddChange: (value: string) => void,
+    storeItemToAdd: string,
+    onStoreItemToAddChange: (value: string) => void,
+    chestItemToAdd: string,
+    onChestItemToAddChange: (value: string) => void
+  ) => {
+    const updateField = <Key extends keyof NpcFormState>(
+      key: Key,
+      value: NpcFormState[Key]
+    ) => {
+      onFormChange((current) => ({
+        ...current,
+        [key]: value,
+      }));
+    };
+    const updateGraphicsField = (
+      key: keyof DesignerNpcGraphicsProfile,
+      value: string
+    ) => {
+      onFormChange((current) => ({
+        ...current,
+        graphics: {
+          ...current.graphics,
+          [key]: value,
+        },
+      }));
+    };
+    const addTrainerPokemon = () => {
+      const pokemon = npcPokemonCatalog.find((item) => item.id === trainerPokemonToAdd);
+
+      if (!pokemon || formState.trainerPokemons.some((entry) => entry.pokemonId === pokemon.id)) {
+        return;
+      }
+
+      onFormChange((current) => ({
+        ...current,
+        trainerPokemons: [
+          ...current.trainerPokemons,
+          {
+            pokemonId: pokemon.id,
+            pokemonName: pokemon.name,
+            level: "1",
+          },
+        ],
+      }));
+    };
+    const addStoreItem = () => {
+      const item = npcItemCatalog.find((catalogItem) => catalogItem.id === storeItemToAdd);
+
+      if (!item || formState.storeItems.some((entry) => entry.itemId === item.id)) {
+        return;
+      }
+
+      onFormChange((current) => ({
+        ...current,
+        storeItems: [
+          ...current.storeItems,
+          {
+            itemId: item.id,
+            itemName: item.name,
+            quantity: "1",
+            price: "0",
+          },
+        ],
+      }));
+    };
+    const addChestItem = () => {
+      const item = npcItemCatalog.find((catalogItem) => catalogItem.id === chestItemToAdd);
+
+      if (!item || formState.chestItems.some((entry) => entry.itemId === item.id)) {
+        return;
+      }
+
+      onFormChange((current) => ({
+        ...current,
+        chestItems: [
+          ...current.chestItems,
+          {
+            itemId: item.id,
+            itemName: item.name,
+            quantity: "1",
+          },
+        ],
+      }));
+    };
+    const graphicFields: Array<{
+      key: keyof DesignerNpcGraphicsProfile;
+      label: string;
+      required: boolean;
+    }> =
+      formState.npcType === "chest"
+        ? [{ key: "chestImageSrc", label: "Chest Image", required: true }]
+        : [
+            { key: "standingUpSrc", label: "Standing Up", required: true },
+            { key: "standingDownSrc", label: "Standing Down", required: true },
+            { key: "standingLeftSrc", label: "Standing Left", required: true },
+            { key: "standingRightSrc", label: "Standing Right", required: true },
+            { key: "walkingUpSrc", label: "Walking Up", required: true },
+            { key: "walkingDownSrc", label: "Walking Down", required: true },
+            { key: "walkingLeftSrc", label: "Walking Left", required: true },
+            { key: "walkingRightSrc", label: "Walking Right", required: true },
+            {
+              key: "trainerFrontImageSrc",
+              label: "Battle Front Image",
+              required: formState.npcType === "trainer",
+            },
+          ];
+
+    return (
+      <>
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+          <FormControl isRequired>
+            <FormLabel>AI Type</FormLabel>
+            <Select
+              value={formState.aiType}
+              onChange={(event) =>
+                updateField("aiType", event.target.value as DesignerNpcAiType)
+              }
+            >
+              {NPC_AI_TYPE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl isRequired>
+            <FormLabel>NPC Type</FormLabel>
+            <Select
+              value={formState.npcType}
+              onChange={(event) =>
+                updateField("npcType", event.target.value as DesignerNpcType)
+              }
+            >
+              {NPC_TYPE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </Select>
+          </FormControl>
+        </SimpleGrid>
+
+        {formState.aiType === "moving" ? (
+          <Box
+            p={4}
+            borderRadius="20px"
+            border="1px solid rgba(43, 66, 47, 0.12)"
+            bg="rgba(255,255,255,0.68)"
+          >
+            <Text fontWeight="700" color="#233127" mb={3}>
+              Moving AI
+            </Text>
+            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+              <FormControl
+                isRequired
+                isInvalid={
+                  formState.movementIntervalMinSeconds !== "" &&
+                  parsePositiveInteger(formState.movementIntervalMinSeconds) === null
+                }
+              >
+                <FormLabel>Min Seconds</FormLabel>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={formState.movementIntervalMinSeconds}
+                  onChange={(event) =>
+                    updateField("movementIntervalMinSeconds", event.target.value)
+                  }
+                />
+              </FormControl>
+              <FormControl
+                isRequired
+                isInvalid={
+                  formState.movementIntervalMaxSeconds !== "" &&
+                  parsePositiveInteger(formState.movementIntervalMaxSeconds) === null
+                }
+              >
+                <FormLabel>Max Seconds</FormLabel>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={formState.movementIntervalMaxSeconds}
+                  onChange={(event) =>
+                    updateField("movementIntervalMaxSeconds", event.target.value)
+                  }
+                />
+              </FormControl>
+              <FormControl
+                isRequired
+                isInvalid={
+                  formState.movementStepMin !== "" &&
+                  parsePositiveInteger(formState.movementStepMin) === null
+                }
+              >
+                <FormLabel>Min Squares</FormLabel>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={formState.movementStepMin}
+                  onChange={(event) => updateField("movementStepMin", event.target.value)}
+                />
+              </FormControl>
+              <FormControl
+                isRequired
+                isInvalid={
+                  formState.movementStepMax !== "" &&
+                  parsePositiveInteger(formState.movementStepMax) === null
+                }
+              >
+                <FormLabel>Max Squares</FormLabel>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={formState.movementStepMax}
+                  onChange={(event) => updateField("movementStepMax", event.target.value)}
+                />
+              </FormControl>
+            </SimpleGrid>
+            <Text mt={3} fontSize="sm" color="#55645a">
+              Random movement should stay between 5 and 60 seconds and 1 to 5 cells unless you intentionally change it.
+            </Text>
+          </Box>
+        ) : null}
+
+        {formState.aiType === "scriptable" ? (
+          <FormControl>
+            <FormLabel>Scriptable AI</FormLabel>
+            <Textarea
+              value={formState.scriptSource}
+              onChange={(event) => updateField("scriptSource", event.target.value)}
+              minH="180px"
+              fontFamily="mono"
+              placeholder={`// NPC script API\n// self.say('Hello trainer')\n// self.facePlayer()\n// self.moveRandom({ minSeconds: 5, maxSeconds: 60, minSteps: 1, maxSteps: 5 })\n// self.healParty({ price: 20 })`}
+            />
+            <Text mt={2} fontSize="sm" color="#55645a">
+              This field stores the designer-facing AI script source for backend execution later.
+            </Text>
+          </FormControl>
+        ) : null}
+
+        {formState.npcType === "healer" ? (
+          <FormControl
+            isRequired
+            isInvalid={
+              formState.healPrice !== "" &&
+              parseNonNegativeInteger(formState.healPrice) === null
+            }
+          >
+            <FormLabel>Heal Price</FormLabel>
+            <Input
+              type="number"
+              min={0}
+              step={1}
+              value={formState.healPrice}
+              onChange={(event) => updateField("healPrice", event.target.value)}
+            />
+            <Text mt={2} fontSize="sm" color="#55645a">
+              The default healer prompt is yes/no and heals every pokemon for $20.
+            </Text>
+          </FormControl>
+        ) : null}
+
+        {formState.npcType === "trainer" ? (
+          <Box
+            p={4}
+            borderRadius="20px"
+            border="1px solid rgba(43, 66, 47, 0.12)"
+            bg="rgba(255,255,255,0.68)"
+          >
+            <Text fontWeight="700" color="#233127" mb={3}>
+              Trainer Battle Team
+            </Text>
+            {npcPokemonCatalog.length > 0 ? (
+              <Flex gap={3} wrap="wrap" mb={4}>
+                <FormControl flex="1 1 240px">
+                  <FormLabel>Add Pokemon</FormLabel>
+                  <Select
+                    value={trainerPokemonToAdd}
+                    onChange={(event) => onTrainerPokemonToAddChange(event.target.value)}
+                  >
+                    {npcPokemonCatalog.map((pokemon) => (
+                      <option key={pokemon.id} value={pokemon.id}>
+                        {pokemon.name} ({pokemon.category})
+                      </option>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Button alignSelf="end" onClick={addTrainerPokemon}>
+                  Add Pokemon
+                </Button>
+              </Flex>
+            ) : (
+              <Text fontSize="sm" color="#55645a" mb={3}>
+                Create Pokemons first so this trainer can have a battle roster.
+              </Text>
+            )}
+            <Stack spacing={3}>
+              {formState.trainerPokemons.map((pokemon) => (
+                <Flex
+                  key={pokemon.pokemonId}
+                  gap={3}
+                  align={{ base: "stretch", md: "center" }}
+                  direction={{ base: "column", md: "row" }}
+                  p={3}
+                  borderRadius="16px"
+                  border="1px solid rgba(43, 66, 47, 0.12)"
+                >
+                  <Box flex="1">
+                    <Text fontWeight="700" color="#233127">
+                      {pokemon.pokemonName}
+                    </Text>
+                    <Text fontSize="sm" color="#55645a">
+                      {pokemon.pokemonId}
+                    </Text>
+                  </Box>
+                  <FormControl
+                    w={{ base: "100%", md: "120px" }}
+                    isInvalid={
+                      pokemon.level !== "" && parsePositiveInteger(pokemon.level) === null
+                    }
+                  >
+                    <FormLabel fontSize="sm">Level</FormLabel>
+                    <Input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={pokemon.level}
+                      onChange={(event) =>
+                        onFormChange((current) => ({
+                          ...current,
+                          trainerPokemons: current.trainerPokemons.map((entry) =>
+                            entry.pokemonId === pokemon.pokemonId
+                              ? { ...entry, level: event.target.value }
+                              : entry
+                          ),
+                        }))
+                      }
+                    />
+                  </FormControl>
+                  <Button
+                    colorScheme="red"
+                    variant="outline"
+                    onClick={() =>
+                      onFormChange((current) => ({
+                        ...current,
+                        trainerPokemons: current.trainerPokemons.filter(
+                          (entry) => entry.pokemonId !== pokemon.pokemonId
+                        ),
+                      }))
+                    }
+                  >
+                    Remove
+                  </Button>
+                </Flex>
+              ))}
+            </Stack>
+            {formState.trainerPokemons.length === 0 ? (
+              <Text mt={3} fontSize="sm" color="#914335">
+                Trainers need at least one pokemon configured.
+              </Text>
+            ) : null}
+          </Box>
+        ) : null}
+
+        {formState.npcType === "store" ? (
+          <Box
+            p={4}
+            borderRadius="20px"
+            border="1px solid rgba(43, 66, 47, 0.12)"
+            bg="rgba(255,255,255,0.68)"
+          >
+            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} mb={4}>
+              <FormControl
+                isRequired
+                isInvalid={
+                  formState.storeMoney !== "" &&
+                  parseNonNegativeInteger(formState.storeMoney) === null
+                }
+              >
+                <FormLabel>Hidden Store Money</FormLabel>
+                <Input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={formState.storeMoney}
+                  onChange={(event) => updateField("storeMoney", event.target.value)}
+                />
+                <Text mt={2} fontSize="sm" color="#55645a">
+                  Default is $10,000,000 and this amount should only be visible in the designer.
+                </Text>
+              </FormControl>
+              <FormControl>
+                <FormLabel>Add Sellable Item</FormLabel>
+                <Flex gap={3}>
+                  <Select
+                    value={storeItemToAdd}
+                    onChange={(event) => onStoreItemToAddChange(event.target.value)}
+                    isDisabled={npcItemCatalog.length === 0}
+                  >
+                    {npcItemCatalog.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name} ({item.category})
+                      </option>
+                    ))}
+                  </Select>
+                  <Button onClick={addStoreItem} isDisabled={npcItemCatalog.length === 0}>
+                    Add
+                  </Button>
+                </Flex>
+              </FormControl>
+            </SimpleGrid>
+            <Stack spacing={3}>
+              {formState.storeItems.map((item) => (
+                <Box
+                  key={item.itemId}
+                  p={3}
+                  borderRadius="16px"
+                  border="1px solid rgba(43, 66, 47, 0.12)"
+                >
+                  <Flex justify="space-between" align="center" gap={3} mb={3}>
+                    <Box>
+                      <Text fontWeight="700" color="#233127">
+                        {item.itemName}
+                      </Text>
+                      <Text fontSize="sm" color="#55645a">
+                        {item.itemId}
+                      </Text>
+                    </Box>
+                    <Button
+                      size="sm"
+                      colorScheme="red"
+                      variant="outline"
+                      onClick={() =>
+                        onFormChange((current) => ({
+                          ...current,
+                          storeItems: current.storeItems.filter(
+                            (entry) => entry.itemId !== item.itemId
+                          ),
+                        }))
+                      }
+                    >
+                      Remove
+                    </Button>
+                  </Flex>
+                  <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                    <FormControl
+                      isInvalid={
+                        item.quantity !== "" && parsePositiveInteger(item.quantity) === null
+                      }
+                    >
+                      <FormLabel>Quantity</FormLabel>
+                      <Input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={item.quantity}
+                        onChange={(event) =>
+                          onFormChange((current) => ({
+                            ...current,
+                            storeItems: current.storeItems.map((entry) =>
+                              entry.itemId === item.itemId
+                                ? { ...entry, quantity: event.target.value }
+                                : entry
+                            ),
+                          }))
+                        }
+                      />
+                    </FormControl>
+                    <FormControl
+                      isInvalid={
+                        item.price !== "" && parseNonNegativeInteger(item.price) === null
+                      }
+                    >
+                      <FormLabel>Sell Price</FormLabel>
+                      <Input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={item.price}
+                        onChange={(event) =>
+                          onFormChange((current) => ({
+                            ...current,
+                            storeItems: current.storeItems.map((entry) =>
+                              entry.itemId === item.itemId
+                                ? { ...entry, price: event.target.value }
+                                : entry
+                            ),
+                          }))
+                        }
+                      />
+                    </FormControl>
+                  </SimpleGrid>
+                </Box>
+              ))}
+            </Stack>
+            {npcItemCatalog.length === 0 ? (
+              <Text mt={3} fontSize="sm" color="#55645a">
+                Create Items first so stores can sell them.
+              </Text>
+            ) : null}
+          </Box>
+        ) : null}
+
+        {formState.npcType === "chest" ? (
+          <Box
+            p={4}
+            borderRadius="20px"
+            border="1px solid rgba(43, 66, 47, 0.12)"
+            bg="rgba(255,255,255,0.68)"
+          >
+            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} mb={4}>
+              <FormControl
+                isRequired
+                isInvalid={
+                  formState.chestSlotCapacity !== "" &&
+                  parsePositiveInteger(formState.chestSlotCapacity) === null
+                }
+              >
+                <FormLabel>Chest Slot Capacity</FormLabel>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={formState.chestSlotCapacity}
+                  onChange={(event) => updateField("chestSlotCapacity", event.target.value)}
+                />
+                <Text mt={2} fontSize="sm" color="#55645a">
+                  A stack of 999 potions still uses just one slot.
+                </Text>
+              </FormControl>
+              <FormControl>
+                <FormLabel>Add Chest Item</FormLabel>
+                <Flex gap={3}>
+                  <Select
+                    value={chestItemToAdd}
+                    onChange={(event) => onChestItemToAddChange(event.target.value)}
+                    isDisabled={npcItemCatalog.length === 0}
+                  >
+                    {npcItemCatalog.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name} ({item.category})
+                      </option>
+                    ))}
+                  </Select>
+                  <Button onClick={addChestItem} isDisabled={npcItemCatalog.length === 0}>
+                    Add
+                  </Button>
+                </Flex>
+              </FormControl>
+            </SimpleGrid>
+            <Stack spacing={3}>
+              {formState.chestItems.map((item) => (
+                <Flex
+                  key={item.itemId}
+                  gap={3}
+                  align={{ base: "stretch", md: "center" }}
+                  direction={{ base: "column", md: "row" }}
+                  p={3}
+                  borderRadius="16px"
+                  border="1px solid rgba(43, 66, 47, 0.12)"
+                >
+                  <Box flex="1">
+                    <Text fontWeight="700" color="#233127">
+                      {item.itemName}
+                    </Text>
+                    <Text fontSize="sm" color="#55645a">
+                      {item.itemId}
+                    </Text>
+                  </Box>
+                  <FormControl
+                    w={{ base: "100%", md: "140px" }}
+                    isInvalid={
+                      item.quantity !== "" && parsePositiveInteger(item.quantity) === null
+                    }
+                  >
+                    <FormLabel fontSize="sm">Quantity</FormLabel>
+                    <Input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={item.quantity}
+                      onChange={(event) =>
+                        onFormChange((current) => ({
+                          ...current,
+                          chestItems: current.chestItems.map((entry) =>
+                            entry.itemId === item.itemId
+                              ? { ...entry, quantity: event.target.value }
+                              : entry
+                          ),
+                        }))
+                      }
+                    />
+                  </FormControl>
+                  <Button
+                    colorScheme="red"
+                    variant="outline"
+                    onClick={() =>
+                      onFormChange((current) => ({
+                        ...current,
+                        chestItems: current.chestItems.filter(
+                          (entry) => entry.itemId !== item.itemId
+                        ),
+                      }))
+                    }
+                  >
+                    Remove
+                  </Button>
+                </Flex>
+              ))}
+            </Stack>
+            {npcItemCatalog.length === 0 ? (
+              <Text mt={3} fontSize="sm" color="#55645a">
+                Create Items first so chests can store them.
+              </Text>
+            ) : null}
+            {formState.chestItems.length >
+            (parsePositiveInteger(formState.chestSlotCapacity) ?? DEFAULT_NPC_CHEST_SLOTS) ? (
+              <Text mt={3} fontSize="sm" color="#914335">
+                Chest contents currently use more slots than the configured chest capacity.
+              </Text>
+            ) : null}
+          </Box>
+        ) : null}
+
+        <Box>
+          <FormLabel>Graphics</FormLabel>
+          <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={4}>
+            {graphicFields.map((field) => (
+              <FormControl key={field.key} isRequired={field.required}>
+                <FormLabel>{field.label}</FormLabel>
+                <Input
+                  type="file"
+                  accept="image/*"
+                  p={1.5}
+                  onChange={(event) =>
+                    handleNpcGraphicChange(event, (value) =>
+                      updateGraphicsField(field.key, value)
+                    )
+                  }
+                />
+                <Flex
+                  mt={3}
+                  h="108px"
+                  align="center"
+                  justify="center"
+                  borderRadius="16px"
+                  border="1px dashed rgba(43, 66, 47, 0.18)"
+                  bg="rgba(255,255,255,0.68)"
+                >
+                  {formState.graphics[field.key] ? (
+                    <Box
+                      as="img"
+                      src={formState.graphics[field.key]}
+                      alt={`${field.label} preview`}
+                      maxW="96px"
+                      maxH="96px"
+                      objectFit="contain"
+                      style={{ imageRendering: "pixelated" }}
+                    />
+                  ) : (
+                    <Text fontSize="sm" color="#6d7b71">
+                      {field.required ? "Required" : "Optional"}
+                    </Text>
+                  )}
+                </Flex>
+              </FormControl>
+            ))}
+          </SimpleGrid>
         </Box>
       </>
     );
@@ -4274,9 +5619,21 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 const skillGfxProfile = isSkillGfxSection
                   ? sanitizeSkillGfxProfile(item.skillGfxProfile)
                   : undefined;
+                const npcProfile = isNpcsSection
+                  ? sanitizeNpcProfile(item.npcProfile)
+                  : undefined;
                 const pokemonProfile = isPokemonSection
                   ? sanitizePokemonProfile(item.pokemonProfile, item)
                   : undefined;
+                const npcPreviewSrc = npcProfile
+                  ? npcProfile.npcType === "chest"
+                    ? npcProfile.graphics.chestImageSrc
+                    : npcProfile.graphics.standingDownSrc ||
+                      npcProfile.graphics.standingUpSrc ||
+                      npcProfile.graphics.standingLeftSrc ||
+                      npcProfile.graphics.standingRightSrc ||
+                      npcProfile.graphics.trainerFrontImageSrc
+                  : "";
 
                 return (
                   <Box
@@ -4326,7 +5683,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                           display="grid"
                           placeItems="center"
                           bg={
-                            mapObjectAsset || itemProfile?.iconSrc || skillGfxProfile?.mediaSrc || pokemonProfile?.iconImageSrc
+                            mapObjectAsset ||
+                            itemProfile?.iconSrc ||
+                            skillGfxProfile?.mediaSrc ||
+                            npcPreviewSrc ||
+                            pokemonProfile?.iconImageSrc
                               ? "linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(227,235,224,0.95) 100%)"
                               : "rgba(126, 166, 120, 0.12)"
                           }
@@ -4358,6 +5719,16 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                               as="img"
                               src={skillGfxProfile.mediaSrc}
                               alt={`${item.name} GFX`}
+                              maxW="48px"
+                              maxH="48px"
+                              objectFit="contain"
+                              style={{ imageRendering: "pixelated" }}
+                            />
+                          ) : npcPreviewSrc ? (
+                            <Box
+                              as="img"
+                              src={npcPreviewSrc}
+                              alt={`${item.name} sprite`}
                               maxW="48px"
                               maxH="48px"
                               objectFit="contain"
@@ -4577,6 +5948,18 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               ) : null}
               {isItemsSection ? renderItemFields(newGameItemForm, setNewGameItemForm) : null}
               {isSkillGfxSection ? renderSkillGfxFields(newSkillGfxForm, setNewSkillGfxForm) : null}
+              {isNpcsSection
+                ? renderNpcFields(
+                    newNpcForm,
+                    setNewNpcForm,
+                    newNpcTrainerPokemonId,
+                    setNewNpcTrainerPokemonId,
+                    newNpcStoreItemId,
+                    setNewNpcStoreItemId,
+                    newNpcChestItemId,
+                    setNewNpcChestItemId
+                  )
+                : null}
               {isPokemonSection ? renderPokemonFields(newPokemonForm, setNewPokemonForm) : null}
               {isSkillsSection ? renderSkillFields(newSkillForm, setNewSkillForm) : null}
               {isObjectsSection ? (
@@ -4752,6 +6135,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 !newItemName.trim() ||
                 !isGameItemFormValid ||
                 !isSkillGfxFormValid ||
+                !isNpcFormValid ||
                 !isPokemonFormValid ||
                 !isSkillFormValid ||
                 !isMapObjectFormValid ||
@@ -4809,6 +6193,18 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               ) : null}
               {isItemsSection ? renderItemFields(editGameItemForm, setEditGameItemForm) : null}
               {isSkillGfxSection ? renderSkillGfxFields(editSkillGfxForm, setEditSkillGfxForm) : null}
+              {isNpcsSection
+                ? renderNpcFields(
+                    editNpcForm,
+                    setEditNpcForm,
+                    editNpcTrainerPokemonId,
+                    setEditNpcTrainerPokemonId,
+                    editNpcStoreItemId,
+                    setEditNpcStoreItemId,
+                    editNpcChestItemId,
+                    setEditNpcChestItemId
+                  )
+                : null}
               {isPokemonSection ? renderPokemonFields(editPokemonForm, setEditPokemonForm) : null}
               {isSkillsSection ? renderSkillFields(editSkillForm, setEditSkillForm) : null}
               {isObjectsSection ? (
@@ -5014,6 +6410,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 !editItemName.trim() ||
                 !isEditGameItemFormValid ||
                 !isEditSkillGfxFormValid ||
+                !isEditNpcFormValid ||
                 !isEditPokemonFormValid ||
                 !isEditSkillFormValid ||
                 !isEditMapObjectFormValid ||
