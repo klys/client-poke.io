@@ -11,7 +11,8 @@ export type DesignerIconName =
   | "passiveStates"
   | "players"
   | "regions"
-  | "npcs";
+  | "npcs"
+  | "levelingCurve";
 
 export type DesignerSectionKey =
   | "mapsEditor"
@@ -23,7 +24,8 @@ export type DesignerSectionKey =
   | "passiveStates"
   | "players"
   | "regions"
-  | "npcs";
+  | "npcs"
+  | "levelingCurve";
 
 export interface DesignerItemDetail {
   label: string;
@@ -120,6 +122,14 @@ export interface DesignerSkillGfxProfile {
   appear: number;
 }
 
+export interface DesignerLevelingCurveProfile {
+  startExpForNextLevel: number;
+  expGainedPerBattle: number;
+  bonusDefeatingHigherLevelFormula: string;
+  debonusDefeatingLowerLevelFormula: string;
+  percentageExpIncreaseNextLevel: number;
+}
+
 export type DesignerItemType =
   | "usable"
   | "medicine"
@@ -162,6 +172,7 @@ export interface DesignerItemCreateOptions {
   pokemonProfile?: DesignerPokemonProfile;
   pokemonSkillProfile?: DesignerPokemonSkillProfile;
   skillGfxProfile?: DesignerSkillGfxProfile;
+  levelingCurveProfile?: DesignerLevelingCurveProfile;
   itemProfile?: DesignerGameItemProfile;
 }
 
@@ -175,6 +186,7 @@ export interface DesignerItemSeed {
   pokemonProfile?: DesignerPokemonProfile;
   pokemonSkillProfile?: DesignerPokemonSkillProfile;
   skillGfxProfile?: DesignerSkillGfxProfile;
+  levelingCurveProfile?: DesignerLevelingCurveProfile;
   itemProfile?: DesignerGameItemProfile;
 }
 
@@ -434,6 +446,23 @@ export function DesignerIcon(props: IconProps & { icon: DesignerIconName }) {
             strokeWidth="1.8"
             strokeLinecap="round"
           />
+        </Icon>
+      );
+    case "levelingCurve":
+      return (
+        <Icon viewBox="0 0 24 24" {...iconProps}>
+          <path
+            d="M4 18h16M6 15.5l3.5-3.5 3 2.5 5-6"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <circle cx="6" cy="15.5" r="1.2" fill="currentColor" />
+          <circle cx="9.5" cy="12" r="1.2" fill="currentColor" />
+          <circle cx="12.5" cy="14.5" r="1.2" fill="currentColor" />
+          <circle cx="17.5" cy="8.5" r="1.2" fill="currentColor" />
         </Icon>
       );
   }
@@ -1015,6 +1044,19 @@ export const designerSections: DesignerSectionDefinition[] = [
       detail("Maps", `${5 + index}`),
       detail("Settlements", `${(index % 3) + 1}`),
     ],
+  },
+  {
+    key: "levelingCurve",
+    title: "Leveling Curve",
+    description: "Configure battle experience rewards, next-level growth, and progression formulas.",
+    path: "/designer/leveling-curve",
+    itemLabel: "curve",
+    itemLabelPlural: "curves",
+    categoryLabel: "group",
+    icon: "levelingCurve",
+    defaultCategories: ["Progression"],
+    demoItems: [],
+    createDetails: () => [],
   },
   {
     key: "npcs",

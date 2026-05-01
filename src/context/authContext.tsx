@@ -40,6 +40,14 @@ export type PokemonSummary = {
   experience: number
   experienceCurve: 'fast' | 'medium' | 'slow'
   nextLevelExperience: number
+  statBonuses?: {
+    hp: number
+    attack: number
+    defense: number
+    specialAttack: number
+    specialDefense: number
+    speed: number
+  }
 }
 
 export type BattleHistoryEntry = {
