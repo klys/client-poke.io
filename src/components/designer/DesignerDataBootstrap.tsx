@@ -34,8 +34,12 @@ type DesignerSectionVersionPayload = {
 const DESIGNER_SECTION_KEYS = Object.keys(
   designerSectionsByKey
 ) as DesignerSectionKey[];
+const PUBLIC_DESIGNER_SECTION_KEYS: DesignerSectionKey[] = ["pokemons", "npcs"];
 const GENERIC_DESIGNER_SECTION_KEYS = DESIGNER_SECTION_KEYS.filter(
   (sectionKey) => sectionKey !== "mapsEditor"
+);
+const DESIGNER_ONLY_SECTION_KEYS = GENERIC_DESIGNER_SECTION_KEYS.filter(
+  (sectionKey) => !PUBLIC_DESIGNER_SECTION_KEYS.includes(sectionKey)
 );
 
 function isDesignerSectionKey(value: unknown): value is DesignerSectionKey {
@@ -124,12 +128,27 @@ export default function DesignerDataBootstrap() {
   const canAccessDesigner = hasPermission("designer.access");
 
   useEffect(() => {
-    if (!authReady || !authenticated || !socket || !canAccessDesigner) {
+    if (!authReady || !authenticated || !socket) {
       return;
     }
 
+    const preloadSharedData = () => {
+      PUBLIC_DESIGNER_SECTION_KEYS.forEach((sectionKey) => {
+        const storedPayload = readStoredDesignerSectionPayload(sectionKey);
+
+        socket.emit("designer:section:join", {
+          sectionKey,
+          version: storedPayload.version,
+          seedState:
+            storedPayload.version === null && storedPayload.state.items.length > 0
+              ? storedPayload.state
+              : undefined,
+        });
+      });
+    };
+
     const preloadDesignerData = () => {
-      GENERIC_DESIGNER_SECTION_KEYS.forEach((sectionKey) => {
+      DESIGNER_ONLY_SECTION_KEYS.forEach((sectionKey) => {
         const storedPayload = readStoredDesignerSectionPayload(sectionKey);
 
         socket.emit("designer:section:join", {
@@ -192,19 +211,31 @@ export default function DesignerDataBootstrap() {
     socket.on("designer:section:state", handleSectionState);
     socket.on("designer:section:version", handleSectionVersion);
     socket.on("playableMaps:state", handleMapsState);
-    socket.on("connect", preloadDesignerData);
+    socket.on("connect", preloadSharedData);
+
+    if (canAccessDesigner) {
+      socket.on("connect", preloadDesignerData);
+    }
 
     if (!socket.connected) {
       socket.connect();
     } else {
-      preloadDesignerData();
+      preloadSharedData();
+
+      if (canAccessDesigner) {
+        preloadDesignerData();
+      }
     }
 
     return () => {
       socket.off("designer:section:state", handleSectionState);
       socket.off("designer:section:version", handleSectionVersion);
       socket.off("playableMaps:state", handleMapsState);
-      socket.off("connect", preloadDesignerData);
+      socket.off("connect", preloadSharedData);
+
+      if (canAccessDesigner) {
+        socket.off("connect", preloadDesignerData);
+      }
     };
   }, [authReady, authenticated, canAccessDesigner, socket]);
 

@@ -15,16 +15,20 @@ const Object = (props:any) => {
   const height = props.height ?? 32;
   const alt = props.alt ?? "Rock";
   const label = props.label ?? "";
+  const handleClick = typeof props.onClick === "function" ? props.onClick : undefined;
+  const cursor = props.cursor ?? "default";
 
   return (<>
     <div
       title={label || alt}
+      onClick={handleClick}
       style={{
         position: "absolute",
         top: props.y + "px",
         left: props.x + "px",
         zIndex: 999,
-        
+        cursor,
+        ...props.style,
       }}
     >
 

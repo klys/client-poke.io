@@ -1,13 +1,15 @@
-import { useContext, useRef } from "react";
+import { useContext, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { AppContext } from "../../context/appContext";
 import { useEventListener } from "usehooks-ts";
 import Cursor from "./Cursor";
 import GameObject from "./Object";
+import NpcInteractionOverlay from "../ux/game/NpcInteractions";
 import {
     getInitialPlayableMap,
     getPlayableMapById,
     getPlayableMapBackgroundStyle,
 } from "./playableMapRuntime";
+import type { MapEditorNpcPlacement } from "../designer/PlayableMapEditorCanvas";
 //import { point_direction } from "./gameMath";
 
 const Map = ({children}:{children:any}) => {
@@ -26,6 +28,7 @@ const Map = ({children}:{children:any}) => {
     const backgroundStyle = activeMapConfig
         ? getPlayableMapBackgroundStyle(activeMapConfig)
         : { background: "repeat center/1% url('/map0/Tile_Grass.png')" };
+    const [selectedNpc, setSelectedNpc] = useState<MapEditorNpcPlacement | null>(null);
 
     // MOVE THE MOUSE OVER THE GAME
     const mapPointerMoveEvent = (event: MouseEvent) => {
@@ -39,6 +42,18 @@ const Map = ({children}:{children:any}) => {
     }
 
     useEventListener('pointermove',mapPointerMoveEvent, mapRef) 
+
+    useEffect(() => {
+        if (!selectedNpc) {
+            return;
+        }
+
+        const activeNpcIds = new Set((activeMapEditorData?.npcs ?? []).map((npc) => npc.id));
+
+        if (!activeNpcIds.has(selectedNpc.id)) {
+            setSelectedNpc(null);
+        }
+    }, [activeMap?.item.id, activeMapEditorData?.npcs, selectedNpc]);
     
     return(<>
         <div
@@ -70,6 +85,55 @@ const Map = ({children}:{children:any}) => {
                     />
                 ))
                 : null}
+            {activeMapConfig && activeMapEditorData
+                ? activeMapEditorData.npcs.map((npc) =>
+                    npc.previewImageSrc ? (
+                        <GameObject
+                            key={npc.id}
+                            x={npc.x * activeMapConfig.cellSize}
+                            y={npc.y * activeMapConfig.cellSize}
+                            imageSrc={npc.previewImageSrc}
+                            width={activeMapConfig.cellSize}
+                            height={activeMapConfig.cellSize}
+                            alt={npc.name}
+                            label={npc.name}
+                            cursor="pointer"
+                            onClick={(event: ReactMouseEvent<HTMLDivElement>) => {
+                                event.stopPropagation();
+                                setSelectedNpc(npc);
+                            }}
+                        />
+                    ) : (
+                        <div
+                            key={npc.id}
+                            title={npc.name}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                setSelectedNpc(npc);
+                            }}
+                            style={{
+                                position: "absolute",
+                                top: `${npc.y * activeMapConfig.cellSize}px`,
+                                left: `${npc.x * activeMapConfig.cellSize}px`,
+                                width: `${activeMapConfig.cellSize}px`,
+                                height: `${activeMapConfig.cellSize}px`,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                border: "1px solid rgba(8, 145, 178, 0.75)",
+                                background: "rgba(6, 182, 212, 0.2)",
+                                color: "#0f172a",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                zIndex: 999,
+                            }}
+                        >
+                            N
+                        </div>
+                    )
+                )
+                : null}
             {activeMapConfig
                 ? (groundItems ?? [])
                     .filter((item: any) => item.mapId === activeMap?.item.id)
@@ -93,6 +157,10 @@ const Map = ({children}:{children:any}) => {
             squareSize={36}
             color="#00ff88"
             mode="cell"
+        />
+        <NpcInteractionOverlay
+            npcPlacement={selectedNpc}
+            onClose={() => setSelectedNpc(null)}
         />
     </>)
 }
