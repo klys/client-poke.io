@@ -31,7 +31,13 @@ import {
   useToast
 } from '@chakra-ui/react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useAuth, type BattleHistoryEntry, type InventoryItem, type PokemonSummary } from '../../../context/authContext';
+import { Link as RouterLink } from 'react-router-dom';
+import {
+  useAuth,
+  type BattleHistoryEntry,
+  type InventoryItem,
+  type PokemonSummary
+} from '../../../context/authContext';
 import {
   DESIGNER_CACHE_UPDATED_EVENT,
   readStoredDesignerSectionPayload,
@@ -846,7 +852,7 @@ function PokemonStatsFallback({ pokemonId }: { pokemonId: string }) {
 
 const AccountMenu = () => {
   const toast = useToast();
-  const { logout, user } = useAuth();
+  const { hasPermission, logout, user } = useAuth();
   const pokemonCatalog = usePokemonCatalog();
   const party = (user?.pokemonParty ?? []).slice(0, 6);
   const [openWindows, setOpenWindows] = useState<OpenWindowId[]>([]);
@@ -1037,6 +1043,15 @@ const AccountMenu = () => {
           <MenuItem onClick={() => openWindow('pokemons')}>Pokemons</MenuItem>
           <MenuItem onClick={() => openWindow('trainerCard')}>Trainer Card</MenuItem>
           <MenuItem onClick={() => openWindow('battleHistory')}>Battle History</MenuItem>
+          {hasPermission('designer.access') ? (
+            <MenuItem as={RouterLink} to="/designer">Designer</MenuItem>
+          ) : null}
+          {hasPermission('moderator.access') ? (
+            <MenuItem as={RouterLink} to="/moderator">Moderator</MenuItem>
+          ) : null}
+          {hasPermission('admin.access') ? (
+            <MenuItem as={RouterLink} to="/admin">Admin</MenuItem>
+          ) : null}
           <MenuItem color="red.500" onClick={logout}>Log out</MenuItem>
         </MenuList>
       </Menu>

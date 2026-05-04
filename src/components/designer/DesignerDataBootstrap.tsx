@@ -120,10 +120,11 @@ function sanitizeSectionVersionPayload(value: unknown): DesignerSectionVersionPa
 }
 
 export default function DesignerDataBootstrap() {
-  const { authReady, authenticated, socket } = useAuth();
+  const { authReady, authenticated, hasPermission, socket } = useAuth();
+  const canAccessDesigner = hasPermission("designer.access");
 
   useEffect(() => {
-    if (!authReady || !authenticated || !socket) {
+    if (!authReady || !authenticated || !socket || !canAccessDesigner) {
       return;
     }
 
@@ -205,7 +206,7 @@ export default function DesignerDataBootstrap() {
       socket.off("playableMaps:state", handleMapsState);
       socket.off("connect", preloadDesignerData);
     };
-  }, [authReady, authenticated, socket]);
+  }, [authReady, authenticated, canAccessDesigner, socket]);
 
   return null;
 }

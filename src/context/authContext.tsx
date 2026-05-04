@@ -3,6 +3,18 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useToast } from '@chakra-ui/react';
 import { io, type Socket } from 'socket.io-client';
 
+export type RolePermission =
+  | 'game.access'
+  | 'designer.access'
+  | 'moderator.access'
+  | 'admin.access'
+
+export type UserRole =
+  | 'admin'
+  | 'designer'
+  | 'moderator'
+  | 'user'
+
 export type AuthUser = {
   id: number
   name: string
@@ -16,7 +28,30 @@ export type AuthUser = {
   inventory: InventoryItem[]
   pokemonParty: PokemonSummary[]
   battleHistory: BattleHistoryEntry[]
+  role: UserRole
+  permissions: RolePermission[]
 }
+
+export const hasPermission = (
+  user: AuthUser | null | undefined,
+  permission: RolePermission
+) => Boolean(user?.permissions.includes(permission));
+
+export const getDefaultAuthorizedPath = (user: AuthUser | null | undefined) => {
+  if (hasPermission(user, 'admin.access')) {
+    return '/admin';
+  }
+
+  if (hasPermission(user, 'designer.access')) {
+    return '/designer';
+  }
+
+  if (hasPermission(user, 'moderator.access')) {
+    return '/moderator';
+  }
+
+  return '/';
+};
 
 export type InventoryItem = {
   id: string
@@ -128,6 +163,7 @@ type AuthContextValue = {
   token: string | null
   errorMessage: string | null
   infoMessage: string | null
+  hasPermission: (permission: RolePermission) => boolean
   clearMessages: () => void
   login: (payload: LoginPayload) => void
   register: (payload: RegisterPayload) => void
@@ -390,6 +426,7 @@ export const AuthProvider = (
     token,
     errorMessage,
     infoMessage,
+    hasPermission: (permission) => hasPermission(user, permission),
     clearMessages,
     login: (payload) => emitAuthEvent('auth:login', payload),
     register: (payload) => emitAuthEvent('auth:register', payload),

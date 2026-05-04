@@ -1,14 +1,19 @@
 import { Center, Spinner, Text } from '@chakra-ui/react';
 import type { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
-import { useAuth } from '../../../context/authContext';
+import {
+  getDefaultAuthorizedPath,
+  type RolePermission,
+  useAuth
+} from '../../../context/authContext';
 
 type RequireAuthProps = {
-  children: ReactNode
+  children?: ReactNode
+  requiredPermission?: RolePermission
 }
 
-const RequireAuth = ({ children }: RequireAuthProps) => {
-  const { authReady, authenticated } = useAuth();
+const RequireAuth = ({ children, requiredPermission }: RequireAuthProps) => {
+  const { authReady, authenticated, hasPermission, user } = useAuth();
 
   if (!authReady) {
     return (
@@ -21,6 +26,10 @@ const RequireAuth = ({ children }: RequireAuthProps) => {
 
   if (!authenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (requiredPermission && !hasPermission(requiredPermission)) {
+    return <Navigate to={getDefaultAuthorizedPath(user)} replace />;
   }
 
   return <>{children}</>;
