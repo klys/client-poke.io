@@ -111,7 +111,7 @@ const StartupPokemonSelection = () => {
         <VStack align="stretch" spacing={6}>
           <Box>
             <Heading size="lg">Welcome, trainer {user?.name}.</Heading>
-            <Text color="gray.300" mt={2}>Before you enter the first map, choose how you want to be addressed and pick your first Pokemon.</Text>
+            <Text color="gray.300" mt={2}>Before you enter the first map, choose how you want to be addressed and pick your first Pokemon. You will choose your character skin on the next screen.</Text>
           </Box>
 
           <FormControl>
@@ -187,7 +187,7 @@ const StartupPokemonSelection = () => {
               chooseStarter({ gender, pokemonId: selectedPokemon.id, nickname: nickname.trim() });
             }}
           >
-            Start with {selectedPokemon?.name ?? 'Pokemon'}
+            Continue with {selectedPokemon?.name ?? 'Pokemon'}
           </Button>
         </VStack>
       </Box>

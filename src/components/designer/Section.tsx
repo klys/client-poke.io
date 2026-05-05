@@ -46,6 +46,7 @@ import {
   type DesignerCharacterSkinProfile,
   type DesignerNpcAiType,
   type DesignerNpcChestItem,
+  type DesignerNpcGraphicsSource,
   type DesignerNpcGraphicsProfile,
   type DesignerNpcProfile,
   type DesignerNpcStoreItem,
@@ -330,6 +331,9 @@ interface NpcChestItemFormEntry {
 interface NpcFormState {
   aiType: DesignerNpcAiType;
   npcType: DesignerNpcType;
+  graphicsSource: DesignerNpcGraphicsSource;
+  characterSkinId: string;
+  characterSkinName: string;
   movementIntervalMinSeconds: string;
   movementIntervalMaxSeconds: string;
   movementStepMin: string;
@@ -512,6 +516,9 @@ function createDefaultNpcFormState(): NpcFormState {
   return {
     aiType: "standing",
     npcType: "healer",
+    graphicsSource: "custom",
+    characterSkinId: "",
+    characterSkinName: "",
     movementIntervalMinSeconds: String(DEFAULT_NPC_MOVEMENT_INTERVAL_MIN),
     movementIntervalMaxSeconds: String(DEFAULT_NPC_MOVEMENT_INTERVAL_MAX),
     movementStepMin: String(DEFAULT_NPC_MOVEMENT_STEP_MIN),
@@ -919,6 +926,10 @@ function isNpcType(value: unknown): value is DesignerNpcType {
   return typeof value === "string" && NPC_TYPE_OPTIONS.includes(value as DesignerNpcType);
 }
 
+function isNpcGraphicsSource(value: unknown): value is DesignerNpcGraphicsSource {
+  return value === "custom" || value === "characterSkin";
+}
+
 function sanitizeNpcGraphicsProfile(value: unknown): DesignerNpcGraphicsProfile {
   const candidate =
     value && typeof value === "object"
@@ -1097,6 +1108,15 @@ function sanitizeNpcProfile(value: unknown): DesignerNpcProfile | undefined {
   return {
     aiType: isNpcAiType(candidate.aiType) ? candidate.aiType : "standing",
     npcType: isNpcType(candidate.npcType) ? candidate.npcType : "healer",
+    graphicsSource: isNpcGraphicsSource(candidate.graphicsSource)
+      ? candidate.graphicsSource
+      : "custom",
+    characterSkinId:
+      typeof candidate.characterSkinId === "string" ? candidate.characterSkinId.trim() : "",
+    characterSkinName:
+      typeof candidate.characterSkinName === "string"
+        ? normalizeCategoryName(candidate.characterSkinName)
+        : "",
     movementIntervalMinSeconds,
     movementIntervalMaxSeconds,
     movementStepMin,
@@ -1568,6 +1588,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const [pokemonCatalogState, setPokemonCatalogState] = useState<DesignerSectionState>(() =>
     loadStoredState("pokemons")
   );
+  const [characterSkinCatalogState, setCharacterSkinCatalogState] = useState<DesignerSectionState>(() =>
+    loadStoredState("players")
+  );
   const [sectionCacheVersion, setSectionCacheVersion] = useState<number | null>(
     () => readStoredPayload(sectionKey).version
   );
@@ -1751,6 +1774,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setPokemonCatalogState(
       sectionKey === "pokemons" ? nextStoredState : loadStoredState("pokemons")
     );
+    setCharacterSkinCatalogState(
+      sectionKey === "players" ? nextStoredState : loadStoredState("players")
+    );
     setNewNpcTrainerPokemonId("");
     setEditNpcTrainerPokemonId("");
     setNewNpcStoreItemId("");
@@ -1821,7 +1847,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       const catalogSectionKeys: DesignerSectionKey[] = [
         ...(isPokemonSection || isItemsSection ? (["skills"] as DesignerSectionKey[]) : []),
         ...(isSkillsSection ? (["skillsGfx", "passiveStates"] as DesignerSectionKey[]) : []),
-        ...(isNpcsSection ? (["items", "pokemons"] as DesignerSectionKey[]) : []),
+        ...(isNpcsSection ? (["items", "pokemons", "players"] as DesignerSectionKey[]) : []),
       ];
 
       catalogSectionKeys.forEach((catalogSectionKey) => {
@@ -1896,6 +1922,19 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         setPokemonCatalogState(nextPokemonsState);
         persistStoredPayload("pokemons", {
           state: nextPokemonsState,
+          version: payload.version,
+          updatedAt: payload.updatedAt,
+          updatedByUsername: payload.updatedByUsername,
+        });
+        return;
+      }
+
+      if (isNpcsSection && payload.sectionKey === "players") {
+        const nextCharacterSkinsState = sanitizeSectionState("players", payload.state);
+
+        setCharacterSkinCatalogState(nextCharacterSkinsState);
+        persistStoredPayload("players", {
+          state: nextCharacterSkinsState,
           version: payload.version,
           updatedAt: payload.updatedAt,
           updatedByUsername: payload.updatedByUsername,
@@ -2247,6 +2286,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       return Boolean(formState.graphics.chestImageSrc);
     }
 
+    if (formState.graphicsSource === "characterSkin") {
+      return Boolean(formState.characterSkinId);
+    }
+
     const hasWorldImages = [
       formState.graphics.standingUpSrc,
       formState.graphics.standingDownSrc,
@@ -2388,6 +2431,36 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         .sort((left, right) => left.category.localeCompare(right.category) || left.name.localeCompare(right.name)),
     [pokemonCatalogState.items]
   );
+  const npcCharacterSkinCatalog = useMemo(
+    () =>
+      characterSkinCatalogState.items
+        .map((item) => {
+          const profile = sanitizeCharacterSkinProfile(item.characterSkinProfile);
+
+          if (!item.id.trim() || !item.name.trim() || !profile) {
+            return null;
+          }
+
+          return {
+            id: item.id,
+            name: item.name,
+            category: item.category,
+            profile,
+          };
+        })
+        .filter(
+          (
+            item
+          ): item is {
+            id: string;
+            name: string;
+            category: string;
+            profile: DesignerCharacterSkinProfile;
+          } => item !== null
+        )
+        .sort((left, right) => left.category.localeCompare(right.category) || left.name.localeCompare(right.name)),
+    [characterSkinCatalogState.items]
+  );
 
   useEffect(() => {
     if (!npcPokemonCatalog.some((item) => item.id === newNpcTrainerPokemonId)) {
@@ -2413,13 +2486,32 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     if (!npcItemCatalog.some((item) => item.id === editNpcChestItemId)) {
       setEditNpcChestItemId(npcItemCatalog[0]?.id ?? "");
     }
+
+    if (!npcCharacterSkinCatalog.some((item) => item.id === newNpcForm.characterSkinId)) {
+      setNewNpcForm((current) => ({
+        ...current,
+        characterSkinId: npcCharacterSkinCatalog[0]?.id ?? "",
+        characterSkinName: npcCharacterSkinCatalog[0]?.name ?? "",
+      }));
+    }
+
+    if (!npcCharacterSkinCatalog.some((item) => item.id === editNpcForm.characterSkinId)) {
+      setEditNpcForm((current) => ({
+        ...current,
+        characterSkinId: npcCharacterSkinCatalog[0]?.id ?? "",
+        characterSkinName: npcCharacterSkinCatalog[0]?.name ?? "",
+      }));
+    }
   }, [
+    editNpcForm.characterSkinId,
     editNpcChestItemId,
     editNpcStoreItemId,
     editNpcTrainerPokemonId,
+    newNpcForm.characterSkinId,
     newNpcChestItemId,
     newNpcStoreItemId,
     newNpcTrainerPokemonId,
+    npcCharacterSkinCatalog,
     npcItemCatalog,
     npcPokemonCatalog,
   ]);
@@ -2574,6 +2666,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         ? {
             aiType: npcProfile.aiType,
             npcType: npcProfile.npcType,
+            graphicsSource: npcProfile.graphicsSource,
+            characterSkinId: npcProfile.characterSkinId,
+            characterSkinName: npcProfile.characterSkinName,
             movementIntervalMinSeconds: String(npcProfile.movementIntervalMinSeconds),
             movementIntervalMaxSeconds: String(npcProfile.movementIntervalMaxSeconds),
             movementStepMin: String(npcProfile.movementStepMin),
@@ -3072,6 +3167,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       return undefined;
     }
 
+    const selectedCharacterSkin =
+      formState.graphicsSource === "characterSkin"
+        ? npcCharacterSkinCatalog.find((item) => item.id === formState.characterSkinId) ?? null
+        : null;
+
     const trainerPokemons = formState.trainerPokemons
       .map((pokemon) => {
         const catalogPokemon = npcPokemonCatalog.find((item) => item.id === pokemon.pokemonId);
@@ -3134,6 +3234,15 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     return {
       aiType: formState.aiType,
       npcType: formState.npcType,
+      graphicsSource: formState.npcType === "chest" ? "custom" : formState.graphicsSource,
+      characterSkinId:
+        formState.npcType === "chest" || formState.graphicsSource !== "characterSkin"
+          ? ""
+          : selectedCharacterSkin?.id ?? formState.characterSkinId,
+      characterSkinName:
+        formState.npcType === "chest" || formState.graphicsSource !== "characterSkin"
+          ? ""
+          : selectedCharacterSkin?.name ?? formState.characterSkinName,
       movementIntervalMinSeconds,
       movementIntervalMaxSeconds: Math.max(
         movementIntervalMinSeconds,
@@ -3148,9 +3257,23 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       storeItems,
       chestSlotCapacity,
       chestItems,
-      graphics: {
-        ...formState.graphics,
-      },
+      graphics:
+        formState.npcType !== "chest" && selectedCharacterSkin
+          ? {
+              ...formState.graphics,
+              standingUpSrc: selectedCharacterSkin.profile.standingUpSrc,
+              standingDownSrc: selectedCharacterSkin.profile.standingDownSrc,
+              standingLeftSrc: selectedCharacterSkin.profile.standingLeftSrc,
+              standingRightSrc: selectedCharacterSkin.profile.standingRightSrc,
+              walkingUpSrc: selectedCharacterSkin.profile.walkingUpSrc,
+              walkingDownSrc: selectedCharacterSkin.profile.walkingDownSrc,
+              walkingLeftSrc: selectedCharacterSkin.profile.walkingLeftSrc,
+              walkingRightSrc: selectedCharacterSkin.profile.walkingRightSrc,
+              trainerFrontImageSrc: selectedCharacterSkin.profile.frontImageSrc,
+            }
+          : {
+              ...formState.graphics,
+            },
     };
   };
 
@@ -4199,6 +4322,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         },
       }));
     };
+    const selectedCharacterSkin =
+      npcCharacterSkinCatalog.find((item) => item.id === formState.characterSkinId) ?? null;
     const addTrainerPokemon = () => {
       const pokemon = npcPokemonCatalog.find((item) => item.id === trainerPokemonToAdd);
 
@@ -4279,6 +4404,14 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               required: formState.npcType === "trainer",
             },
           ];
+    const selectedCharacterSkinPreviewSrc = selectedCharacterSkin
+      ? selectedCharacterSkin.profile.standingDownSrc ||
+        selectedCharacterSkin.profile.standingUpSrc ||
+        selectedCharacterSkin.profile.standingLeftSrc ||
+        selectedCharacterSkin.profile.standingRightSrc ||
+        selectedCharacterSkin.profile.frontImageSrc ||
+        selectedCharacterSkin.profile.backImageSrc
+      : "";
 
     return (
       <>
@@ -4314,6 +4447,21 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             </Select>
           </FormControl>
         </SimpleGrid>
+
+        {formState.npcType !== "chest" ? (
+          <FormControl isRequired>
+            <FormLabel>Graphics Source</FormLabel>
+            <Select
+              value={formState.graphicsSource}
+              onChange={(event) =>
+                updateField("graphicsSource", event.target.value as DesignerNpcGraphicsSource)
+              }
+            >
+              <option value="custom">Custom NPC images</option>
+              <option value="characterSkin">Character skin</option>
+            </Select>
+          </FormControl>
+        ) : null}
 
         {formState.aiType === "moving" ? (
           <Box
@@ -4801,51 +4949,116 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           </Box>
         ) : null}
 
-        <Box>
-          <FormLabel>Graphics</FormLabel>
-          <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={4}>
-            {graphicFields.map((field) => (
-              <FormControl key={field.key} isRequired={field.required}>
-                <FormLabel>{field.label}</FormLabel>
-                <Input
-                  type="file"
-                  accept="image/*"
-                  p={1.5}
-                  onChange={(event) =>
-                    handleNpcGraphicChange(event, (value) =>
-                      updateGraphicsField(field.key, value)
-                    )
-                  }
+        {formState.npcType !== "chest" && formState.graphicsSource === "characterSkin" ? (
+          <Box
+            p={4}
+            borderRadius="20px"
+            border="1px solid rgba(43, 66, 47, 0.12)"
+            bg="rgba(255,255,255,0.68)"
+          >
+            <FormControl isRequired>
+              <FormLabel>Character Skin</FormLabel>
+              <Select
+                value={formState.characterSkinId}
+                onChange={(event) => {
+                  const nextSkin =
+                    npcCharacterSkinCatalog.find((item) => item.id === event.target.value) ?? null;
+
+                  onFormChange((current) => ({
+                    ...current,
+                    characterSkinId: event.target.value,
+                    characterSkinName: nextSkin?.name ?? "",
+                  }));
+                }}
+                isDisabled={npcCharacterSkinCatalog.length === 0}
+              >
+                {npcCharacterSkinCatalog.map((skin) => (
+                  <option key={skin.id} value={skin.id}>
+                    {skin.name} ({skin.category})
+                  </option>
+                ))}
+              </Select>
+            </FormControl>
+            <Flex
+              mt={4}
+              minH="140px"
+              align="center"
+              justify="center"
+              borderRadius="18px"
+              border="1px dashed rgba(43, 66, 47, 0.18)"
+              bg="rgba(255,255,255,0.68)"
+            >
+              {selectedCharacterSkinPreviewSrc ? (
+                <Box
+                  as="img"
+                  src={selectedCharacterSkinPreviewSrc}
+                  alt={`${selectedCharacterSkin?.name ?? "Character skin"} preview`}
+                  maxW="112px"
+                  maxH="112px"
+                  objectFit="contain"
+                  style={{ imageRendering: "pixelated" }}
                 />
-                <Flex
-                  mt={3}
-                  h="108px"
-                  align="center"
-                  justify="center"
-                  borderRadius="16px"
-                  border="1px dashed rgba(43, 66, 47, 0.18)"
-                  bg="rgba(255,255,255,0.68)"
-                >
-                  {formState.graphics[field.key] ? (
-                    <Box
-                      as="img"
-                      src={formState.graphics[field.key]}
-                      alt={`${field.label} preview`}
-                      maxW="96px"
-                      maxH="96px"
-                      objectFit="contain"
-                      style={{ imageRendering: "pixelated" }}
-                    />
-                  ) : (
-                    <Text fontSize="sm" color="#6d7b71">
-                      {field.required ? "Required" : "Optional"}
-                    </Text>
-                  )}
-                </Flex>
-              </FormControl>
-            ))}
-          </SimpleGrid>
-        </Box>
+              ) : (
+                <Text fontSize="sm" color="#6d7b71">
+                  {npcCharacterSkinCatalog.length === 0
+                    ? "Create a character skin first."
+                    : "Select a character skin."}
+                </Text>
+              )}
+            </Flex>
+            {selectedCharacterSkin ? (
+              <Text mt={3} fontSize="sm" color="#55645a">
+                Uses the directional standing and walking sprites from {selectedCharacterSkin.name}.
+              </Text>
+            ) : null}
+          </Box>
+        ) : (
+          <Box>
+            <FormLabel>Graphics</FormLabel>
+            <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={4}>
+              {graphicFields.map((field) => (
+                <FormControl key={field.key} isRequired={field.required}>
+                  <FormLabel>{field.label}</FormLabel>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    p={1.5}
+                    onChange={(event) =>
+                      handleNpcGraphicChange(event, (value) =>
+                        updateGraphicsField(field.key, value)
+                      )
+                    }
+                  />
+                  <Flex
+                    mt={3}
+                    h="108px"
+                    align="center"
+                    justify="center"
+                    borderRadius="16px"
+                    border="1px dashed rgba(43, 66, 47, 0.18)"
+                    bg="rgba(255,255,255,0.68)"
+                  >
+                    {formState.graphics[field.key] ? (
+                      <Box
+                        as="img"
+                        src={formState.graphics[field.key]}
+                        alt={`${field.label} preview`}
+                        maxW="96px"
+                        maxH="96px"
+                        objectFit="contain"
+                        style={{ imageRendering: "pixelated" }}
+                      />
+                    ) : (
+                      <Text fontSize="sm" color="#6d7b71">
+                        {field.required ? "Required" : "Optional"}
+                      </Text>
+                    )}
+                  </Flex>
+                </FormControl>
+              ))}
+            </SimpleGrid>
+          </Box>
+        )}
       </>
     );
   };

@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
+import { useContext, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { AppContext } from "../../context/appContext";
 import { useEventListener } from "usehooks-ts";
 import Cursor from "./Cursor";
@@ -13,6 +13,15 @@ import {
     DEFAULT_NPC_INTERACTION_DISTANCE_SQUARES,
     type MapEditorNpcPlacement,
 } from "../designer/PlayableMapEditorCanvas";
+import {
+    DESIGNER_CACHE_UPDATED_EVENT,
+    readStoredDesignerSectionPayload,
+    type DesignerCacheUpdateDetail,
+} from "../designer/designerCache";
+import {
+    getCharacterSkinPreview,
+    loadCharacterSkinCatalog,
+} from "../ux/game/characterSkinCatalog";
 //import { point_direction } from "./gameMath";
 
 function isNpcWithinInteractionRange(
@@ -39,6 +48,49 @@ function isNpcWithinInteractionRange(
     return distance <= interactionDistanceSquares * cellSize;
 }
 
+function loadNpcPreviewById() {
+    const previewById = new globalThis.Map<string, string>();
+    const characterSkinCatalog = loadCharacterSkinCatalog();
+
+    readStoredDesignerSectionPayload("npcs").state.items.forEach((item) => {
+        const npcProfile =
+            item.npcProfile && typeof item.npcProfile === "object"
+                ? (item.npcProfile as {
+                    npcType?: string;
+                    graphicsSource?: string;
+                    characterSkinId?: string;
+                    graphics?: {
+                        chestImageSrc?: string;
+                        standingDownSrc?: string;
+                        standingUpSrc?: string;
+                        standingLeftSrc?: string;
+                        standingRightSrc?: string;
+                        trainerFrontImageSrc?: string;
+                    };
+                })
+                : null;
+        const graphics = npcProfile?.graphics;
+        const selectedCharacterSkin =
+            npcProfile?.graphicsSource === "characterSkin"
+                ? characterSkinCatalog.find((skin) => skin.id === npcProfile.characterSkinId) ?? null
+                : null;
+        const previewSrc =
+            npcProfile?.npcType === "chest"
+                ? graphics?.chestImageSrc ?? ""
+                : getCharacterSkinPreview(selectedCharacterSkin?.profile) ||
+                  graphics?.standingDownSrc ||
+                  graphics?.standingUpSrc ||
+                  graphics?.standingLeftSrc ||
+                  graphics?.standingRightSrc ||
+                  graphics?.trainerFrontImageSrc ||
+                  "";
+
+        previewById.set(item.id, previewSrc);
+    });
+
+    return previewById;
+}
+
 const Map = ({children}:{children:any}) => {
     const {
         setMouse,
@@ -52,6 +104,7 @@ const Map = ({children}:{children:any}) => {
     } = useContext(AppContext);
 
     const mapRef = useRef<HTMLDivElement | null>(null);
+    const [npcPreviewById, setNpcPreviewById] = useState(() => loadNpcPreviewById());
     const currentPlayer: any =
         Object.values(players ?? {}).find((player: any) => player?.playerId === myplayer) ?? null;
     const activeMap =
@@ -100,6 +153,22 @@ const Map = ({children}:{children:any}) => {
         setActiveNpcInteraction,
     ]);
 
+    useEffect(() => {
+        const handleDesignerCacheUpdate = (event: Event) => {
+            const detail = (event as CustomEvent<DesignerCacheUpdateDetail>).detail;
+
+            if (detail?.sectionKey === "npcs" || detail?.sectionKey === "players") {
+                setNpcPreviewById(loadNpcPreviewById());
+            }
+        };
+
+        window.addEventListener(DESIGNER_CACHE_UPDATED_EVENT, handleDesignerCacheUpdate);
+
+        return () => {
+            window.removeEventListener(DESIGNER_CACHE_UPDATED_EVENT, handleDesignerCacheUpdate);
+        };
+    }, []);
+
     const openNpcInteraction = (npc: MapEditorNpcPlacement) => {
         if (!activeMapConfig || !isNpcWithinInteractionRange(npc, currentPlayer, activeMapConfig.cellSize)) {
             return;
@@ -141,12 +210,12 @@ const Map = ({children}:{children:any}) => {
                 : null}
             {activeMapConfig && activeMapEditorData
                 ? activeMapEditorData.npcs.map((npc) =>
-                    npc.previewImageSrc ? (
+                    (npcPreviewById.get(npc.npcId) || npc.previewImageSrc) ? (
                         <GameObject
                             key={npc.id}
                             x={npc.x * activeMapConfig.cellSize}
                             y={npc.y * activeMapConfig.cellSize}
-                            imageSrc={npc.previewImageSrc}
+                            imageSrc={npcPreviewById.get(npc.npcId) || npc.previewImageSrc}
                             width={activeMapConfig.cellSize}
                             height={activeMapConfig.cellSize}
                             alt={npc.name}

@@ -1,5 +1,13 @@
-import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AppContext } from "../../context/appContext";
+import {
+  DESIGNER_CACHE_UPDATED_EVENT,
+  type DesignerCacheUpdateDetail,
+} from "../designer/designerCache";
+import {
+  getCharacterSkinSprite,
+  loadCharacterSkinCatalog,
+} from "../ux/game/characterSkinCatalog";
 
 type Position = {
   x: number
@@ -80,6 +88,9 @@ const Player = (props: any) => {
   const [direction, setDirection] = useState<Direction>(() => getDirectionFromAngle(initialPosition.angle));
   const [isWalking, setIsWalking] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const [characterSkinCatalog, setCharacterSkinCatalog] = useState(() =>
+    loadCharacterSkinCatalog()
+  );
 
   const posRef = useRef(initialPosition);
   const deathRef = useRef(death);
@@ -99,6 +110,22 @@ const Player = (props: any) => {
   useEffect(() => {
     movePlayerRef.current = movePlayer;
   }, [movePlayer]);
+
+  useEffect(() => {
+    const handleDesignerCacheUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<DesignerCacheUpdateDetail>).detail;
+
+      if (detail?.sectionKey === "players") {
+        setCharacterSkinCatalog(loadCharacterSkinCatalog());
+      }
+    };
+
+    window.addEventListener(DESIGNER_CACHE_UPDATED_EVENT, handleDesignerCacheUpdate);
+
+    return () => {
+      window.removeEventListener(DESIGNER_CACHE_UPDATED_EVENT, handleDesignerCacheUpdate);
+    };
+  }, []);
 
   const stopMovement = useCallback(() => {
     if (animationFrameRef.current !== null) {
@@ -303,7 +330,14 @@ const Player = (props: any) => {
     window.scroll(pos.x - viewportWidth / 2, pos.y - viewportHeight / 2);
   }, [myplayer, playerId, pos]);
 
-  const spritePath = buildSpritePath(direction, isWalking);
+  const characterSkinProfile = useMemo(
+    () =>
+      characterSkinCatalog.find((item) => item.id === playerInfo.characterSkinId)?.profile,
+    [characterSkinCatalog, playerInfo.characterSkinId]
+  );
+  const spritePath =
+    getCharacterSkinSprite(characterSkinProfile, direction, isWalking) ||
+    buildSpritePath(direction, isWalking);
   const spriteLabel = `${isWalking ? "walking" : "standing"} ${direction}`;
   const isVisibleOnActiveMap = !activeMapId || pos.currentMapId === activeMapId;
   const trainerName = playerInfo.username || playerInfo.name || "Trainer";

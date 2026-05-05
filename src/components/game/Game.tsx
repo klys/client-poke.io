@@ -9,6 +9,7 @@ import UserControl from "./UserControl"
 import Map from "./Map"
 import AccountMenu from "../ux/auth/AccountMenu";
 import StartupPokemonSelection from "../ux/game/StartupPokemonSelection";
+import StartupCharacterSkinSelection from "../ux/game/StartupCharacterSkinSelection";
 import BattleOverlay from "../ux/game/BattleOverlay";
 import { BattlePrompts, TrainerInteractionCard } from "../ux/game/TrainerInteractions";
 
@@ -18,6 +19,10 @@ const Game = ({ socketUrl }:{ socketUrl:string }) => {
 
     if ((user?.pokemonParty ?? []).length === 0) {
         return <StartupPokemonSelection />;
+    }
+
+    if (!user?.characterSkinId) {
+        return <StartupCharacterSkinSelection />;
     }
 
     return (

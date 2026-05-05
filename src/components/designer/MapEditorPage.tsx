@@ -53,6 +53,10 @@ import {
   readStoredDesignerSectionPayload,
   type DesignerCacheUpdateDetail,
 } from "./designerCache";
+import {
+  getCharacterSkinPreview,
+  loadCharacterSkinCatalog,
+} from "../ux/game/characterSkinCatalog";
 
 type DesignerSectionState = {
   categories: string[];
@@ -343,11 +347,14 @@ function normalizePokemonCatalogItem(item: DesignerItemSeed): MapEditorPokemonCa
 }
 
 function normalizeNpcCatalogItem(item: DesignerItemSeed): MapEditorNpcCatalogItem {
+  const characterSkinCatalog = loadCharacterSkinCatalog();
   const npcProfile =
     item.npcProfile && typeof item.npcProfile === "object"
       ? (item.npcProfile as {
           aiType?: string;
           npcType?: string;
+          graphicsSource?: string;
+          characterSkinId?: string;
           graphics?: {
             chestImageSrc?: string;
             standingDownSrc?: string;
@@ -359,6 +366,13 @@ function normalizeNpcCatalogItem(item: DesignerItemSeed): MapEditorNpcCatalogIte
         })
       : null;
   const graphics = npcProfile?.graphics;
+  const selectedCharacterSkin =
+    npcProfile?.graphicsSource === "characterSkin"
+      ? characterSkinCatalog.find((skin) => skin.id === npcProfile.characterSkinId) ?? null
+      : null;
+  const characterSkinPreviewSrc = selectedCharacterSkin
+    ? getCharacterSkinPreview(selectedCharacterSkin.profile)
+    : "";
 
   return {
     id: item.id,
@@ -367,7 +381,8 @@ function normalizeNpcCatalogItem(item: DesignerItemSeed): MapEditorNpcCatalogIte
     previewImageSrc:
       (npcProfile?.npcType === "chest"
         ? graphics?.chestImageSrc
-        : graphics?.standingDownSrc ||
+        : characterSkinPreviewSrc ||
+          graphics?.standingDownSrc ||
           graphics?.standingUpSrc ||
           graphics?.standingLeftSrc ||
           graphics?.standingRightSrc ||
@@ -714,6 +729,11 @@ export default function MapEditorPage() {
       }
 
       if (detail.sectionKey === "npcs") {
+        setNpcCatalog(loadNpcCatalog());
+        return;
+      }
+
+      if (detail.sectionKey === "players") {
         setNpcCatalog(loadNpcCatalog());
         return;
       }

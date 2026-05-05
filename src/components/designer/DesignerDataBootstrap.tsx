@@ -34,7 +34,7 @@ type DesignerSectionVersionPayload = {
 const DESIGNER_SECTION_KEYS = Object.keys(
   designerSectionsByKey
 ) as DesignerSectionKey[];
-const PUBLIC_DESIGNER_SECTION_KEYS: DesignerSectionKey[] = ["pokemons", "npcs"];
+const PUBLIC_DESIGNER_SECTION_KEYS: DesignerSectionKey[] = ["pokemons", "npcs", "players"];
 const GENERIC_DESIGNER_SECTION_KEYS = DESIGNER_SECTION_KEYS.filter(
   (sectionKey) => sectionKey !== "mapsEditor"
 );

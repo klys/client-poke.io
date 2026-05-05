@@ -170,6 +170,8 @@ export type DesignerNpcAiType = "standing" | "moving" | "scriptable";
 
 export type DesignerNpcType = "healer" | "trainer" | "store" | "chest";
 
+export type DesignerNpcGraphicsSource = "custom" | "characterSkin";
+
 export interface DesignerNpcGraphicsProfile {
   standingUpSrc: string;
   standingDownSrc: string;
@@ -218,6 +220,9 @@ export interface DesignerNpcChestItem {
 export interface DesignerNpcProfile {
   aiType: DesignerNpcAiType;
   npcType: DesignerNpcType;
+  graphicsSource: DesignerNpcGraphicsSource;
+  characterSkinId: string;
+  characterSkinName: string;
   movementIntervalMinSeconds: number;
   movementIntervalMaxSeconds: number;
   movementStepMin: number;
@@ -569,6 +574,12 @@ function getNpcGraphicsSummary(profile?: DesignerNpcProfile) {
 
   if (profile.npcType === "chest") {
     return profile.graphics.chestImageSrc ? "Chest image ready" : "Chest image required";
+  }
+
+  if (profile.graphicsSource === "characterSkin") {
+    return profile.characterSkinName
+      ? `Using skin: ${profile.characterSkinName}`
+      : "Character skin required";
   }
 
   const directionalImages = [
@@ -1227,6 +1238,9 @@ export const designerSections: DesignerSectionDefinition[] = [
         npcProfile: {
           aiType: "standing",
           npcType: "healer",
+          graphicsSource: "custom",
+          characterSkinId: "",
+          characterSkinName: "",
           movementIntervalMinSeconds: 5,
           movementIntervalMaxSeconds: 60,
           movementStepMin: 1,
@@ -1265,6 +1279,9 @@ export const designerSections: DesignerSectionDefinition[] = [
         npcProfile: {
           aiType: "standing",
           npcType: "store",
+          graphicsSource: "custom",
+          characterSkinId: "",
+          characterSkinName: "",
           movementIntervalMinSeconds: 5,
           movementIntervalMaxSeconds: 60,
           movementStepMin: 1,
@@ -1303,6 +1320,9 @@ export const designerSections: DesignerSectionDefinition[] = [
         npcProfile: {
           aiType: "moving",
           npcType: "trainer",
+          graphicsSource: "custom",
+          characterSkinId: "",
+          characterSkinName: "",
           movementIntervalMinSeconds: 5,
           movementIntervalMaxSeconds: 60,
           movementStepMin: 1,

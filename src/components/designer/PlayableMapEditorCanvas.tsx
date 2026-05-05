@@ -638,6 +638,10 @@ export default function PlayableMapEditorCanvas({
     () => npcCatalog.find((item) => item.id === activeNpcId) ?? null,
     [activeNpcId, npcCatalog]
   );
+  const npcCatalogById = useMemo(
+    () => new Map(npcCatalog.map((item) => [item.id, item])),
+    [npcCatalog]
+  );
   const filteredPokemonCatalog = useMemo(() => {
     const normalizedSearch = pokemonSearchTerm.trim().toLowerCase();
 
@@ -690,6 +694,9 @@ export default function PlayableMapEditorCanvas({
       version: 1,
     });
   };
+
+  const getNpcPreviewImageSrc = (npc: Pick<MapEditorNpcPlacement, "npcId" | "previewImageSrc">) =>
+    npcCatalogById.get(npc.npcId)?.previewImageSrc || npc.previewImageSrc;
 
   const activeGrassSettings = {
     pokemonIds: activeGrassPokemonIds,
@@ -2255,10 +2262,10 @@ export default function PlayableMapEditorCanvas({
                 zIndex={4}
                 overflow="hidden"
               >
-                {npc.previewImageSrc ? (
+                {getNpcPreviewImageSrc(npc) ? (
                   <Box
                     as="img"
-                    src={npc.previewImageSrc}
+                    src={getNpcPreviewImageSrc(npc)}
                     alt={`${npc.name} npc`}
                     width={`${cellSize}px`}
                     height={`${cellSize}px`}

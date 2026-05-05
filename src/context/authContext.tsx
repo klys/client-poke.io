@@ -24,6 +24,7 @@ export type AuthUser = {
   profileImage: string
   description: string
   trainerGender: string
+  characterSkinId: string
   money: number
   inventory: InventoryItem[]
   pokemonParty: PokemonSummary[]
@@ -147,6 +148,7 @@ type ChangePasswordPayload = {
 type UpdateProfilePayload = {
   profileImage?: string
   description?: string
+  characterSkinId?: string
 }
 
 type ChooseStarterPayload = {
