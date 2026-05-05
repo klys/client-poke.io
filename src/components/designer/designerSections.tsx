@@ -183,6 +183,19 @@ export interface DesignerNpcGraphicsProfile {
   trainerFrontImageSrc: string;
 }
 
+export interface DesignerCharacterSkinProfile {
+  standingUpSrc: string;
+  standingDownSrc: string;
+  standingLeftSrc: string;
+  standingRightSrc: string;
+  walkingUpSrc: string;
+  walkingDownSrc: string;
+  walkingLeftSrc: string;
+  walkingRightSrc: string;
+  frontImageSrc: string;
+  backImageSrc: string;
+}
+
 export interface DesignerNpcTrainerPokemon {
   pokemonId: string;
   pokemonName: string;
@@ -228,6 +241,7 @@ export interface DesignerItemCreateOptions {
   levelingCurveProfile?: DesignerLevelingCurveProfile;
   itemProfile?: DesignerGameItemProfile;
   npcProfile?: DesignerNpcProfile;
+  characterSkinProfile?: DesignerCharacterSkinProfile;
 }
 
 export interface DesignerItemSeed {
@@ -243,6 +257,7 @@ export interface DesignerItemSeed {
   levelingCurveProfile?: DesignerLevelingCurveProfile;
   itemProfile?: DesignerGameItemProfile;
   npcProfile?: DesignerNpcProfile;
+  characterSkinProfile?: DesignerCharacterSkinProfile;
 }
 
 export interface DesignerPlayableMapConfig {
@@ -575,6 +590,26 @@ function getNpcGraphicsSummary(profile?: DesignerNpcProfile) {
   }
 
   return hasDirectionalSet ? "World images ready" : "World images missing";
+}
+
+function getCharacterSkinGraphicsSummary(profile?: DesignerCharacterSkinProfile) {
+  if (!profile) {
+    return "0 / 8 uploaded";
+  }
+
+  const directionalImages = [
+    profile.standingUpSrc,
+    profile.standingDownSrc,
+    profile.standingLeftSrc,
+    profile.standingRightSrc,
+    profile.walkingUpSrc,
+    profile.walkingDownSrc,
+    profile.walkingLeftSrc,
+    profile.walkingRightSrc,
+  ];
+  const readyCount = directionalImages.filter((value) => value.length > 0).length;
+
+  return `${readyCount} / 8 uploaded`;
 }
 
 function formatItemStatModifiers(modifiers?: DesignerItemStatModifiers) {
@@ -1064,38 +1099,59 @@ export const designerSections: DesignerSectionDefinition[] = [
   },
   {
     key: "players",
-    title: "Players",
-    description: "Prepare player presets, avatars, and role-based templates for testing flows.",
+    title: "Character Skins",
+    description: "Manage reusable player sprite sets with directional movement frames and optional front/back portraits.",
     path: "/designer/players",
-    itemLabel: "player",
-    itemLabelPlural: "players",
-    categoryLabel: "team",
+    itemLabel: "character skin",
+    itemLabelPlural: "character skins",
+    categoryLabel: "group",
     icon: "players",
-    defaultCategories: ["Heroes", "Rivals", "Admins"],
+    defaultCategories: ["Base", "Variants", "Special"],
     demoItems: [
       {
-        id: "player-ranger-lyra",
+        id: "skin-ranger-lyra",
         name: "Ranger Lyra",
-        category: "Heroes",
-        details: [detail("Class", "Scout"), detail("Spawn", "Bloomharbor"), detail("Status", "Active")],
+        category: "Base",
+        details: [
+          detail("Directional Sprites", "8 / 8 uploaded"),
+          detail("Front Image", "Uploaded"),
+          detail("Back Image", "Uploaded"),
+        ],
       },
       {
-        id: "player-ace-doran",
+        id: "skin-ace-doran",
         name: "Ace Doran",
-        category: "Rivals",
-        details: [detail("Class", "Striker"), detail("Spawn", "Sungrass Plains"), detail("Status", "Active")],
+        category: "Variants",
+        details: [
+          detail("Directional Sprites", "8 / 8 uploaded"),
+          detail("Front Image", "Optional"),
+          detail("Back Image", "Uploaded"),
+        ],
       },
       {
-        id: "player-mod-kite",
+        id: "skin-mod-kite",
         name: "Mod Kite",
-        category: "Admins",
-        details: [detail("Class", "Moderator"), detail("Spawn", "Control Room"), detail("Status", "Hidden")],
+        category: "Special",
+        details: [
+          detail("Directional Sprites", "0 / 8 uploaded"),
+          detail("Front Image", "Optional"),
+          detail("Back Image", "Optional"),
+        ],
       },
     ],
-    createDetails: (_name, category, index) => [
-      detail("Class", ["Scout", "Striker", "Moderator"][index % 3]),
-      detail("Spawn", ["Bloomharbor", "Sungrass Plains", "Control Room"][index % 3]),
-      detail("Status", category === "Admins" ? "Hidden" : "Active"),
+    createDetails: (_name, _category, _index, options) => [
+      detail(
+        "Directional Sprites",
+        getCharacterSkinGraphicsSummary(options?.characterSkinProfile)
+      ),
+      detail(
+        "Front Image",
+        options?.characterSkinProfile?.frontImageSrc ? "Uploaded" : "Optional"
+      ),
+      detail(
+        "Back Image",
+        options?.characterSkinProfile?.backImageSrc ? "Uploaded" : "Optional"
+      ),
     ],
   },
   {

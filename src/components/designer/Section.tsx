@@ -43,6 +43,7 @@ import {
   type DesignerGameItemProfile,
   type DesignerItemStatModifiers,
   type DesignerItemType,
+  type DesignerCharacterSkinProfile,
   type DesignerNpcAiType,
   type DesignerNpcChestItem,
   type DesignerNpcGraphicsProfile,
@@ -343,6 +344,8 @@ interface NpcFormState {
   graphics: DesignerNpcGraphicsProfile;
 }
 
+type CharacterSkinFormState = DesignerCharacterSkinProfile;
+
 function createUniqueMapId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return `map-${crypto.randomUUID()}`;
@@ -521,6 +524,21 @@ function createDefaultNpcFormState(): NpcFormState {
     chestSlotCapacity: String(DEFAULT_NPC_CHEST_SLOTS),
     chestItems: [],
     graphics: createDefaultNpcGraphicsProfile(),
+  };
+}
+
+function createDefaultCharacterSkinFormState(): CharacterSkinFormState {
+  return {
+    standingUpSrc: "",
+    standingDownSrc: "",
+    standingLeftSrc: "",
+    standingRightSrc: "",
+    walkingUpSrc: "",
+    walkingDownSrc: "",
+    walkingLeftSrc: "",
+    walkingRightSrc: "",
+    frontImageSrc: "",
+    backImageSrc: "",
   };
 }
 
@@ -927,6 +945,33 @@ function sanitizeNpcGraphicsProfile(value: unknown): DesignerNpcGraphicsProfile 
       typeof candidate.trainerFrontImageSrc === "string"
         ? candidate.trainerFrontImageSrc
         : "",
+  };
+}
+
+function sanitizeCharacterSkinProfile(value: unknown): DesignerCharacterSkinProfile | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const candidate = value as Partial<DesignerCharacterSkinProfile>;
+
+  return {
+    standingUpSrc: typeof candidate.standingUpSrc === "string" ? candidate.standingUpSrc : "",
+    standingDownSrc:
+      typeof candidate.standingDownSrc === "string" ? candidate.standingDownSrc : "",
+    standingLeftSrc:
+      typeof candidate.standingLeftSrc === "string" ? candidate.standingLeftSrc : "",
+    standingRightSrc:
+      typeof candidate.standingRightSrc === "string" ? candidate.standingRightSrc : "",
+    walkingUpSrc: typeof candidate.walkingUpSrc === "string" ? candidate.walkingUpSrc : "",
+    walkingDownSrc:
+      typeof candidate.walkingDownSrc === "string" ? candidate.walkingDownSrc : "",
+    walkingLeftSrc:
+      typeof candidate.walkingLeftSrc === "string" ? candidate.walkingLeftSrc : "",
+    walkingRightSrc:
+      typeof candidate.walkingRightSrc === "string" ? candidate.walkingRightSrc : "",
+    frontImageSrc: typeof candidate.frontImageSrc === "string" ? candidate.frontImageSrc : "",
+    backImageSrc: typeof candidate.backImageSrc === "string" ? candidate.backImageSrc : "",
   };
 }
 
@@ -1363,6 +1408,10 @@ function sanitizeSectionState(
         sectionKey === "npcs"
           ? sanitizeNpcProfile(item.npcProfile)
           : undefined,
+      characterSkinProfile:
+        sectionKey === "players"
+          ? sanitizeCharacterSkinProfile(item.characterSkinProfile)
+          : undefined,
       pokemonProfile:
         sectionKey === "pokemons"
           ? sanitizePokemonProfile(item.pokemonProfile, item)
@@ -1492,6 +1541,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const isMapsSection = sectionKey === "mapsEditor";
   const isSkillGfxSection = sectionKey === "skillsGfx";
   const isItemsSection = sectionKey === "items";
+  const isPlayersSection = sectionKey === "players";
   const isNpcsSection = sectionKey === "npcs";
   const isPokemonSection = sectionKey === "pokemons";
   const isSkillsSection = sectionKey === "skills";
@@ -1578,6 +1628,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const [newSkillForm, setNewSkillForm] = useState<SkillFormState>(
     createDefaultSkillFormState
   );
+  const [newCharacterSkinForm, setNewCharacterSkinForm] = useState<CharacterSkinFormState>(
+    createDefaultCharacterSkinFormState
+  );
   const [newNpcForm, setNewNpcForm] = useState<NpcFormState>(createDefaultNpcFormState);
   const [editMapObjectImage, setEditMapObjectImage] = useState("");
   const [editMapObjectWidth, setEditMapObjectWidth] = useState(
@@ -1596,6 +1649,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   );
   const [editSkillForm, setEditSkillForm] = useState<SkillFormState>(
     createDefaultSkillFormState
+  );
+  const [editCharacterSkinForm, setEditCharacterSkinForm] = useState<CharacterSkinFormState>(
+    createDefaultCharacterSkinFormState
   );
   const [editNpcForm, setEditNpcForm] = useState<NpcFormState>(createDefaultNpcFormState);
   const [newNpcTrainerPokemonId, setNewNpcTrainerPokemonId] = useState("");
@@ -2171,6 +2227,21 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       MAP_CELL_SIZE_OPTIONS.includes(Number.parseInt(editMapCellSize, 10) as 8 | 16 | 32 | 64 | 128) &&
       hasValidEditMapDimensions &&
       hasValidEditInitialPosition);
+  const isCharacterSkinFormComplete = (formState: CharacterSkinFormState) =>
+    [
+      formState.standingUpSrc,
+      formState.standingDownSrc,
+      formState.standingLeftSrc,
+      formState.standingRightSrc,
+      formState.walkingUpSrc,
+      formState.walkingDownSrc,
+      formState.walkingLeftSrc,
+      formState.walkingRightSrc,
+    ].every(Boolean);
+  const isCharacterSkinFormValid =
+    !isPlayersSection || isCharacterSkinFormComplete(newCharacterSkinForm);
+  const isEditCharacterSkinFormValid =
+    !isPlayersSection || isCharacterSkinFormComplete(editCharacterSkinForm);
   const isNpcGraphicsFormValid = (formState: NpcFormState) => {
     if (formState.npcType === "chest") {
       return Boolean(formState.graphics.chestImageSrc);
@@ -2376,6 +2447,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setNewSkillGfxForm(createDefaultSkillGfxFormState());
     setNewPokemonForm(createDefaultPokemonFormState());
     setNewSkillForm(createDefaultSkillFormState());
+    setNewCharacterSkinForm(createDefaultCharacterSkinFormState());
     setNewMapCellSize(String(DEFAULT_MAP_CELL_SIZE));
     setNewMapSizePreset(DEFAULT_MAP_SIZE_PRESET);
     setNewMapCustomWidth("500");
@@ -2408,6 +2480,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     const playableMapConfig = sanitizePlayableMapConfig(item.playableMapConfig, regionNames);
     const skillGfxProfile = sanitizeSkillGfxProfile(item.skillGfxProfile);
     const npcProfile = sanitizeNpcProfile(item.npcProfile);
+    const characterSkinProfile = sanitizeCharacterSkinProfile(item.characterSkinProfile);
     const pokemonProfile = sanitizePokemonProfile(item.pokemonProfile, item);
     const pokemonSkillProfile = sanitizePokemonSkillProfile(item.pokemonSkillProfile, item);
 
@@ -2488,6 +2561,13 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             stateConditionId: pokemonSkillProfile.stateConditionId,
           }
         : createDefaultSkillFormState()
+    );
+    setEditCharacterSkinForm(
+      characterSkinProfile
+        ? {
+            ...characterSkinProfile,
+          }
+        : createDefaultCharacterSkinFormState()
     );
     setEditNpcForm(
       npcProfile
@@ -2871,7 +2951,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     }
 
     if (!file.type.startsWith("image/")) {
-      window.alert("Please upload an image file for the NPC graphic.");
+      window.alert("Please upload an image file.");
       event.target.value = "";
       return;
     }
@@ -2940,6 +3020,27 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       frontImageSrc: formState.frontImageSrc,
       backImageSrc: formState.backImageSrc,
       iconImageSrc: formState.iconImageSrc,
+    };
+  };
+
+  const buildCharacterSkinProfile = (
+    formState: CharacterSkinFormState
+  ): DesignerCharacterSkinProfile | undefined => {
+    if (!isCharacterSkinFormComplete(formState)) {
+      return undefined;
+    }
+
+    return {
+      standingUpSrc: formState.standingUpSrc,
+      standingDownSrc: formState.standingDownSrc,
+      standingLeftSrc: formState.standingLeftSrc,
+      standingRightSrc: formState.standingRightSrc,
+      walkingUpSrc: formState.walkingUpSrc,
+      walkingDownSrc: formState.walkingDownSrc,
+      walkingLeftSrc: formState.walkingLeftSrc,
+      walkingRightSrc: formState.walkingRightSrc,
+      frontImageSrc: formState.frontImageSrc,
+      backImageSrc: formState.backImageSrc,
     };
   };
 
@@ -3168,6 +3269,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     const name = newItemName.trim();
     const itemProfile = isItemsSection ? buildGameItemProfile(newGameItemForm) : undefined;
     const skillGfxProfile = isSkillGfxSection ? buildSkillGfxProfile(newSkillGfxForm) : undefined;
+    const characterSkinProfile = isPlayersSection
+      ? buildCharacterSkinProfile(newCharacterSkinForm)
+      : undefined;
     const npcProfile = isNpcsSection ? buildNpcProfile(newNpcForm) : undefined;
     const pokemonProfile = isPokemonSection ? buildPokemonProfile(newPokemonForm) : undefined;
     const pokemonSkillProfile = isSkillsSection ? buildPokemonSkillProfile(newSkillForm) : undefined;
@@ -3184,6 +3288,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       !name ||
       (isItemsSection && !isGameItemFormValid) ||
       (isSkillGfxSection && !isSkillGfxFormValid) ||
+      (isPlayersSection && !isCharacterSkinFormValid) ||
       (isNpcsSection && !isNpcFormValid) ||
       (isPokemonSection && !isPokemonFormValid) ||
       (isSkillsSection && !isSkillFormValid) ||
@@ -3234,6 +3339,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           mapObjectAsset,
           playableMapConfig,
           skillGfxProfile,
+          characterSkinProfile,
           npcProfile,
           pokemonProfile,
           pokemonSkillProfile,
@@ -3242,6 +3348,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         mapObjectAsset,
         playableMapConfig,
         skillGfxProfile,
+        characterSkinProfile,
         npcProfile,
         pokemonProfile,
         pokemonSkillProfile,
@@ -3267,6 +3374,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     const name = editItemName.trim();
     const itemProfile = isItemsSection ? buildGameItemProfile(editGameItemForm) : undefined;
     const skillGfxProfile = isSkillGfxSection ? buildSkillGfxProfile(editSkillGfxForm) : undefined;
+    const characterSkinProfile = isPlayersSection
+      ? buildCharacterSkinProfile(editCharacterSkinForm)
+      : undefined;
     const npcProfile = isNpcsSection ? buildNpcProfile(editNpcForm) : undefined;
     const pokemonProfile = isPokemonSection ? buildPokemonProfile(editPokemonForm) : undefined;
     const pokemonSkillProfile = isSkillsSection ? buildPokemonSkillProfile(editSkillForm) : undefined;
@@ -3284,6 +3394,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       !name ||
       (isItemsSection && !isEditGameItemFormValid) ||
       (isSkillGfxSection && !isEditSkillGfxFormValid) ||
+      (isPlayersSection && !isEditCharacterSkinFormValid) ||
       (isNpcsSection && !isEditNpcFormValid) ||
       (isPokemonSection && !isEditPokemonFormValid) ||
       (isSkillsSection && !isEditSkillFormValid) ||
@@ -3334,6 +3445,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 mapObjectAsset,
                 playableMapConfig,
                 skillGfxProfile,
+                characterSkinProfile,
                 npcProfile,
                 pokemonProfile,
                 pokemonSkillProfile,
@@ -3342,6 +3454,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               mapObjectAsset,
               playableMapConfig,
               skillGfxProfile,
+              characterSkinProfile,
               npcProfile,
               pokemonProfile,
               pokemonSkillProfile,
@@ -3921,6 +4034,135 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               Enter both initial position coordinates or leave both empty to use the map center.
             </Text>
           ) : null}
+        </Box>
+      </>
+    );
+  };
+
+  const renderCharacterSkinFields = (
+    formState: CharacterSkinFormState,
+    onFormChange: React.Dispatch<React.SetStateAction<CharacterSkinFormState>>
+  ) => {
+    const updateField = <Key extends keyof CharacterSkinFormState>(
+      key: Key,
+      value: CharacterSkinFormState[Key]
+    ) => {
+      onFormChange((current) => ({
+        ...current,
+        [key]: value,
+      }));
+    };
+    const imageFields: Array<{
+      key: keyof CharacterSkinFormState;
+      label: string;
+      required: boolean;
+    }> = [
+      { key: "standingUpSrc", label: "Standing Up Image", required: true },
+      { key: "standingDownSrc", label: "Standing Down Image", required: true },
+      { key: "standingLeftSrc", label: "Standing Left Image", required: true },
+      { key: "standingRightSrc", label: "Standing Right Image", required: true },
+      { key: "walkingUpSrc", label: "Walking Up Image", required: true },
+      { key: "walkingDownSrc", label: "Walking Down Image", required: true },
+      { key: "walkingLeftSrc", label: "Walking Left Image", required: true },
+      { key: "walkingRightSrc", label: "Walking Right Image", required: true },
+      { key: "frontImageSrc", label: "Front Image", required: false },
+      { key: "backImageSrc", label: "Back Image", required: false },
+    ];
+    const previewSrc =
+      formState.standingDownSrc ||
+      formState.standingUpSrc ||
+      formState.standingLeftSrc ||
+      formState.standingRightSrc ||
+      formState.frontImageSrc ||
+      formState.backImageSrc;
+    const uploadedRequiredCount = imageFields
+      .filter((field) => field.required && formState[field.key])
+      .length;
+
+    return (
+      <>
+        <Box>
+          <FormLabel>Skin Images</FormLabel>
+          <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={4}>
+            {imageFields.map((field) => (
+              <FormControl key={field.key} isRequired={field.required}>
+                <FormLabel>{field.label}</FormLabel>
+                <Input
+                  type="file"
+                  accept="image/*"
+                  p={1.5}
+                  onChange={(event) =>
+                    handleNpcGraphicChange(event, (value) => updateField(field.key, value))
+                  }
+                />
+                <Flex
+                  mt={3}
+                  h="108px"
+                  align="center"
+                  justify="center"
+                  borderRadius="16px"
+                  border="1px dashed rgba(43, 66, 47, 0.18)"
+                  bg="rgba(255,255,255,0.68)"
+                >
+                  {formState[field.key] ? (
+                    <Box
+                      as="img"
+                      src={formState[field.key]}
+                      alt={`${field.label} preview`}
+                      maxW="96px"
+                      maxH="96px"
+                      objectFit="contain"
+                      style={{ imageRendering: "pixelated" }}
+                    />
+                  ) : (
+                    <Text fontSize="sm" color="#6d7b71">
+                      {field.required ? "Required" : "Optional"}
+                    </Text>
+                  )}
+                </Flex>
+              </FormControl>
+            ))}
+          </SimpleGrid>
+        </Box>
+
+        <Box
+          p={4}
+          borderRadius="20px"
+          border="1px solid rgba(43, 66, 47, 0.12)"
+          bg="rgba(255,255,255,0.68)"
+        >
+          <Text fontWeight="700" color="#233127" mb={3}>
+            Skin Preview
+          </Text>
+          <Flex
+            minH="180px"
+            align="center"
+            justify="center"
+            borderRadius="18px"
+            border="1px dashed rgba(43, 66, 47, 0.18)"
+            bgSize="20px 20px"
+            bgImage="linear-gradient(45deg, rgba(46,91,55,0.07) 25%, transparent 25%, transparent 75%, rgba(46,91,55,0.07) 75%, rgba(46,91,55,0.07)), linear-gradient(45deg, rgba(46,91,55,0.07) 25%, transparent 25%, transparent 75%, rgba(46,91,55,0.07) 75%, rgba(46,91,55,0.07))"
+            bgPosition="0 0, 10px 10px"
+          >
+            {previewSrc ? (
+              <Box
+                as="img"
+                src={previewSrc}
+                alt="Character skin preview"
+                maxW="128px"
+                maxH="128px"
+                objectFit="contain"
+                style={{ imageRendering: "pixelated" }}
+              />
+            ) : (
+              <Text color="#6d7b71" textAlign="center" maxW="240px">
+                Upload the standing and walking sprites to preview the character skin.
+              </Text>
+            )}
+          </Flex>
+          <Text mt={3} fontSize="sm" color="#55645a">
+            Required directional images uploaded: {uploadedRequiredCount} / 8
+          </Text>
         </Box>
       </>
     );
@@ -5619,12 +5861,23 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 const skillGfxProfile = isSkillGfxSection
                   ? sanitizeSkillGfxProfile(item.skillGfxProfile)
                   : undefined;
+                const characterSkinProfile = isPlayersSection
+                  ? sanitizeCharacterSkinProfile(item.characterSkinProfile)
+                  : undefined;
                 const npcProfile = isNpcsSection
                   ? sanitizeNpcProfile(item.npcProfile)
                   : undefined;
                 const pokemonProfile = isPokemonSection
                   ? sanitizePokemonProfile(item.pokemonProfile, item)
                   : undefined;
+                const characterSkinPreviewSrc = characterSkinProfile
+                  ? characterSkinProfile.standingDownSrc ||
+                    characterSkinProfile.standingUpSrc ||
+                    characterSkinProfile.standingLeftSrc ||
+                    characterSkinProfile.standingRightSrc ||
+                    characterSkinProfile.frontImageSrc ||
+                    characterSkinProfile.backImageSrc
+                  : "";
                 const npcPreviewSrc = npcProfile
                   ? npcProfile.npcType === "chest"
                     ? npcProfile.graphics.chestImageSrc
@@ -5686,6 +5939,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                             mapObjectAsset ||
                             itemProfile?.iconSrc ||
                             skillGfxProfile?.mediaSrc ||
+                            characterSkinPreviewSrc ||
                             npcPreviewSrc ||
                             pokemonProfile?.iconImageSrc
                               ? "linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(227,235,224,0.95) 100%)"
@@ -5719,6 +5973,16 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                               as="img"
                               src={skillGfxProfile.mediaSrc}
                               alt={`${item.name} GFX`}
+                              maxW="48px"
+                              maxH="48px"
+                              objectFit="contain"
+                              style={{ imageRendering: "pixelated" }}
+                            />
+                          ) : characterSkinPreviewSrc ? (
+                            <Box
+                              as="img"
+                              src={characterSkinPreviewSrc}
+                              alt={`${item.name} sprite`}
                               maxW="48px"
                               maxH="48px"
                               objectFit="contain"
@@ -5906,7 +6170,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       <Modal
         isOpen={isAddOpen}
         onClose={() => setIsAddOpen(false)}
-        size={isObjectsSection || isMapsSection || isSkillGfxSection || isItemsSection || isPokemonSection || isSkillsSection ? "3xl" : "md"}
+        size={isObjectsSection || isMapsSection || isSkillGfxSection || isItemsSection || isPlayersSection || isPokemonSection || isSkillsSection ? "3xl" : "md"}
         scrollBehavior="inside"
       >
         <ModalOverlay bg="blackAlpha.400" />
@@ -5948,6 +6212,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               ) : null}
               {isItemsSection ? renderItemFields(newGameItemForm, setNewGameItemForm) : null}
               {isSkillGfxSection ? renderSkillGfxFields(newSkillGfxForm, setNewSkillGfxForm) : null}
+              {isPlayersSection
+                ? renderCharacterSkinFields(newCharacterSkinForm, setNewCharacterSkinForm)
+                : null}
               {isNpcsSection
                 ? renderNpcFields(
                     newNpcForm,
@@ -6135,6 +6402,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 !newItemName.trim() ||
                 !isGameItemFormValid ||
                 !isSkillGfxFormValid ||
+                !isCharacterSkinFormValid ||
                 !isNpcFormValid ||
                 !isPokemonFormValid ||
                 !isSkillFormValid ||
@@ -6151,7 +6419,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       <Modal
         isOpen={isEditOpen}
         onClose={closeEditModal}
-        size={isObjectsSection || isMapsSection || isSkillGfxSection || isItemsSection || isPokemonSection || isSkillsSection ? "3xl" : "md"}
+        size={isObjectsSection || isMapsSection || isSkillGfxSection || isItemsSection || isPlayersSection || isPokemonSection || isSkillsSection ? "3xl" : "md"}
         scrollBehavior="inside"
       >
         <ModalOverlay bg="blackAlpha.400" />
@@ -6193,6 +6461,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               ) : null}
               {isItemsSection ? renderItemFields(editGameItemForm, setEditGameItemForm) : null}
               {isSkillGfxSection ? renderSkillGfxFields(editSkillGfxForm, setEditSkillGfxForm) : null}
+              {isPlayersSection
+                ? renderCharacterSkinFields(editCharacterSkinForm, setEditCharacterSkinForm)
+                : null}
               {isNpcsSection
                 ? renderNpcFields(
                     editNpcForm,
@@ -6410,6 +6681,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 !editItemName.trim() ||
                 !isEditGameItemFormValid ||
                 !isEditSkillGfxFormValid ||
+                !isEditCharacterSkinFormValid ||
                 !isEditNpcFormValid ||
                 !isEditPokemonFormValid ||
                 !isEditSkillFormValid ||
