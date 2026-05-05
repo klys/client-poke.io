@@ -25,7 +25,7 @@ const UserControl = () => {
     
     //npconst map = useRef<>
 
-    const { socket, players, mouse, waiting, myplayer } = useContext(AppContext);
+    const { socket, players, mouse, waiting, myplayer, activeNpcInteraction } = useContext(AppContext);
 
     // const mapRef = document.getElementById('map');
     // // MOVE THE MOUSE OVER THE GAME
@@ -46,6 +46,7 @@ const UserControl = () => {
     // CLICK OVER THE GAME
     const clickOverMap = (event:MouseEvent) => {
         if (waiting) return;
+        if (activeNpcInteraction) return;
         if (isUxEventTarget(event.target)) return;
         const map = document.getElementById("map");
         const target = event.target as Node | null;
@@ -58,6 +59,12 @@ const UserControl = () => {
 
     const keyUpEvent = (event:KeyboardEvent) => {
         if (waiting) return;
+        if (activeNpcInteraction) {
+            if (event.key === "q" || isMovementKey(event.key)) {
+                event.preventDefault()
+            }
+            return;
+        }
         if (isUxEventTarget(event.target)) return;
         if (event.key === "q" || isMovementKey(event.key)) {
             event.preventDefault()
@@ -111,6 +118,12 @@ const UserControl = () => {
 
     const keyDownEvent = (event:KeyboardEvent) => {
         if (waiting) return;
+        if (activeNpcInteraction) {
+            if (isMovementKey(event.key)) {
+                event.preventDefault()
+            }
+            return;
+        }
         if (isUxEventTarget(event.target)) return;
         if (!isMovementKey(event.key)) return;
         event.preventDefault()

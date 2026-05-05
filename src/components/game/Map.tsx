@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useContext, useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { AppContext } from "../../context/appContext";
 import { useEventListener } from "usehooks-ts";
 import Cursor from "./Cursor";
@@ -9,11 +9,47 @@ import {
     getPlayableMapById,
     getPlayableMapBackgroundStyle,
 } from "./playableMapRuntime";
-import type { MapEditorNpcPlacement } from "../designer/PlayableMapEditorCanvas";
+import {
+    DEFAULT_NPC_INTERACTION_DISTANCE_SQUARES,
+    type MapEditorNpcPlacement,
+} from "../designer/PlayableMapEditorCanvas";
 //import { point_direction } from "./gameMath";
 
+function isNpcWithinInteractionRange(
+    npc: MapEditorNpcPlacement,
+    player: { x?: number; y?: number } | null,
+    cellSize: number
+) {
+    if (!player || typeof player.x !== "number" || typeof player.y !== "number") {
+        return false;
+    }
+
+    const interactionDistanceSquares =
+        typeof npc.interactionDistanceSquares === "number" &&
+        Number.isFinite(npc.interactionDistanceSquares) &&
+        npc.interactionDistanceSquares >= 0
+            ? npc.interactionDistanceSquares
+            : DEFAULT_NPC_INTERACTION_DISTANCE_SQUARES;
+    const playerCenterX = player.x + 16;
+    const playerCenterY = player.y + 16;
+    const npcCenterX = npc.x * cellSize + cellSize / 2;
+    const npcCenterY = npc.y * cellSize + cellSize / 2;
+    const distance = Math.hypot(playerCenterX - npcCenterX, playerCenterY - npcCenterY);
+
+    return distance <= interactionDistanceSquares * cellSize;
+}
+
 const Map = ({children}:{children:any}) => {
-    const { setMouse, players, myplayer, playableMapsState, groundItems } = useContext(AppContext);
+    const {
+        setMouse,
+        players,
+        myplayer,
+        playableMapsState,
+        groundItems,
+        socket,
+        activeNpcInteraction,
+        setActiveNpcInteraction,
+    } = useContext(AppContext);
 
     const mapRef = useRef<HTMLDivElement | null>(null);
     const currentPlayer: any =
@@ -28,7 +64,6 @@ const Map = ({children}:{children:any}) => {
     const backgroundStyle = activeMapConfig
         ? getPlayableMapBackgroundStyle(activeMapConfig)
         : { background: "repeat center/1% url('/map0/Tile_Grass.png')" };
-    const [selectedNpc, setSelectedNpc] = useState<MapEditorNpcPlacement | null>(null);
 
     // MOVE THE MOUSE OVER THE GAME
     const mapPointerMoveEvent = (event: MouseEvent) => {
@@ -44,16 +79,35 @@ const Map = ({children}:{children:any}) => {
     useEventListener('pointermove',mapPointerMoveEvent, mapRef) 
 
     useEffect(() => {
-        if (!selectedNpc) {
+        if (!activeNpcInteraction || !activeMapConfig) {
             return;
         }
 
         const activeNpcIds = new Set((activeMapEditorData?.npcs ?? []).map((npc) => npc.id));
 
-        if (!activeNpcIds.has(selectedNpc.id)) {
-            setSelectedNpc(null);
+        if (
+            !activeNpcIds.has(activeNpcInteraction.id) ||
+            !isNpcWithinInteractionRange(activeNpcInteraction, currentPlayer, activeMapConfig.cellSize)
+        ) {
+            setActiveNpcInteraction(null);
         }
-    }, [activeMap?.item.id, activeMapEditorData?.npcs, selectedNpc]);
+    }, [
+        activeMap?.item.id,
+        activeMapConfig,
+        activeMapEditorData?.npcs,
+        activeNpcInteraction,
+        currentPlayer,
+        setActiveNpcInteraction,
+    ]);
+
+    const openNpcInteraction = (npc: MapEditorNpcPlacement) => {
+        if (!activeMapConfig || !isNpcWithinInteractionRange(npc, currentPlayer, activeMapConfig.cellSize)) {
+            return;
+        }
+
+        socket.emit("stopMove");
+        setActiveNpcInteraction(npc);
+    };
     
     return(<>
         <div
@@ -100,7 +154,7 @@ const Map = ({children}:{children:any}) => {
                             cursor="pointer"
                             onClick={(event: ReactMouseEvent<HTMLDivElement>) => {
                                 event.stopPropagation();
-                                setSelectedNpc(npc);
+                                openNpcInteraction(npc);
                             }}
                         />
                     ) : (
@@ -109,7 +163,7 @@ const Map = ({children}:{children:any}) => {
                             title={npc.name}
                             onClick={(event) => {
                                 event.stopPropagation();
-                                setSelectedNpc(npc);
+                                openNpcInteraction(npc);
                             }}
                             style={{
                                 position: "absolute",
@@ -159,8 +213,8 @@ const Map = ({children}:{children:any}) => {
             mode="cell"
         />
         <NpcInteractionOverlay
-            npcPlacement={selectedNpc}
-            onClose={() => setSelectedNpc(null)}
+            npcPlacement={activeNpcInteraction}
+            onClose={() => setActiveNpcInteraction(null)}
         />
     </>)
 }

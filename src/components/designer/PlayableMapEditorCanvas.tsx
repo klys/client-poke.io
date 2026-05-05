@@ -98,9 +98,12 @@ export interface MapEditorNpcPlacement {
   previewImageSrc: string;
   npcType: DesignerNpcType;
   aiType: DesignerNpcAiType;
+  interactionDistanceSquares: number;
   x: number;
   y: number;
 }
+
+export const DEFAULT_NPC_INTERACTION_DISTANCE_SQUARES = 2;
 
 export interface PlayableMapEditorData {
   version: 1;
@@ -467,6 +470,12 @@ export function sanitizePlayableMapEditorData(value: unknown): PlayableMapEditor
         )
         .map((item) => ({
           ...item,
+          interactionDistanceSquares:
+            typeof item.interactionDistanceSquares === "number" &&
+            Number.isFinite(item.interactionDistanceSquares) &&
+            item.interactionDistanceSquares >= 0
+              ? Math.round(item.interactionDistanceSquares)
+              : DEFAULT_NPC_INTERACTION_DISTANCE_SQUARES,
           x: Math.max(0, Math.round(item.x)),
           y: Math.max(0, Math.round(item.y)),
         }))
@@ -927,6 +936,8 @@ export default function PlayableMapEditorCanvas({
       previewImageSrc: activeNpc.previewImageSrc,
       npcType: activeNpc.npcType,
       aiType: activeNpc.aiType,
+      interactionDistanceSquares:
+        existingNpc?.interactionDistanceSquares ?? DEFAULT_NPC_INTERACTION_DISTANCE_SQUARES,
       x: cell.x,
       y: cell.y,
     };
@@ -2026,6 +2037,28 @@ export default function PlayableMapEditorCanvas({
                   </Text>
                   <Text fontSize="sm" color="#55645a">
                     AI: {selectedNpc.aiType}
+                  </Text>
+                  <FormControl>
+                    <FormLabel>Interaction Distance (cells)</FormLabel>
+                    <Input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={selectedNpc.interactionDistanceSquares}
+                      onChange={(event) =>
+                        updateSelectedNpc((npc) => ({
+                          ...npc,
+                          interactionDistanceSquares: Math.max(
+                            0,
+                            sanitizeCoordinate(event.target.value)
+                          ),
+                        }))
+                      }
+                    />
+                  </FormControl>
+                  <Text fontSize="sm" color="#55645a">
+                    Players must be this many map squares away or less to interact. Default is{" "}
+                    {DEFAULT_NPC_INTERACTION_DISTANCE_SQUARES}.
                   </Text>
                   <Button colorScheme="red" variant="outline" onClick={removeSelectedNpc}>
                     Remove NPC

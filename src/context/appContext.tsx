@@ -2,6 +2,7 @@ import { createContext, useReducer, useState } from "react"
 import io, { Socket } from "socket.io-client"
 import Player from "../components/game/Player"
 import { loadPlayableMapsSnapshot } from "../components/game/playableMapRuntime"
+import type { MapEditorNpcPlacement } from "../components/designer/PlayableMapEditorCanvas"
 import type { BattlePrompt, BattlePublicState, TrainerCardPlayer } from "../components/ux/game/battleTypes"
 
 export type PlayerState = { // unused
@@ -26,6 +27,7 @@ export type InitialStateType = {
     battle: BattlePublicState | null
     battlePrompts: BattlePrompt[]
     selectedTrainer: TrainerCardPlayer | null
+    activeNpcInteraction: MapEditorNpcPlacement | null
 }
 
 const createInitialState = (socket: Socket) => ({
@@ -44,7 +46,8 @@ const createInitialState = (socket: Socket) => ({
     myplayer:"",
     battle: null,
     battlePrompts: [],
-    selectedTrainer: null
+    selectedTrainer: null,
+    activeNpcInteraction: null
 })
 
 export const networkEvents = {
@@ -74,7 +77,8 @@ enum actions {
     CLEAR_BATTLE = 'CLEAR_BATTLE',
     ADD_BATTLE_PROMPT = 'ADD_BATTLE_PROMPT',
     REMOVE_BATTLE_PROMPT = 'REMOVE_BATTLE_PROMPT',
-    SET_SELECTED_TRAINER = 'SET_SELECTED_TRAINER'
+    SET_SELECTED_TRAINER = 'SET_SELECTED_TRAINER',
+    SET_ACTIVE_NPC_INTERACTION = 'SET_ACTIVE_NPC_INTERACTION'
 }
 
 // Actions are handle on this reducer
@@ -273,6 +277,11 @@ const reducer = (state:any, action:any) => {
                 ...state,
                 selectedTrainer: action.trainer
             }
+        case actions.SET_ACTIVE_NPC_INTERACTION:
+            return {
+                ...state,
+                activeNpcInteraction: action.npcInteraction
+            }
             
     }
 }
@@ -307,6 +316,7 @@ export const Provider = ({ children, socketUrl }:{children:any, socketUrl:string
         battle: state.battle ?? null,
         battlePrompts: state.battlePrompts ?? [],
         selectedTrainer: state.selectedTrainer ?? null,
+        activeNpcInteraction: state.activeNpcInteraction ?? null,
         connect: () => {
             dispatch({ type: actions.CONNECT })
         },
@@ -378,6 +388,9 @@ export const Provider = ({ children, socketUrl }:{children:any, socketUrl:string
         },
         setSelectedTrainer: (trainer: TrainerCardPlayer | null) => {
             dispatch({type: actions.SET_SELECTED_TRAINER, trainer})
+        },
+        setActiveNpcInteraction: (npcInteraction: MapEditorNpcPlacement | null) => {
+            dispatch({type: actions.SET_ACTIVE_NPC_INTERACTION, npcInteraction})
         }
     }
 
