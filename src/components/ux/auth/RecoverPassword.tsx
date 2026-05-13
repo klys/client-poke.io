@@ -10,18 +10,20 @@ import {
 } from '@chakra-ui/react';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
-import { Link as RouterLink, Navigate, useSearchParams } from 'react-router-dom';
+import { Link as RouterLink, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../../context/authContext';
 import AuthAlerts from './AuthAlerts';
 import AuthShell from './AuthShell';
 import { validatePassword, validateRequired } from './validation';
 
 const RecoverPassword = () => {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') ?? '';
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [submittedReset, setSubmittedReset] = useState(false);
   const {
     authenticated,
     clearMessages,
@@ -35,7 +37,14 @@ const RecoverPassword = () => {
   useEffect(() => {
     clearMessages();
     setValidationError(null);
+    setSubmittedReset(false);
   }, [clearMessages, isResetMode]);
+
+  useEffect(() => {
+    if (submittedReset && infoMessage) {
+      navigate('/login', { replace: true });
+    }
+  }, [infoMessage, navigate, submittedReset]);
 
   const handleSubmit = (event: FormEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -50,6 +59,7 @@ const RecoverPassword = () => {
       }
 
       setValidationError(null);
+      setSubmittedReset(true);
       resetPassword({
         token,
         password
@@ -65,6 +75,7 @@ const RecoverPassword = () => {
     }
 
     setValidationError(null);
+    setSubmittedReset(false);
     recoverPassword({
       identifier: identifier.trim()
     });
