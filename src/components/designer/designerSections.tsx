@@ -168,9 +168,13 @@ export interface DesignerPokemonSkillProfile {
   target?: string;
   functionCode?: string;
   flags?: string[];
+  priority?: number;
   description: string;
+  effectText?: string;
   skillGfxId: string;
   skillGfxName: string;
+  animationId?: string;
+  animationName?: string;
   weatherEffect: DesignerWeatherEffect;
   inflictStateId: string;
   inflictStateName: string;
@@ -369,6 +373,35 @@ export interface DesignerTrainerTypeProfile {
   source?: DesignerEssentialsSourceProfile;
 }
 
+export interface DesignerTrainerPokemonProfile {
+  pokemonId: string;
+  level: number;
+  name?: string;
+  form?: number;
+  gender?: string;
+  ability?: string;
+  itemId?: string;
+  moves?: string[];
+  nature?: string;
+  ivs?: Record<string, number>;
+  evs?: Record<string, number>;
+}
+
+export interface DesignerTrainerProfile {
+  essentialsId: string;
+  trainerTypeId: string;
+  trainerTypeName?: string;
+  version?: number;
+  name: string;
+  party: DesignerTrainerPokemonProfile[];
+  items?: string[];
+  loseText?: string;
+  battleBgm?: string;
+  victoryMe?: string;
+  sourceEventIds?: string[];
+  source?: DesignerEssentialsSourceProfile;
+}
+
 export interface DesignerEncounterRowProfile {
   weight: number;
   pokemonId: string;
@@ -430,6 +463,12 @@ export interface DesignerAssetProfile {
   source?: DesignerEssentialsSourceProfile;
 }
 
+export interface DesignerBattleBackgroundProfile extends DesignerAssetProfile {
+  kind: "battleback";
+  environment?: string;
+  mapIds?: string[];
+}
+
 export interface DesignerAudioProfile {
   assetId: string;
   sourcePath: string;
@@ -459,11 +498,13 @@ export interface DesignerItemCreateOptions {
   characterSkinProfile?: DesignerCharacterSkinProfile;
   abilityProfile?: DesignerAbilityProfile;
   typeProfile?: DesignerTypeProfile;
+  trainerProfile?: DesignerTrainerProfile;
   trainerTypeProfile?: DesignerTrainerTypeProfile;
   encounterProfile?: DesignerEncounterProfile;
   berryPlantProfile?: DesignerBerryPlantProfile;
   ribbonProfile?: DesignerRibbonProfile;
   assetProfile?: DesignerAssetProfile;
+  battleBackgroundProfile?: DesignerBattleBackgroundProfile;
   audioProfile?: DesignerAudioProfile;
   fontProfile?: DesignerFontProfile;
 }
@@ -484,11 +525,13 @@ export interface DesignerItemSeed {
   characterSkinProfile?: DesignerCharacterSkinProfile;
   abilityProfile?: DesignerAbilityProfile;
   typeProfile?: DesignerTypeProfile;
+  trainerProfile?: DesignerTrainerProfile;
   trainerTypeProfile?: DesignerTrainerTypeProfile;
   encounterProfile?: DesignerEncounterProfile;
   berryPlantProfile?: DesignerBerryPlantProfile;
   ribbonProfile?: DesignerRibbonProfile;
   assetProfile?: DesignerAssetProfile;
+  battleBackgroundProfile?: DesignerBattleBackgroundProfile;
   audioProfile?: DesignerAudioProfile;
   fontProfile?: DesignerFontProfile;
 }
@@ -508,6 +551,32 @@ export interface DesignerPlayableMapConfig {
   backgroundColor: string;
   backgroundImageSrc: string;
   backgroundImageMode: DesignerPlayableMapBackgroundImageMode;
+  essentialsMapId?: string;
+  essentialsMapName?: string;
+  rxdataPath?: string;
+  mapInfoId?: number;
+  tilesetId?: number;
+  tilesetName?: string;
+  tilesetAssetId?: string;
+  battleBack?: string;
+  environment?: string;
+  flags?: string[];
+  outdoor?: boolean;
+  showArea?: boolean;
+  mapPosition?: {
+    regionId?: number;
+    x: number;
+    y: number;
+  };
+  healingSpot?: {
+    mapId: string;
+    x: number;
+    y: number;
+    direction?: number;
+  };
+  bgm?: string;
+  bgs?: string;
+  source?: DesignerEssentialsSourceProfile;
 }
 
 export interface DesignerSectionDefinition {
@@ -1029,11 +1098,11 @@ export const designerSections: DesignerSectionDefinition[] = [
   },
   {
     key: "skillsGfx",
-    title: "Skill GFX",
-    description: "Organize animation and impact assets used by skills across battles and world effects.",
+    title: "Move Animations",
+    description: "Organize animation and impact assets used by moves across battles and world effects.",
     path: "/designer/skills-gfx",
-    itemLabel: "effect",
-    itemLabelPlural: "effects",
+    itemLabel: "animation",
+    itemLabelPlural: "animations",
     categoryLabel: "style",
     icon: "skillGfx",
     defaultCategories: ["Fire", "Water", "Support"],
@@ -1259,11 +1328,11 @@ export const designerSections: DesignerSectionDefinition[] = [
   },
   {
     key: "skills",
-    title: "Pokemon Skills",
-    description: "Configure learned attacks, support moves, and progression-ready skill sets.",
+    title: "Moves",
+    description: "Configure Pokemon moves, support techniques, and progression-ready learnsets.",
     path: "/designer/skills",
-    itemLabel: "skill",
-    itemLabelPlural: "skills",
+    itemLabel: "move",
+    itemLabelPlural: "moves",
     categoryLabel: "type",
     icon: "pokemonSkills",
     defaultCategories: ["Fire", "Water", "Support"],
@@ -1315,7 +1384,12 @@ export const designerSections: DesignerSectionDefinition[] = [
       detail("Power", skillDetailValue(options, "power", 0)),
       detail("Power Point", skillDetailValue(options, "powerPoint", 1)),
       detail("Accuracy", skillDetailValue(options, "accuracy", 100)),
-      detail("Skill GFX", options?.pokemonSkillProfile?.skillGfxName || "None"),
+      detail("Damage Class", options?.pokemonSkillProfile?.category || "Physical"),
+      detail("Target", options?.pokemonSkillProfile?.target || "NearOther"),
+      detail("Function Code", options?.pokemonSkillProfile?.functionCode || "None"),
+      detail("Flags", options?.pokemonSkillProfile?.flags?.join(", ") || "None"),
+      detail("Priority", skillDetailValue(options, "priority", 0)),
+      detail("Move Animation", options?.pokemonSkillProfile?.skillGfxName || "None"),
       detail("Weather", options?.pokemonSkillProfile?.weatherEffect || "None"),
       detail("Inflict State", options?.pokemonSkillProfile?.inflictStateName || "None"),
       detail("Cooldown", `${skillDetailValue(options, "cooldown", 0)} turns`),
@@ -1325,7 +1399,7 @@ export const designerSections: DesignerSectionDefinition[] = [
   {
     key: "passiveStates",
     title: "Passive States",
-    description: "Manage reusable battle states that skills can inflict or require.",
+    description: "Manage reusable battle states that moves can inflict or require.",
     path: "/designer/passive-states",
     itemLabel: "passive state",
     itemLabelPlural: "passive states",

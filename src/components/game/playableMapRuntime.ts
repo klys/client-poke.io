@@ -72,6 +72,7 @@ function normalizePlayableMapConfig(
   config: Partial<DesignerPlayableMapConfig> | undefined
 ): DesignerPlayableMapConfig {
   return {
+    ...config,
     cellSize:
       typeof config?.cellSize === "number" &&
       [8, 16, 32, 64, 128].includes(config.cellSize)

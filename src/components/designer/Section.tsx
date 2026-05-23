@@ -199,9 +199,9 @@ const POKEMON_ELEMENTS = [
   "Ghost",
 ];
 const WEATHER_EFFECT_DESCRIPTIONS: Record<DesignerWeatherEffect, string> = {
-  None: "No weather is created by this skill.",
-  "Sunny Day": "Fire skills are favored while Water pressure is reduced.",
-  Rain: "Water skills are favored while Fire pressure is reduced.",
+  None: "No weather is created by this move.",
+  "Sunny Day": "Fire moves are favored while Water pressure is reduced.",
+  Rain: "Water moves are favored while Fire pressure is reduced.",
   Sandstorm: "Rock, Ground, and Steel battlers are favored while exposed battlers take chip pressure.",
   Snow: "Ice battlers are favored and fast tempo can be harder to maintain.",
   "Strong Winds": "Flying battlers are favored and weather weaknesses are softened.",
@@ -235,8 +235,27 @@ const DEFAULT_SKILL_FORM_STATE = {
   power: "0",
   powerPoint: "1",
   accuracy: "100",
+  category: "Physical",
+  target: "NearOther",
+  functionCode: "None",
+  flags: "",
+  priority: "0",
   cooldown: "0",
 };
+const MOVE_DAMAGE_CLASSES = ["Physical", "Special", "Status"] as const;
+const MOVE_TARGET_OPTIONS = [
+  "None",
+  "User",
+  "NearOther",
+  "Other",
+  "RandomNearFoe",
+  "AllNearFoes",
+  "AllNearOthers",
+  "UserOrNearAlly",
+  "NearAlly",
+  "UserAndAllies",
+  "AllBattlers",
+] as const;
 const DEFAULT_ITEM_STAT_MODIFIERS: Record<keyof DesignerItemStatModifiers, string> = {
   hp: "0",
   attack: "0",
@@ -254,6 +273,142 @@ const DEFAULT_NPC_MOVEMENT_INTERVAL_MIN = 5;
 const DEFAULT_NPC_MOVEMENT_INTERVAL_MAX = 60;
 const DEFAULT_NPC_MOVEMENT_STEP_MIN = 1;
 const DEFAULT_NPC_MOVEMENT_STEP_MAX = 5;
+const MIGRATION_PROFILE_SECTIONS = [
+  "abilities",
+  "types",
+  "trainers",
+  "trainerTypes",
+  "encounters",
+  "berries",
+  "ribbons",
+  "assets",
+  "battleBackgrounds",
+  "audio",
+  "fonts",
+] as const;
+
+type MigrationProfileSectionKey = (typeof MIGRATION_PROFILE_SECTIONS)[number];
+type MigrationProfileKey =
+  | "abilityProfile"
+  | "typeProfile"
+  | "trainerProfile"
+  | "trainerTypeProfile"
+  | "encounterProfile"
+  | "berryPlantProfile"
+  | "ribbonProfile"
+  | "assetProfile"
+  | "battleBackgroundProfile"
+  | "audioProfile"
+  | "fontProfile";
+
+const MIGRATION_PROFILE_KEY_BY_SECTION: Record<MigrationProfileSectionKey, MigrationProfileKey> = {
+  abilities: "abilityProfile",
+  types: "typeProfile",
+  trainers: "trainerProfile",
+  trainerTypes: "trainerTypeProfile",
+  encounters: "encounterProfile",
+  berries: "berryPlantProfile",
+  ribbons: "ribbonProfile",
+  assets: "assetProfile",
+  battleBackgrounds: "battleBackgroundProfile",
+  audio: "audioProfile",
+  fonts: "fontProfile",
+};
+
+const MIGRATION_PROFILE_TEMPLATES: Record<MigrationProfileSectionKey, Record<string, unknown>> = {
+  abilities: {
+    essentialsId: "",
+    name: "",
+    description: "",
+  },
+  types: {
+    essentialsId: "",
+    name: "",
+    iconPosition: 0,
+    weaknesses: [],
+    resistances: [],
+    immunities: [],
+  },
+  trainers: {
+    essentialsId: "",
+    trainerTypeId: "",
+    trainerTypeName: "",
+    version: 0,
+    name: "",
+    party: [],
+    items: [],
+    loseText: "",
+    battleBgm: "",
+    victoryMe: "",
+    sourceEventIds: [],
+  },
+  trainerTypes: {
+    essentialsId: "",
+    name: "",
+    baseMoney: 0,
+    battleBgm: "",
+    victoryMe: "",
+    gender: "",
+    skillLevel: 0,
+    flags: [],
+  },
+  encounters: {
+    mapId: "",
+    mapVersion: 0,
+    mapName: "",
+    tables: [
+      {
+        method: "Land",
+        density: 0,
+        rows: [],
+      },
+    ],
+  },
+  berries: {
+    essentialsId: "",
+    hoursPerStage: 0,
+    dryRatePerHour: 0,
+    minimumYield: 0,
+    maximumYield: 0,
+  },
+  ribbons: {
+    essentialsId: "",
+    name: "",
+    description: "",
+  },
+  assets: {
+    assetId: "",
+    sourcePath: "",
+    kind: "image",
+    width: 0,
+    height: 0,
+    mimeType: "",
+    frameCount: 0,
+    loop: false,
+    frames: [],
+    relatedRecordIds: [],
+  },
+  battleBackgrounds: {
+    assetId: "",
+    sourcePath: "",
+    kind: "battleback",
+    environment: "",
+    mapIds: [],
+  },
+  audio: {
+    assetId: "",
+    sourcePath: "",
+    kind: "BGM",
+    loop: true,
+    volume: 100,
+    pitch: 100,
+  },
+  fonts: {
+    assetId: "",
+    sourcePath: "",
+    familyName: "",
+  },
+};
 
 interface PokemonFormState {
   hp: string;
@@ -281,7 +436,13 @@ interface SkillFormState {
   power: string;
   powerPoint: string;
   accuracy: string;
+  category: string;
+  target: string;
+  functionCode: string;
+  flags: string;
+  priority: string;
   description: string;
+  effectText: string;
   skillGfxId: string;
   weatherEffect: DesignerWeatherEffect;
   inflictStateId: string;
@@ -349,6 +510,10 @@ interface NpcFormState {
 }
 
 type CharacterSkinFormState = DesignerCharacterSkinProfile;
+
+interface MigrationProfileFormState {
+  profileJson: string;
+}
 
 function createUniqueMapId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -466,6 +631,7 @@ function createDefaultSkillFormState(): SkillFormState {
     ...DEFAULT_SKILL_FORM_STATE,
     elements: [POKEMON_ELEMENTS[0]],
     description: "",
+    effectText: "",
     skillGfxId: "",
     weatherEffect: WEATHER_EFFECT_OPTIONS[0],
     inflictStateId: "",
@@ -549,6 +715,102 @@ function createDefaultCharacterSkinFormState(): CharacterSkinFormState {
   };
 }
 
+function isMigrationProfileSectionKey(
+  value: DesignerSectionKey
+): value is MigrationProfileSectionKey {
+  return (MIGRATION_PROFILE_SECTIONS as readonly string[]).includes(value);
+}
+
+function getMigrationProfileKey(sectionKey: DesignerSectionKey): MigrationProfileKey | null {
+  return isMigrationProfileSectionKey(sectionKey)
+    ? MIGRATION_PROFILE_KEY_BY_SECTION[sectionKey]
+    : null;
+}
+
+function formatProfileJson(value: unknown) {
+  return JSON.stringify(value, null, 2);
+}
+
+function createDefaultMigrationProfileFormState(
+  sectionKey: DesignerSectionKey
+): MigrationProfileFormState {
+  const template = isMigrationProfileSectionKey(sectionKey)
+    ? MIGRATION_PROFILE_TEMPLATES[sectionKey]
+    : {};
+
+  return {
+    profileJson: formatProfileJson(template),
+  };
+}
+
+function getMigrationProfileFromItem(
+  sectionKey: DesignerSectionKey,
+  item: DesignerItemSeed
+): Record<string, unknown> | null {
+  const profileKey = getMigrationProfileKey(sectionKey);
+
+  if (!profileKey) {
+    return null;
+  }
+
+  const profile = item[profileKey];
+
+  return profile && typeof profile === "object"
+    ? (profile as unknown as Record<string, unknown>)
+    : null;
+}
+
+function parseMigrationProfileJson(value: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(value);
+
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function createMigrationProfileDetails(
+  sectionKey: DesignerSectionKey,
+  category: string,
+  profile: Record<string, unknown> | null
+): Array<{ label: string; value: string }> {
+  if (!profile) {
+    return [
+      { label: "Category", value: category },
+      { label: "Profile", value: "Invalid" },
+    ];
+  }
+
+  const essentialsId =
+    typeof profile.essentialsId === "string"
+      ? profile.essentialsId
+      : typeof profile.assetId === "string"
+        ? profile.assetId
+        : "";
+  const sourcePath = typeof profile.sourcePath === "string" ? profile.sourcePath : "";
+  const kind = typeof profile.kind === "string" ? profile.kind : "";
+  const description = typeof profile.description === "string" ? profile.description : "";
+  const profileKeys = Object.keys(profile).filter((key) => typeof profile[key] !== "undefined");
+
+  return [
+    { label: "Category", value: category },
+    { label: "Profile", value: `${profileKeys.length} fields` },
+    ...(essentialsId ? [{ label: "Essentials ID", value: essentialsId }] : []),
+    ...(kind ? [{ label: "Kind", value: kind }] : []),
+    ...(description ? [{ label: "Description", value: description }] : []),
+    ...(sourcePath ? [{ label: "Source Path", value: sourcePath }] : []),
+    ...(sectionKey === "encounters" && Array.isArray(profile.tables)
+      ? [{ label: "Tables", value: String(profile.tables.length) }]
+      : []),
+    ...(sectionKey === "trainers" && Array.isArray(profile.party)
+      ? [{ label: "Party", value: `${profile.party.length} Pokemon` }]
+      : []),
+  ];
+}
+
 function parsePokemonStat(value: string) {
   const parsedValue = Number.parseInt(value, 10);
 
@@ -571,6 +833,16 @@ function parseSkillNonNegativeNumber(value: string) {
   return Number.isFinite(parsedValue) && parsedValue >= 0
     ? Math.round(parsedValue)
     : null;
+}
+
+function parseSkillInteger(value: string) {
+  const parsedValue = Number.parseInt(value, 10);
+
+  return Number.isFinite(parsedValue) ? Math.round(parsedValue) : null;
+}
+
+function isMoveDamageClass(value: unknown): value is string {
+  return typeof value === "string" && MOVE_DAMAGE_CLASSES.includes(value as typeof MOVE_DAMAGE_CLASSES[number]);
 }
 
 function parseSkillGfxAppear(value: string) {
@@ -842,6 +1114,32 @@ function isWeatherEffect(value: unknown): value is DesignerWeatherEffect {
     typeof value === "string" &&
     WEATHER_EFFECT_OPTIONS.includes(value as DesignerWeatherEffect)
   );
+}
+
+function normalizeMoveFlags(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return Array.from(
+      new Set(
+        value
+          .filter((flag): flag is string => typeof flag === "string")
+          .map((flag) => flag.trim())
+          .filter(Boolean)
+      )
+    );
+  }
+
+  if (typeof value === "string") {
+    return Array.from(
+      new Set(
+        value
+          .split(",")
+          .map((flag) => flag.trim())
+          .filter(Boolean)
+      )
+    );
+  }
+
+  return [];
 }
 
 function isSkillGfxApplyTo(value: unknown): value is DesignerSkillGfxApplyTo {
@@ -1182,6 +1480,9 @@ function sanitizePokemonSkillProfile(
     : fallbackElements ?? [fallbackItem?.category];
   const elements = Array.from(new Set(rawElements.filter(isPokemonElement)));
   const weatherEffect = candidate?.weatherEffect;
+  const fallbackValue = (label: string) =>
+    fallbackItem?.details.find((item) => item.label === label)?.value ?? "";
+  const candidateCategory = candidate?.category;
 
   if (!candidate && !fallbackItem) {
     return undefined;
@@ -1192,9 +1493,7 @@ function sanitizePokemonSkillProfile(
     power:
       typeof candidate?.power === "number" && Number.isFinite(candidate.power) && candidate.power >= 0
         ? Math.round(candidate.power)
-        : parseSkillNonNegativeNumber(
-            fallbackItem?.details.find((item) => item.label === "Power")?.value ?? ""
-          ) ?? 0,
+        : parseSkillNonNegativeNumber(fallbackValue("Power")) ?? 0,
     powerPoint:
       typeof candidate?.powerPoint === "number" &&
       Number.isFinite(candidate.powerPoint) &&
@@ -1205,9 +1504,29 @@ function sanitizePokemonSkillProfile(
       typeof candidate?.accuracy === "number" && Number.isFinite(candidate.accuracy) && candidate.accuracy > 0
         ? Math.round(candidate.accuracy)
         : parsePokemonDetailNumber(fallbackItem?.details ?? [], "Accuracy", 100),
+    category: isMoveDamageClass(candidateCategory)
+      ? candidateCategory
+      : isMoveDamageClass(fallbackValue("Damage Class"))
+        ? fallbackValue("Damage Class")
+        : "Physical",
+    target: typeof candidate?.target === "string" && candidate.target.trim().length > 0
+      ? candidate.target.trim()
+      : fallbackValue("Target") || "NearOther",
+    functionCode:
+      typeof candidate?.functionCode === "string" && candidate.functionCode.trim().length > 0
+        ? candidate.functionCode.trim()
+        : fallbackValue("Function Code") || "None",
+    flags: normalizeMoveFlags(candidate?.flags ?? fallbackValue("Flags")),
+    priority:
+      typeof candidate?.priority === "number" && Number.isFinite(candidate.priority)
+        ? Math.round(candidate.priority)
+        : parseSkillInteger(fallbackValue("Priority")) ?? 0,
     description: typeof candidate?.description === "string" ? candidate.description : "",
+    effectText: typeof candidate?.effectText === "string" ? candidate.effectText : "",
     skillGfxId: typeof candidate?.skillGfxId === "string" ? candidate.skillGfxId : "",
     skillGfxName: typeof candidate?.skillGfxName === "string" ? candidate.skillGfxName : "",
+    animationId: typeof candidate?.animationId === "string" ? candidate.animationId : "",
+    animationName: typeof candidate?.animationName === "string" ? candidate.animationName : "",
     weatherEffect: isWeatherEffect(weatherEffect)
       ? weatherEffect
       : WEATHER_EFFECT_OPTIONS[0],
@@ -1263,6 +1582,7 @@ function sanitizePlayableMapConfig(
   }
 
   return {
+    ...candidate,
     cellSize,
     sizePreset: candidate.sizePreset,
     width,
@@ -1565,6 +1885,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const isNpcsSection = sectionKey === "npcs";
   const isPokemonSection = sectionKey === "pokemons";
   const isSkillsSection = sectionKey === "skills";
+  const isMigrationProfileSection = isMigrationProfileSectionKey(sectionKey);
   const isGenericRealtimeSection = !isMapsSection;
   const isRealtimeSection = true;
   const toast = useToast();
@@ -1655,6 +1976,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     createDefaultCharacterSkinFormState
   );
   const [newNpcForm, setNewNpcForm] = useState<NpcFormState>(createDefaultNpcFormState);
+  const [newMigrationProfileForm, setNewMigrationProfileForm] =
+    useState<MigrationProfileFormState>(() => createDefaultMigrationProfileFormState(sectionKey));
   const [editMapObjectImage, setEditMapObjectImage] = useState("");
   const [editMapObjectWidth, setEditMapObjectWidth] = useState(
     String(DEFAULT_MAP_OBJECT_SIZE)
@@ -1677,6 +2000,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     createDefaultCharacterSkinFormState
   );
   const [editNpcForm, setEditNpcForm] = useState<NpcFormState>(createDefaultNpcFormState);
+  const [editMigrationProfileForm, setEditMigrationProfileForm] =
+    useState<MigrationProfileFormState>(() => createDefaultMigrationProfileFormState(sectionKey));
   const [newNpcTrainerPokemonId, setNewNpcTrainerPokemonId] = useState("");
   const [editNpcTrainerPokemonId, setEditNpcTrainerPokemonId] = useState("");
   const [newNpcStoreItemId, setNewNpcStoreItemId] = useState("");
@@ -2238,6 +2563,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       parseSkillNonNegativeNumber(newSkillForm.power) !== null &&
       parseSkillPositiveNumber(newSkillForm.powerPoint) !== null &&
       parseSkillPositiveNumber(newSkillForm.accuracy) !== null &&
+      isMoveDamageClass(newSkillForm.category) &&
+      parseSkillInteger(newSkillForm.priority) !== null &&
       parseSkillNonNegativeNumber(newSkillForm.cooldown) !== null);
   const isEditSkillFormValid =
     !isSkillsSection ||
@@ -2245,7 +2572,15 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       parseSkillNonNegativeNumber(editSkillForm.power) !== null &&
       parseSkillPositiveNumber(editSkillForm.powerPoint) !== null &&
       parseSkillPositiveNumber(editSkillForm.accuracy) !== null &&
+      isMoveDamageClass(editSkillForm.category) &&
+      parseSkillInteger(editSkillForm.priority) !== null &&
       parseSkillNonNegativeNumber(editSkillForm.cooldown) !== null);
+  const isMigrationProfileFormValid =
+    !isMigrationProfileSection ||
+    parseMigrationProfileJson(newMigrationProfileForm.profileJson) !== null;
+  const isEditMigrationProfileFormValid =
+    !isMigrationProfileSection ||
+    parseMigrationProfileJson(editMigrationProfileForm.profileJson) !== null;
   const isMapObjectFormValid =
     !isObjectsSection ||
     (!!newMapObjectImage && hasValidMapObjectWidth && hasValidMapObjectHeight);
@@ -2555,6 +2890,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setNewMapBackgroundImageMode(DEFAULT_MAP_BACKGROUND_IMAGE_MODE);
     setNewMapIsInitial(DEFAULT_IS_INITIAL_MAP);
     setNewNpcForm(createDefaultNpcFormState());
+    setNewMigrationProfileForm(createDefaultMigrationProfileFormState(sectionKey));
     setNewNpcTrainerPokemonId(npcPokemonCatalog[0]?.id ?? "");
     setNewNpcStoreItemId(npcItemCatalog[0]?.id ?? "");
     setNewNpcChestItemId(npcItemCatalog[0]?.id ?? "");
@@ -2575,6 +2911,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     const characterSkinProfile = sanitizeCharacterSkinProfile(item.characterSkinProfile);
     const pokemonProfile = sanitizePokemonProfile(item.pokemonProfile, item);
     const pokemonSkillProfile = sanitizePokemonSkillProfile(item.pokemonSkillProfile, item);
+    const migrationProfile = getMigrationProfileFromItem(sectionKey, item);
 
     setEditingItemId(item.id);
     setEditItemName(item.name);
@@ -2645,7 +2982,13 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             power: String(pokemonSkillProfile.power),
             powerPoint: String(pokemonSkillProfile.powerPoint),
             accuracy: String(pokemonSkillProfile.accuracy),
+            category: pokemonSkillProfile.category ?? "Physical",
+            target: pokemonSkillProfile.target ?? "NearOther",
+            functionCode: pokemonSkillProfile.functionCode ?? "None",
+            flags: pokemonSkillProfile.flags?.join(", ") ?? "",
+            priority: String(pokemonSkillProfile.priority ?? 0),
             description: pokemonSkillProfile.description,
+            effectText: pokemonSkillProfile.effectText ?? "",
             skillGfxId: pokemonSkillProfile.skillGfxId,
             weatherEffect: pokemonSkillProfile.weatherEffect,
             inflictStateId: pokemonSkillProfile.inflictStateId,
@@ -2699,6 +3042,14 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           }
         : createDefaultNpcFormState()
     );
+    setEditMigrationProfileForm({
+      profileJson: formatProfileJson(
+        migrationProfile ??
+          (isMigrationProfileSectionKey(sectionKey)
+            ? MIGRATION_PROFILE_TEMPLATES[sectionKey]
+            : {})
+      ),
+    });
     setEditNpcTrainerPokemonId(npcPokemonCatalog[0]?.id ?? "");
     setEditNpcStoreItemId(npcItemCatalog[0]?.id ?? "");
     setEditNpcChestItemId(npcItemCatalog[0]?.id ?? "");
@@ -2990,7 +3341,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     }
 
     if (!file.type.startsWith("image/")) {
-      window.alert("Please upload an image or animation file for the skill GFX.");
+      window.alert("Please upload an image or animation file for the move animation.");
       event.target.value = "";
       return;
     }
@@ -3351,6 +3702,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     const power = parseSkillNonNegativeNumber(formState.power);
     const powerPoint = parseSkillPositiveNumber(formState.powerPoint);
     const accuracy = parseSkillPositiveNumber(formState.accuracy);
+    const priority = parseSkillInteger(formState.priority);
     const cooldown = parseSkillNonNegativeNumber(formState.cooldown);
 
     if (
@@ -3358,6 +3710,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       power === null ||
       powerPoint === null ||
       accuracy === null ||
+      priority === null ||
+      !isMoveDamageClass(formState.category) ||
       cooldown === null
     ) {
       return undefined;
@@ -3376,9 +3730,17 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       power,
       powerPoint,
       accuracy,
+      category: formState.category,
+      target: formState.target.trim() || "NearOther",
+      functionCode: formState.functionCode.trim() || "None",
+      flags: normalizeMoveFlags(formState.flags),
+      priority,
       description: formState.description.trim(),
+      effectText: formState.effectText.trim(),
       skillGfxId: skillGfx?.id ?? "",
       skillGfxName: skillGfx?.name ?? "",
+      animationId: skillGfx?.id ?? "",
+      animationName: skillGfx?.name ?? "",
       weatherEffect: formState.weatherEffect,
       inflictStateId: inflictState?.id ?? "",
       inflictStateName: inflictState?.name ?? "",
@@ -3398,6 +3760,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     const npcProfile = isNpcsSection ? buildNpcProfile(newNpcForm) : undefined;
     const pokemonProfile = isPokemonSection ? buildPokemonProfile(newPokemonForm) : undefined;
     const pokemonSkillProfile = isSkillsSection ? buildPokemonSkillProfile(newSkillForm) : undefined;
+    const migrationProfileKey = getMigrationProfileKey(sectionKey);
+    const migrationProfile = isMigrationProfileSection
+      ? parseMigrationProfileJson(newMigrationProfileForm.profileJson)
+      : null;
     const category =
       isItemsSection && itemProfile
         ? itemProfile.type
@@ -3415,6 +3781,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       (isNpcsSection && !isNpcFormValid) ||
       (isPokemonSection && !isPokemonFormValid) ||
       (isSkillsSection && !isSkillFormValid) ||
+      (isMigrationProfileSection && !isMigrationProfileFormValid) ||
       (isObjectsSection && !isMapObjectFormValid) ||
       (isMapsSection && !isPlayableMapFormValid)
     ) {
@@ -3466,7 +3833,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           npcProfile,
           pokemonProfile,
           pokemonSkillProfile,
-        }),
+        }).concat(
+          isMigrationProfileSection
+            ? createMigrationProfileDetails(sectionKey, category, migrationProfile)
+            : []
+        ),
         itemProfile,
         mapObjectAsset,
         playableMapConfig,
@@ -3475,6 +3846,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         npcProfile,
         pokemonProfile,
         pokemonSkillProfile,
+        ...(migrationProfileKey && migrationProfile
+          ? { [migrationProfileKey]: migrationProfile }
+          : {}),
       };
 
       const nextItems = [item, ...current.items];
@@ -3503,6 +3877,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     const npcProfile = isNpcsSection ? buildNpcProfile(editNpcForm) : undefined;
     const pokemonProfile = isPokemonSection ? buildPokemonProfile(editPokemonForm) : undefined;
     const pokemonSkillProfile = isSkillsSection ? buildPokemonSkillProfile(editSkillForm) : undefined;
+    const migrationProfileKey = getMigrationProfileKey(sectionKey);
+    const migrationProfile = isMigrationProfileSection
+      ? parseMigrationProfileJson(editMigrationProfileForm.profileJson)
+      : null;
     const category =
       isItemsSection && itemProfile
         ? itemProfile.type
@@ -3521,6 +3899,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       (isNpcsSection && !isEditNpcFormValid) ||
       (isPokemonSection && !isEditPokemonFormValid) ||
       (isSkillsSection && !isEditSkillFormValid) ||
+      (isMigrationProfileSection && !isEditMigrationProfileFormValid) ||
       (isObjectsSection && !isEditMapObjectFormValid) ||
       (isMapsSection && !isEditPlayableMapFormValid)
     ) {
@@ -3572,7 +3951,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 npcProfile,
                 pokemonProfile,
                 pokemonSkillProfile,
-              }),
+              }).concat(
+                isMigrationProfileSection
+                  ? createMigrationProfileDetails(sectionKey, category, migrationProfile)
+                  : []
+              ),
               itemProfile,
               mapObjectAsset,
               playableMapConfig,
@@ -3581,6 +3964,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               npcProfile,
               pokemonProfile,
               pokemonSkillProfile,
+              ...(migrationProfileKey && migrationProfile
+                ? { [migrationProfileKey]: migrationProfile }
+                : {}),
             }
           : item
       );
@@ -5212,7 +5598,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         </SimpleGrid>
 
         <Box>
-          <FormLabel>Pokemon Skills</FormLabel>
+          <FormLabel>Moves</FormLabel>
           {visiblePokemonSkills.length > 0 ? (
             <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
               {visiblePokemonSkills.map((skill) => {
@@ -5272,7 +5658,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               bg="rgba(255,255,255,0.68)"
             >
               <Text color="#6d7b71" fontSize="sm">
-                Create skills in Pokemon Skills before assigning them.
+                Create moves in Moves before assigning them.
               </Text>
             </Box>
           )}
@@ -5361,7 +5747,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               <Box
                 as="img"
                 src={formState.mediaSrc}
-                alt="Skill GFX preview"
+                alt="Move animation preview"
                 maxW="180px"
                 maxH="140px"
                 objectFit="contain"
@@ -5737,19 +6123,81 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           </FormControl>
         </SimpleGrid>
 
+        <SimpleGrid columns={{ base: 1, md: 4 }} spacing={4}>
+          <FormControl isRequired isInvalid={!isMoveDamageClass(formState.category)}>
+            <FormLabel>Damage Class</FormLabel>
+            <Select
+              value={formState.category}
+              onChange={(event) => updateField("category", event.target.value)}
+            >
+              {MOVE_DAMAGE_CLASSES.map((damageClass) => (
+                <option key={damageClass} value={damageClass}>
+                  {damageClass}
+                </option>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl>
+            <FormLabel>Target</FormLabel>
+            <Select
+              value={formState.target}
+              onChange={(event) => updateField("target", event.target.value)}
+            >
+              {MOVE_TARGET_OPTIONS.map((target) => (
+                <option key={target} value={target}>
+                  {target}
+                </option>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl>
+            <FormLabel>Function Code</FormLabel>
+            <Input
+              value={formState.functionCode}
+              onChange={(event) => updateField("functionCode", event.target.value)}
+            />
+          </FormControl>
+          <FormControl isRequired isInvalid={formState.priority !== "" && parseSkillInteger(formState.priority) === null}>
+            <FormLabel>Priority</FormLabel>
+            <Input
+              type="number"
+              step={1}
+              value={formState.priority}
+              onChange={(event) => updateField("priority", event.target.value)}
+            />
+          </FormControl>
+        </SimpleGrid>
+
+        <FormControl>
+          <FormLabel>Flags</FormLabel>
+          <Input
+            value={formState.flags}
+            onChange={(event) => updateField("flags", event.target.value)}
+          />
+        </FormControl>
+
         <FormControl>
           <FormLabel>Description</FormLabel>
           <Textarea
             value={formState.description}
             onChange={(event) => updateField("description", event.target.value)}
-            placeholder="Describe what this skill does"
+            placeholder="Describe what this move does"
             minH="96px"
+          />
+        </FormControl>
+
+        <FormControl>
+          <FormLabel>Effect Text</FormLabel>
+          <Textarea
+            value={formState.effectText}
+            onChange={(event) => updateField("effectText", event.target.value)}
+            minH="80px"
           />
         </FormControl>
 
         <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
           <FormControl>
-            <FormLabel>Skill GFX</FormLabel>
+            <FormLabel>Move Animation</FormLabel>
             <Select
               value={formState.skillGfxId}
               onChange={(event) => updateField("skillGfxId", event.target.value)}
@@ -5812,6 +6260,56 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             </Select>
           </FormControl>
         </SimpleGrid>
+      </>
+    );
+  };
+
+  const renderMigrationProfileFields = (
+    formState: MigrationProfileFormState,
+    onFormChange: React.Dispatch<React.SetStateAction<MigrationProfileFormState>>
+  ) => {
+    const parsedProfile = parseMigrationProfileJson(formState.profileJson);
+    const profileKey = getMigrationProfileKey(sectionKey);
+
+    return (
+      <>
+        <Box
+          p={4}
+          borderRadius="18px"
+          border="1px solid rgba(43, 66, 47, 0.12)"
+          bg="rgba(237, 244, 234, 0.48)"
+        >
+          <Text fontWeight="700" color="#233127" mb={1}>
+            {profileKey ? profileKey.replace(/([A-Z])/g, " $1") : "Profile"} properties
+          </Text>
+          <Text fontSize="sm" color="#55645a">
+            Store the section-specific migration fields here. The template matches the target
+            designer profile used by Redis and future import scripts.
+          </Text>
+        </Box>
+        <FormControl isRequired isInvalid={parsedProfile === null}>
+          <FormLabel>Properties JSON</FormLabel>
+          <Textarea
+            value={formState.profileJson}
+            onChange={(event) =>
+              onFormChange({
+                profileJson: event.target.value,
+              })
+            }
+            fontFamily="mono"
+            minH="280px"
+            spellCheck={false}
+          />
+          {parsedProfile === null ? (
+            <Text mt={2} color="#914335" fontSize="sm">
+              Enter a valid JSON object.
+            </Text>
+          ) : (
+            <Text mt={2} color="#55645a" fontSize="sm">
+              {Object.keys(parsedProfile).length} profile fields ready.
+            </Text>
+          )}
+        </FormControl>
       </>
     );
   };
@@ -6383,7 +6881,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       <Modal
         isOpen={isAddOpen}
         onClose={() => setIsAddOpen(false)}
-        size={isObjectsSection || isMapsSection || isSkillGfxSection || isItemsSection || isPlayersSection || isPokemonSection || isSkillsSection ? "3xl" : "md"}
+        size={isObjectsSection || isMapsSection || isSkillGfxSection || isItemsSection || isPlayersSection || isPokemonSection || isSkillsSection || isMigrationProfileSection ? "3xl" : "md"}
         scrollBehavior="inside"
       >
         <ModalOverlay bg="blackAlpha.400" />
@@ -6442,6 +6940,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 : null}
               {isPokemonSection ? renderPokemonFields(newPokemonForm, setNewPokemonForm) : null}
               {isSkillsSection ? renderSkillFields(newSkillForm, setNewSkillForm) : null}
+              {isMigrationProfileSection
+                ? renderMigrationProfileFields(
+                    newMigrationProfileForm,
+                    setNewMigrationProfileForm
+                  )
+                : null}
               {isObjectsSection ? (
                 <>
                   <FormControl isRequired>
@@ -6619,6 +7123,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 !isNpcFormValid ||
                 !isPokemonFormValid ||
                 !isSkillFormValid ||
+                !isMigrationProfileFormValid ||
                 !isMapObjectFormValid ||
                 !isPlayableMapFormValid
               }
@@ -6632,7 +7137,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       <Modal
         isOpen={isEditOpen}
         onClose={closeEditModal}
-        size={isObjectsSection || isMapsSection || isSkillGfxSection || isItemsSection || isPlayersSection || isPokemonSection || isSkillsSection ? "3xl" : "md"}
+        size={isObjectsSection || isMapsSection || isSkillGfxSection || isItemsSection || isPlayersSection || isPokemonSection || isSkillsSection || isMigrationProfileSection ? "3xl" : "md"}
         scrollBehavior="inside"
       >
         <ModalOverlay bg="blackAlpha.400" />
@@ -6691,6 +7196,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 : null}
               {isPokemonSection ? renderPokemonFields(editPokemonForm, setEditPokemonForm) : null}
               {isSkillsSection ? renderSkillFields(editSkillForm, setEditSkillForm) : null}
+              {isMigrationProfileSection
+                ? renderMigrationProfileFields(
+                    editMigrationProfileForm,
+                    setEditMigrationProfileForm
+                  )
+                : null}
               {isObjectsSection ? (
                 <>
                   <FormControl isRequired>
@@ -6898,6 +7409,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 !isEditNpcFormValid ||
                 !isEditPokemonFormValid ||
                 !isEditSkillFormValid ||
+                !isEditMigrationProfileFormValid ||
                 !isEditMapObjectFormValid ||
                 !isEditPlayableMapFormValid
               }

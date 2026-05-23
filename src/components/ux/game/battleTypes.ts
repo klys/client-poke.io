@@ -13,6 +13,17 @@ export type BattlePublicMove = {
   type: string;
   power: number;
   accuracy: number;
+  category?: string;
+  target?: string;
+  functionCode?: string;
+  flags?: string[];
+  priority?: number;
+  description?: string;
+  effectText?: string;
+  skillGfxId?: string;
+  skillGfxName?: string;
+  animationId?: string;
+  animationName?: string;
   currentPp: number;
   maxPp: number;
 };

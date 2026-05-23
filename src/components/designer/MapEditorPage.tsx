@@ -167,6 +167,7 @@ function normalizePlayableMapConfig(
   regionNames: string[]
 ): DesignerPlayableMapConfig {
   return {
+    ...config,
     cellSize:
       typeof config?.cellSize === "number" &&
       MAP_CELL_SIZE_OPTIONS.includes(config.cellSize as 8 | 16 | 32 | 64 | 128)

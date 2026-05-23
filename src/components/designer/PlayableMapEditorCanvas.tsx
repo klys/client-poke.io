@@ -78,6 +78,15 @@ export interface MapEditorPortalPlacement {
   targetMapX: number;
   targetMapY: number;
   eventScript: string;
+  essentialsConnection?: {
+    sourceMapId: string;
+    sourceX: number;
+    sourceY: number;
+    targetMapId: string;
+    targetX: number;
+    targetY: number;
+    sourcePath?: string;
+  };
 }
 
 export interface MapEditorGrassPlacement {
@@ -88,6 +97,14 @@ export interface MapEditorGrassPlacement {
   minLevel: number;
   maxLevel: number;
   encounterRate: number;
+  encounterMethod?: string;
+  encounterRows?: Array<{
+    weight: number;
+    pokemonId: string;
+    minLevel: number;
+    maxLevel: number;
+  }>;
+  sourceEncounterId?: string;
 }
 
 export interface MapEditorNpcPlacement {
@@ -101,6 +118,13 @@ export interface MapEditorNpcPlacement {
   interactionDistanceSquares: number;
   x: number;
   y: number;
+  eventId?: number;
+  eventPageIndex?: number;
+  eventCommands?: Array<{
+    code: number;
+    parameters: unknown[];
+    indent?: number;
+  }>;
 }
 
 export const DEFAULT_NPC_INTERACTION_DISTANCE_SQUARES = 2;
@@ -111,6 +135,28 @@ export interface PlayableMapEditorData {
   portals: MapEditorPortalPlacement[];
   grass: MapEditorGrassPlacement[];
   npcs: MapEditorNpcPlacement[];
+  essentials?: {
+    mapId: string;
+    rxdataPath: string;
+    width: number;
+    height: number;
+    tilesetId: number;
+    layers?: number;
+    table?: {
+      xsize: number;
+      ysize: number;
+      zsize: number;
+      data?: number[];
+    };
+    events?: Array<{
+      id: number;
+      name: string;
+      x: number;
+      y: number;
+      pages: unknown[];
+    }>;
+    sourceExportPath?: string;
+  };
 }
 
 interface PlayableMapEditorCanvasProps {
@@ -262,6 +308,7 @@ function createEmptyEditorData(): PlayableMapEditorData {
     portals: [],
     grass: [],
     npcs: [],
+    essentials: undefined,
   };
 }
 
@@ -481,12 +528,24 @@ export function sanitizePlayableMapEditorData(value: unknown): PlayableMapEditor
         }))
     : [];
 
+  const essentials =
+    candidate.essentials &&
+    typeof candidate.essentials === "object" &&
+    typeof candidate.essentials.mapId === "string" &&
+    typeof candidate.essentials.rxdataPath === "string" &&
+    typeof candidate.essentials.width === "number" &&
+    typeof candidate.essentials.height === "number" &&
+    typeof candidate.essentials.tilesetId === "number"
+      ? candidate.essentials
+      : undefined;
+
   return {
     version: 1,
     objects,
     portals,
     grass,
     npcs,
+    essentials,
   };
 }
 
