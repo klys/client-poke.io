@@ -105,6 +105,50 @@ export const createEndpoints = (config: RuntimeConfig): RouteObject[] => [
     element: withAuth(createElement(Section, { sectionKey: "npcs" }), 'designer.access')
   },
   {
+    path: "/designer/abilities",
+    element: withAuth(createElement(Section, { sectionKey: "abilities" }), 'designer.access')
+  },
+  {
+    path: "/designer/types",
+    element: withAuth(createElement(Section, { sectionKey: "types" }), 'designer.access')
+  },
+  {
+    path: "/designer/trainers",
+    element: withAuth(createElement(Section, { sectionKey: "trainers" }), 'designer.access')
+  },
+  {
+    path: "/designer/trainer-types",
+    element: withAuth(createElement(Section, { sectionKey: "trainerTypes" }), 'designer.access')
+  },
+  {
+    path: "/designer/encounters",
+    element: withAuth(createElement(Section, { sectionKey: "encounters" }), 'designer.access')
+  },
+  {
+    path: "/designer/berries",
+    element: withAuth(createElement(Section, { sectionKey: "berries" }), 'designer.access')
+  },
+  {
+    path: "/designer/ribbons",
+    element: withAuth(createElement(Section, { sectionKey: "ribbons" }), 'designer.access')
+  },
+  {
+    path: "/designer/assets",
+    element: withAuth(createElement(Section, { sectionKey: "assets" }), 'designer.access')
+  },
+  {
+    path: "/designer/battle-backgrounds",
+    element: withAuth(createElement(Section, { sectionKey: "battleBackgrounds" }), 'designer.access')
+  },
+  {
+    path: "/designer/audio",
+    element: withAuth(createElement(Section, { sectionKey: "audio" }), 'designer.access')
+  },
+  {
+    path: "/designer/fonts",
+    element: withAuth(createElement(Section, { sectionKey: "fonts" }), 'designer.access')
+  },
+  {
     path: '/moderator',
     element: withAuth(createElement(ModeratorPage), 'moderator.access')
   },

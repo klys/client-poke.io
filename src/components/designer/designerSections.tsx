@@ -12,7 +12,8 @@ export type DesignerIconName =
   | "players"
   | "regions"
   | "npcs"
-  | "levelingCurve";
+  | "levelingCurve"
+  | "database";
 
 export type DesignerSectionKey =
   | "mapsEditor"
@@ -25,7 +26,18 @@ export type DesignerSectionKey =
   | "players"
   | "regions"
   | "npcs"
-  | "levelingCurve";
+  | "levelingCurve"
+  | "abilities"
+  | "types"
+  | "trainers"
+  | "trainerTypes"
+  | "encounters"
+  | "berries"
+  | "ribbons"
+  | "assets"
+  | "battleBackgrounds"
+  | "audio"
+  | "fonts";
 
 export interface DesignerItemDetail {
   label: string;
@@ -65,6 +77,7 @@ export interface DesignerMapObjectAsset {
 }
 
 export interface DesignerPokemonProfile {
+  essentialsId?: string;
   hp: number;
   attack: number;
   defense: number;
@@ -77,12 +90,64 @@ export interface DesignerPokemonProfile {
   frontImageSrc: string;
   backImageSrc: string;
   iconImageSrc: string;
+  genderRatio?: string;
+  growthRate?: string;
+  baseExp?: number;
+  evs?: DesignerPokemonEvYield[];
+  catchRate?: number;
+  happiness?: number;
+  abilities?: string[];
+  hiddenAbilities?: string[];
+  tutorMoves?: string[];
+  eggMoves?: string[];
+  eggGroups?: string[];
+  hatchSteps?: number;
+  height?: number;
+  weight?: number;
+  color?: string;
+  shape?: string;
+  habitat?: string;
+  pokedex?: string;
+  generation?: number;
+  evolutions?: DesignerPokemonEvolution[];
+  forms?: DesignerPokemonFormProfile[];
+  metrics?: DesignerPokemonMetricsProfile;
+  source?: DesignerEssentialsSourceProfile;
 }
 
 export interface DesignerPokemonSkillAssignment {
   skillId: string;
   skillName: string;
   level: number;
+  sourceMoveId?: string;
+}
+
+export interface DesignerPokemonEvYield {
+  stat: string;
+  value: number;
+}
+
+export interface DesignerPokemonEvolution {
+  targetId: string;
+  method: string;
+  parameter?: string | number | boolean | null;
+}
+
+export interface DesignerPokemonFormProfile {
+  formId: string;
+  formName?: string;
+  properties: Record<string, unknown>;
+  source?: DesignerEssentialsSourceProfile;
+}
+
+export interface DesignerPokemonMetricsProfile {
+  backSprite?: [number, number];
+  frontSprite?: [number, number];
+  frontSpriteAltitude?: number;
+  shadowX?: number;
+  shadowSize?: number;
+  raw?: Record<string, unknown>;
+  source?: DesignerEssentialsSourceProfile;
 }
 
 export type DesignerWeatherEffect =
@@ -94,10 +159,15 @@ export type DesignerWeatherEffect =
   | "Strong Winds";
 
 export interface DesignerPokemonSkillProfile {
+  essentialsId?: string;
   elements: string[];
   power: number;
   powerPoint: number;
   accuracy: number;
+  category?: string;
+  target?: string;
+  functionCode?: string;
+  flags?: string[];
   description: string;
   skillGfxId: string;
   skillGfxName: string;
@@ -107,6 +177,7 @@ export interface DesignerPokemonSkillProfile {
   cooldown: number;
   stateConditionId: string;
   stateConditionName: string;
+  source?: DesignerEssentialsSourceProfile;
 }
 
 export type DesignerSkillGfxApplyTo =
@@ -120,6 +191,7 @@ export interface DesignerSkillGfxProfile {
   mediaSrc: string;
   applyTo: DesignerSkillGfxApplyTo;
   appear: number;
+  source?: DesignerEssentialsSourceProfile;
 }
 
 export interface DesignerLevelingCurveProfile {
@@ -152,8 +224,14 @@ export interface DesignerItemStatModifiers {
 }
 
 export interface DesignerGameItemProfile {
+  essentialsId?: string;
   iconSrc: string;
   description: string;
+  namePlural?: string;
+  pocket?: string;
+  price?: number;
+  fieldUse?: string;
+  flags?: string[];
   pokemonDbCategory: string;
   effectText: string;
   effectKind: "none" | "heal-hp" | "stat-modifier" | "teach-move" | "catch-modifier" | "hold-effect" | "key-item";
@@ -164,6 +242,7 @@ export interface DesignerGameItemProfile {
   skillName: string;
   pokeballBonusElements: string[];
   pokeballBonusRatio: number;
+  source?: DesignerEssentialsSourceProfile;
 }
 
 export type DesignerNpcAiType = "standing" | "moving" | "scriptable";
@@ -202,6 +281,9 @@ export interface DesignerNpcTrainerPokemon {
   pokemonId: string;
   pokemonName: string;
   level: number;
+  moves?: string[];
+  ability?: string;
+  itemId?: string;
 }
 
 export interface DesignerNpcStoreItem {
@@ -218,8 +300,13 @@ export interface DesignerNpcChestItem {
 }
 
 export interface DesignerNpcProfile {
+  essentialsId?: string;
   aiType: DesignerNpcAiType;
   npcType: DesignerNpcType;
+  trainerTypeId?: string;
+  trainerTypeName?: string;
+  loseText?: string;
+  eventCommands?: DesignerMapEventCommandProfile[];
   graphicsSource: DesignerNpcGraphicsSource;
   characterSkinId: string;
   characterSkinName: string;
@@ -235,6 +322,129 @@ export interface DesignerNpcProfile {
   chestSlotCapacity: number;
   chestItems: DesignerNpcChestItem[];
   graphics: DesignerNpcGraphicsProfile;
+  source?: DesignerEssentialsSourceProfile;
+}
+
+export interface DesignerEssentialsSourceProfile {
+  project: "Pokemon Essentials v21.1";
+  sourcePath: string;
+  sectionId?: string;
+  lineNumber?: number;
+  originalId?: string;
+  originalName?: string;
+}
+
+export interface DesignerMapEventCommandProfile {
+  code: number;
+  parameters: unknown[];
+  indent?: number;
+}
+
+export interface DesignerAbilityProfile {
+  essentialsId: string;
+  name: string;
+  description: string;
+  source?: DesignerEssentialsSourceProfile;
+}
+
+export interface DesignerTypeProfile {
+  essentialsId: string;
+  name: string;
+  iconPosition?: number;
+  weaknesses: string[];
+  resistances?: string[];
+  immunities: string[];
+  source?: DesignerEssentialsSourceProfile;
+}
+
+export interface DesignerTrainerTypeProfile {
+  essentialsId: string;
+  name: string;
+  baseMoney?: number;
+  battleBgm?: string;
+  victoryMe?: string;
+  gender?: string;
+  skillLevel?: number;
+  flags?: string[];
+  source?: DesignerEssentialsSourceProfile;
+}
+
+export interface DesignerEncounterRowProfile {
+  weight: number;
+  pokemonId: string;
+  minLevel: number;
+  maxLevel: number;
+}
+
+export interface DesignerEncounterTableProfile {
+  method: string;
+  density?: number;
+  rows: DesignerEncounterRowProfile[];
+}
+
+export interface DesignerEncounterProfile {
+  mapId: string;
+  mapVersion?: number;
+  mapName?: string;
+  tables: DesignerEncounterTableProfile[];
+  source?: DesignerEssentialsSourceProfile;
+}
+
+export interface DesignerBerryPlantProfile {
+  essentialsId: string;
+  hoursPerStage?: number;
+  dryRatePerHour?: number;
+  minimumYield?: number;
+  maximumYield?: number;
+  source?: DesignerEssentialsSourceProfile;
+}
+
+export interface DesignerRibbonProfile {
+  essentialsId: string;
+  name: string;
+  description: string;
+  source?: DesignerEssentialsSourceProfile;
+}
+
+export interface DesignerAssetFrameProfile {
+  index: number;
+  x?: number;
+  y?: number;
+  width: number;
+  height: number;
+  durationMs?: number;
+  outputPath?: string;
+}
+
+export interface DesignerAssetProfile {
+  assetId: string;
+  sourcePath: string;
+  kind: "image" | "gif" | "sprite-sheet" | "tileset" | "battleback" | "animation" | "ui" | "audio" | "font" | "other";
+  width?: number;
+  height?: number;
+  mimeType?: string;
+  frameCount?: number;
+  loop?: boolean;
+  frames?: DesignerAssetFrameProfile[];
+  relatedRecordIds?: string[];
+  source?: DesignerEssentialsSourceProfile;
+}
+
+export interface DesignerAudioProfile {
+  assetId: string;
+  sourcePath: string;
+  kind: "BGM" | "ME" | "SE";
+  loop?: boolean;
+  volume?: number;
+  pitch?: number;
+  source?: DesignerEssentialsSourceProfile;
+}
+
+export interface DesignerFontProfile {
+  assetId: string;
+  sourcePath: string;
+  familyName?: string;
+  source?: DesignerEssentialsSourceProfile;
 }
 
 export interface DesignerItemCreateOptions {
@@ -247,6 +457,15 @@ export interface DesignerItemCreateOptions {
   itemProfile?: DesignerGameItemProfile;
   npcProfile?: DesignerNpcProfile;
   characterSkinProfile?: DesignerCharacterSkinProfile;
+  abilityProfile?: DesignerAbilityProfile;
+  typeProfile?: DesignerTypeProfile;
+  trainerTypeProfile?: DesignerTrainerTypeProfile;
+  encounterProfile?: DesignerEncounterProfile;
+  berryPlantProfile?: DesignerBerryPlantProfile;
+  ribbonProfile?: DesignerRibbonProfile;
+  assetProfile?: DesignerAssetProfile;
+  audioProfile?: DesignerAudioProfile;
+  fontProfile?: DesignerFontProfile;
 }
 
 export interface DesignerItemSeed {
@@ -263,6 +482,15 @@ export interface DesignerItemSeed {
   itemProfile?: DesignerGameItemProfile;
   npcProfile?: DesignerNpcProfile;
   characterSkinProfile?: DesignerCharacterSkinProfile;
+  abilityProfile?: DesignerAbilityProfile;
+  typeProfile?: DesignerTypeProfile;
+  trainerTypeProfile?: DesignerTrainerTypeProfile;
+  encounterProfile?: DesignerEncounterProfile;
+  berryPlantProfile?: DesignerBerryPlantProfile;
+  ribbonProfile?: DesignerRibbonProfile;
+  assetProfile?: DesignerAssetProfile;
+  audioProfile?: DesignerAudioProfile;
+  fontProfile?: DesignerFontProfile;
 }
 
 export interface DesignerPlayableMapConfig {
@@ -538,6 +766,27 @@ export function DesignerIcon(props: IconProps & { icon: DesignerIconName }) {
           <circle cx="9.5" cy="12" r="1.2" fill="currentColor" />
           <circle cx="12.5" cy="14.5" r="1.2" fill="currentColor" />
           <circle cx="17.5" cy="8.5" r="1.2" fill="currentColor" />
+        </Icon>
+      );
+    case "database":
+      return (
+        <Icon viewBox="0 0 24 24" {...iconProps}>
+          <ellipse
+            cx="12"
+            cy="6"
+            rx="7"
+            ry="3"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          />
+          <path
+            d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
         </Icon>
       );
   }
@@ -1199,6 +1448,193 @@ export const designerSections: DesignerSectionDefinition[] = [
       detail("Climate", ["Temperate", "Marine", "Humid"][index % 3]),
       detail("Maps", `${5 + index}`),
       detail("Settlements", `${(index % 3) + 1}`),
+    ],
+  },
+  {
+    key: "abilities",
+    title: "Abilities",
+    description: "Store Pokemon Essentials ability records with names, descriptions, and future battle behavior metadata.",
+    path: "/designer/abilities",
+    itemLabel: "ability",
+    itemLabelPlural: "abilities",
+    categoryLabel: "group",
+    icon: "database",
+    defaultCategories: ["Pokemon Essentials"],
+    demoItems: [],
+    createDetails: (_name, category) => [
+      detail("Source", category),
+      detail("Schema", "PBS abilities"),
+      detail("Migration", "Ready"),
+    ],
+  },
+  {
+    key: "types",
+    title: "Types",
+    description: "Store Pokemon Essentials type records, icon positions, weaknesses, resistances, and immunities.",
+    path: "/designer/types",
+    itemLabel: "type",
+    itemLabelPlural: "types",
+    categoryLabel: "group",
+    icon: "database",
+    defaultCategories: ["Battle Types"],
+    demoItems: [],
+    createDetails: (_name, category) => [
+      detail("Source", category),
+      detail("Schema", "PBS types"),
+      detail("Migration", "Ready"),
+    ],
+  },
+  {
+    key: "trainers",
+    title: "Trainers",
+    description: "Store Pokemon Essentials trainer parties, lose text, trainer classes, and source event links.",
+    path: "/designer/trainers",
+    itemLabel: "trainer",
+    itemLabelPlural: "trainers",
+    categoryLabel: "trainer class",
+    icon: "database",
+    defaultCategories: ["Pokemon Essentials"],
+    demoItems: [],
+    createDetails: (_name, category) => [
+      detail("Trainer Class", category),
+      detail("Schema", "PBS trainers"),
+      detail("Migration", "Ready"),
+    ],
+  },
+  {
+    key: "trainerTypes",
+    title: "Trainer Types",
+    description: "Store Pokemon Essentials trainer type definitions, music, money rules, and battle metadata.",
+    path: "/designer/trainer-types",
+    itemLabel: "trainer type",
+    itemLabelPlural: "trainer types",
+    categoryLabel: "group",
+    icon: "database",
+    defaultCategories: ["Pokemon Essentials"],
+    demoItems: [],
+    createDetails: (_name, category) => [
+      detail("Source", category),
+      detail("Schema", "PBS trainer_types"),
+      detail("Migration", "Ready"),
+    ],
+  },
+  {
+    key: "encounters",
+    title: "Encounters",
+    description: "Store Pokemon Essentials encounter tables before they are projected into playable map grass data.",
+    path: "/designer/encounters",
+    itemLabel: "encounter table",
+    itemLabelPlural: "encounter tables",
+    categoryLabel: "map",
+    icon: "database",
+    defaultCategories: ["Maps"],
+    demoItems: [],
+    createDetails: (_name, category) => [
+      detail("Map", category),
+      detail("Schema", "PBS encounters"),
+      detail("Migration", "Ready"),
+    ],
+  },
+  {
+    key: "berries",
+    title: "Berry Plants",
+    description: "Store Pokemon Essentials berry plant growth and yield data.",
+    path: "/designer/berries",
+    itemLabel: "berry plant",
+    itemLabelPlural: "berry plants",
+    categoryLabel: "group",
+    icon: "database",
+    defaultCategories: ["Berry Plants"],
+    demoItems: [],
+    createDetails: (_name, category) => [
+      detail("Source", category),
+      detail("Schema", "PBS berry_plants"),
+      detail("Migration", "Ready"),
+    ],
+  },
+  {
+    key: "ribbons",
+    title: "Ribbons",
+    description: "Store Pokemon Essentials ribbon names, descriptions, and achievement metadata.",
+    path: "/designer/ribbons",
+    itemLabel: "ribbon",
+    itemLabelPlural: "ribbons",
+    categoryLabel: "group",
+    icon: "database",
+    defaultCategories: ["Ribbons"],
+    demoItems: [],
+    createDetails: (_name, category) => [
+      detail("Source", category),
+      detail("Schema", "PBS ribbons"),
+      detail("Migration", "Ready"),
+    ],
+  },
+  {
+    key: "assets",
+    title: "Asset Manifest",
+    description: "Store normalized source-path metadata for graphics, sprite sheets, GIF frames, tilesets, UI, and other assets.",
+    path: "/designer/assets",
+    itemLabel: "asset",
+    itemLabelPlural: "assets",
+    categoryLabel: "asset type",
+    icon: "database",
+    defaultCategories: ["Pokemon", "Characters", "Tilesets", "UI", "Animations"],
+    demoItems: [],
+    createDetails: (_name, category) => [
+      detail("Asset Type", category),
+      detail("Schema", "Graphics manifest"),
+      detail("Migration", "Ready"),
+    ],
+  },
+  {
+    key: "battleBackgrounds",
+    title: "Battle Backgrounds",
+    description: "Store battleback assets and links from map metadata or battle contexts.",
+    path: "/designer/battle-backgrounds",
+    itemLabel: "battle background",
+    itemLabelPlural: "battle backgrounds",
+    categoryLabel: "environment",
+    icon: "database",
+    defaultCategories: ["Field", "Indoor", "Cave", "Water"],
+    demoItems: [],
+    createDetails: (_name, category) => [
+      detail("Environment", category),
+      detail("Schema", "Graphics/Battlebacks"),
+      detail("Migration", "Ready"),
+    ],
+  },
+  {
+    key: "audio",
+    title: "Audio",
+    description: "Store BGM, ME, and SE assets with source paths and runtime playback metadata.",
+    path: "/designer/audio",
+    itemLabel: "audio asset",
+    itemLabelPlural: "audio assets",
+    categoryLabel: "audio type",
+    icon: "database",
+    defaultCategories: ["BGM", "ME", "SE"],
+    demoItems: [],
+    createDetails: (_name, category) => [
+      detail("Audio Type", category),
+      detail("Schema", "Audio manifest"),
+      detail("Migration", "Ready"),
+    ],
+  },
+  {
+    key: "fonts",
+    title: "Fonts",
+    description: "Store runtime font assets and family names for the migrated client.",
+    path: "/designer/fonts",
+    itemLabel: "font",
+    itemLabelPlural: "fonts",
+    categoryLabel: "group",
+    icon: "database",
+    defaultCategories: ["Runtime Fonts"],
+    demoItems: [],
+    createDetails: (_name, category) => [
+      detail("Source", category),
+      detail("Schema", "Fonts manifest"),
+      detail("Migration", "Ready"),
     ],
   },
   {
