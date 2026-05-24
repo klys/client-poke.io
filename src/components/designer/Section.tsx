@@ -97,6 +97,7 @@ interface StoredDesignerSectionPayload {
 
 const UNCATEGORIZED = "Uncategorized";
 const ALL_CATEGORIES = "__all__";
+const ITEMS_PER_PAGE = 24;
 const MAP_OBJECT_TYPES: DesignerMapObjectType[] = [
   "obstacle",
   "mob area",
@@ -150,6 +151,12 @@ const SKILL_GFX_APPLY_TO_OPTIONS: DesignerSkillGfxApplyTo[] = [
   "multiple foes",
   "all combatants",
   "selectable friend",
+];
+const MOVE_ANIMATION_KIND_OPTIONS: NonNullable<DesignerSkillGfxProfile["animationKind"]>[] = [
+  "record",
+  "sheet",
+  "battle-animation",
+  "other",
 ];
 const ITEM_TYPE_OPTIONS: DesignerItemType[] = [
   "medicine",
@@ -454,6 +461,28 @@ interface SkillGfxFormState {
   mediaSrc: string;
   applyTo: DesignerSkillGfxApplyTo;
   appear: string;
+  essentialsAnimationId: string;
+  essentialsAnimationIndex: string;
+  essentialsAnimationName: string;
+  animationKind: NonNullable<DesignerSkillGfxProfile["animationKind"]>;
+  graphic: string;
+  sourcePath: string;
+  outputPath: string;
+  sheetSourcePath: string;
+  sheetOutputPath: string;
+  sourceWidth: string;
+  sourceHeight: string;
+  cellSize: string;
+  columns: string;
+  rows: string;
+  frameCount: string;
+  fps: string;
+  durationMs: string;
+  hue: string;
+  position: string;
+  speed: string;
+  warnings: string;
+  linkedMoveIds: string;
 }
 
 interface ItemFormState {
@@ -644,6 +673,28 @@ function createDefaultSkillGfxFormState(): SkillGfxFormState {
     mediaSrc: "",
     applyTo: "selected foe",
     appear: "1",
+    essentialsAnimationId: "",
+    essentialsAnimationIndex: "",
+    essentialsAnimationName: "",
+    animationKind: "record",
+    graphic: "",
+    sourcePath: "",
+    outputPath: "",
+    sheetSourcePath: "",
+    sheetOutputPath: "",
+    sourceWidth: "",
+    sourceHeight: "",
+    cellSize: "",
+    columns: "",
+    rows: "",
+    frameCount: "",
+    fps: "",
+    durationMs: "",
+    hue: "",
+    position: "",
+    speed: "",
+    warnings: "",
+    linkedMoveIds: "",
   };
 }
 
@@ -851,6 +902,37 @@ function parseSkillGfxAppear(value: string) {
   return Number.isFinite(parsedValue) && parsedValue > 0
     ? Math.round(parsedValue)
     : null;
+}
+
+function parseOptionalInteger(value: string) {
+  if (value.trim() === "") {
+    return undefined;
+  }
+
+  const parsedValue = Number.parseInt(value, 10);
+
+  return Number.isFinite(parsedValue) ? Math.round(parsedValue) : null;
+}
+
+function parseOptionalPositiveInteger(value: string) {
+  if (value.trim() === "") {
+    return undefined;
+  }
+
+  const parsedValue = Number.parseInt(value, 10);
+
+  return Number.isFinite(parsedValue) && parsedValue > 0 ? Math.round(parsedValue) : null;
+}
+
+function splitCommaList(value: string) {
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
 }
 
 function parseItemStatModifier(value: string) {
@@ -1146,6 +1228,17 @@ function isSkillGfxApplyTo(value: unknown): value is DesignerSkillGfxApplyTo {
   return (
     typeof value === "string" &&
     SKILL_GFX_APPLY_TO_OPTIONS.includes(value as DesignerSkillGfxApplyTo)
+  );
+}
+
+function isMoveAnimationKind(
+  value: unknown
+): value is NonNullable<DesignerSkillGfxProfile["animationKind"]> {
+  return (
+    typeof value === "string" &&
+    MOVE_ANIMATION_KIND_OPTIONS.includes(
+      value as NonNullable<DesignerSkillGfxProfile["animationKind"]>
+    )
   );
 }
 
@@ -1451,6 +1544,12 @@ function sanitizeSkillGfxProfile(value: unknown): DesignerSkillGfxProfile | unde
   }
 
   const candidate = value as Partial<DesignerSkillGfxProfile>;
+  const positiveNumber = (input: unknown) =>
+    typeof input === "number" && Number.isFinite(input) && input > 0
+      ? Math.round(input)
+      : undefined;
+  const integer = (input: unknown) =>
+    typeof input === "number" && Number.isFinite(input) ? Math.round(input) : undefined;
 
   return {
     mediaSrc: typeof candidate.mediaSrc === "string" ? candidate.mediaSrc : "",
@@ -1459,6 +1558,34 @@ function sanitizeSkillGfxProfile(value: unknown): DesignerSkillGfxProfile | unde
       typeof candidate.appear === "number" && Number.isFinite(candidate.appear) && candidate.appear > 0
         ? Math.round(candidate.appear)
         : 1,
+    essentialsAnimationId: integer(candidate.essentialsAnimationId),
+    essentialsAnimationIndex: integer(candidate.essentialsAnimationIndex),
+    essentialsAnimationName:
+      typeof candidate.essentialsAnimationName === "string" ? candidate.essentialsAnimationName : "",
+    animationKind: isMoveAnimationKind(candidate.animationKind) ? candidate.animationKind : "other",
+    graphic: typeof candidate.graphic === "string" ? candidate.graphic : "",
+    sourcePath: typeof candidate.sourcePath === "string" ? candidate.sourcePath : "",
+    outputPath: typeof candidate.outputPath === "string" ? candidate.outputPath : "",
+    sheetSourcePath: typeof candidate.sheetSourcePath === "string" ? candidate.sheetSourcePath : "",
+    sheetOutputPath: typeof candidate.sheetOutputPath === "string" ? candidate.sheetOutputPath : "",
+    sourceWidth: positiveNumber(candidate.sourceWidth),
+    sourceHeight: positiveNumber(candidate.sourceHeight),
+    cellSize: positiveNumber(candidate.cellSize),
+    columns: positiveNumber(candidate.columns),
+    rows: positiveNumber(candidate.rows),
+    frameCount: positiveNumber(candidate.frameCount),
+    fps: positiveNumber(candidate.fps),
+    durationMs: positiveNumber(candidate.durationMs),
+    hue: integer(candidate.hue),
+    position: integer(candidate.position),
+    speed: positiveNumber(candidate.speed),
+    warnings: Array.isArray(candidate.warnings)
+      ? candidate.warnings.filter((item): item is string => typeof item === "string")
+      : [],
+    linkedMoveIds: Array.isArray(candidate.linkedMoveIds)
+      ? candidate.linkedMoveIds.filter((item): item is string => typeof item === "string")
+      : [],
+    source: candidate.source,
   };
 }
 
@@ -1929,6 +2056,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
   const [isMoveOpen, setIsMoveOpen] = useState(false);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+  const [reviewingSkillGfxItem, setReviewingSkillGfxItem] = useState<DesignerItemSeed | null>(null);
   const [newItemName, setNewItemName] = useState("");
   const [newItemCategory, setNewItemCategory] = useState(
     sectionState.categories[0] || UNCATEGORIZED
@@ -1949,6 +2077,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   );
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES);
+  const [currentPage, setCurrentPage] = useState(1);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState("");
@@ -2074,8 +2203,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setIsAddOpen(false);
     setIsEditOpen(false);
     setEditingItemId(null);
+    setReviewingSkillGfxItem(null);
     setSearchTerm("");
     setCategoryFilter(ALL_CATEGORIES);
+    setCurrentPage(1);
     setEditingCategory(null);
     setDeletingCategory(null);
     setDeletingItemId(null);
@@ -2471,6 +2602,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     }
   }, [editMapRegion, newMapRegion, regionNames]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [categoryFilter, searchTerm]);
+
   const selectedCount = selectedIds.length;
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const isObjectsSyncReady =
@@ -2540,11 +2675,37 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const isSkillGfxFormValid =
     !isSkillGfxSection ||
     (!!newSkillGfxForm.mediaSrc &&
-      parseSkillGfxAppear(newSkillGfxForm.appear) !== null);
+      parseSkillGfxAppear(newSkillGfxForm.appear) !== null &&
+      parseOptionalInteger(newSkillGfxForm.essentialsAnimationId) !== null &&
+      parseOptionalInteger(newSkillGfxForm.essentialsAnimationIndex) !== null &&
+      parseOptionalPositiveInteger(newSkillGfxForm.sourceWidth) !== null &&
+      parseOptionalPositiveInteger(newSkillGfxForm.sourceHeight) !== null &&
+      parseOptionalPositiveInteger(newSkillGfxForm.cellSize) !== null &&
+      parseOptionalPositiveInteger(newSkillGfxForm.columns) !== null &&
+      parseOptionalPositiveInteger(newSkillGfxForm.rows) !== null &&
+      parseOptionalPositiveInteger(newSkillGfxForm.frameCount) !== null &&
+      parseOptionalPositiveInteger(newSkillGfxForm.fps) !== null &&
+      parseOptionalPositiveInteger(newSkillGfxForm.durationMs) !== null &&
+      parseOptionalInteger(newSkillGfxForm.hue) !== null &&
+      parseOptionalInteger(newSkillGfxForm.position) !== null &&
+      parseOptionalPositiveInteger(newSkillGfxForm.speed) !== null);
   const isEditSkillGfxFormValid =
     !isSkillGfxSection ||
     (!!editSkillGfxForm.mediaSrc &&
-      parseSkillGfxAppear(editSkillGfxForm.appear) !== null);
+      parseSkillGfxAppear(editSkillGfxForm.appear) !== null &&
+      parseOptionalInteger(editSkillGfxForm.essentialsAnimationId) !== null &&
+      parseOptionalInteger(editSkillGfxForm.essentialsAnimationIndex) !== null &&
+      parseOptionalPositiveInteger(editSkillGfxForm.sourceWidth) !== null &&
+      parseOptionalPositiveInteger(editSkillGfxForm.sourceHeight) !== null &&
+      parseOptionalPositiveInteger(editSkillGfxForm.cellSize) !== null &&
+      parseOptionalPositiveInteger(editSkillGfxForm.columns) !== null &&
+      parseOptionalPositiveInteger(editSkillGfxForm.rows) !== null &&
+      parseOptionalPositiveInteger(editSkillGfxForm.frameCount) !== null &&
+      parseOptionalPositiveInteger(editSkillGfxForm.fps) !== null &&
+      parseOptionalPositiveInteger(editSkillGfxForm.durationMs) !== null &&
+      parseOptionalInteger(editSkillGfxForm.hue) !== null &&
+      parseOptionalInteger(editSkillGfxForm.position) !== null &&
+      parseOptionalPositiveInteger(editSkillGfxForm.speed) !== null);
   const isGameItemFormValid =
     !isItemsSection ||
     (!!newGameItemForm.iconSrc &&
@@ -2705,6 +2866,22 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       return matchesName && matchesCategory;
     });
   }, [categoryFilter, searchTerm, sectionState.items]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / ITEMS_PER_PAGE));
+  const visiblePage = Math.min(currentPage, totalPages);
+  const paginatedItems = useMemo(() => {
+    const startIndex = (visiblePage - 1) * ITEMS_PER_PAGE;
+
+    return filteredItems.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredItems, visiblePage]);
+  const firstVisibleItem = filteredItems.length === 0
+    ? 0
+    : (visiblePage - 1) * ITEMS_PER_PAGE + 1;
+  const lastVisibleItem = Math.min(visiblePage * ITEMS_PER_PAGE, filteredItems.length);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
 
   const pokemonSkillCatalog = useMemo(
     () =>
@@ -2950,6 +3127,28 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             mediaSrc: skillGfxProfile.mediaSrc,
             applyTo: skillGfxProfile.applyTo,
             appear: String(skillGfxProfile.appear),
+            essentialsAnimationId: skillGfxProfile.essentialsAnimationId?.toString() ?? "",
+            essentialsAnimationIndex: skillGfxProfile.essentialsAnimationIndex?.toString() ?? "",
+            essentialsAnimationName: skillGfxProfile.essentialsAnimationName ?? "",
+            animationKind: skillGfxProfile.animationKind ?? "other",
+            graphic: skillGfxProfile.graphic ?? "",
+            sourcePath: skillGfxProfile.sourcePath ?? "",
+            outputPath: skillGfxProfile.outputPath ?? "",
+            sheetSourcePath: skillGfxProfile.sheetSourcePath ?? "",
+            sheetOutputPath: skillGfxProfile.sheetOutputPath ?? "",
+            sourceWidth: skillGfxProfile.sourceWidth?.toString() ?? "",
+            sourceHeight: skillGfxProfile.sourceHeight?.toString() ?? "",
+            cellSize: skillGfxProfile.cellSize?.toString() ?? "",
+            columns: skillGfxProfile.columns?.toString() ?? "",
+            rows: skillGfxProfile.rows?.toString() ?? "",
+            frameCount: skillGfxProfile.frameCount?.toString() ?? "",
+            fps: skillGfxProfile.fps?.toString() ?? "",
+            durationMs: skillGfxProfile.durationMs?.toString() ?? "",
+            hue: skillGfxProfile.hue?.toString() ?? "",
+            position: skillGfxProfile.position?.toString() ?? "",
+            speed: skillGfxProfile.speed?.toString() ?? "",
+            warnings: skillGfxProfile.warnings?.join(", ") ?? "",
+            linkedMoveIds: skillGfxProfile.linkedMoveIds?.join(", ") ?? "",
           }
         : createDefaultSkillGfxFormState()
     );
@@ -3632,8 +3831,37 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     formState: SkillGfxFormState
   ): DesignerSkillGfxProfile | undefined => {
     const appear = parseSkillGfxAppear(formState.appear);
+    const essentialsAnimationId = parseOptionalInteger(formState.essentialsAnimationId);
+    const essentialsAnimationIndex = parseOptionalInteger(formState.essentialsAnimationIndex);
+    const sourceWidth = parseOptionalPositiveInteger(formState.sourceWidth);
+    const sourceHeight = parseOptionalPositiveInteger(formState.sourceHeight);
+    const cellSize = parseOptionalPositiveInteger(formState.cellSize);
+    const columns = parseOptionalPositiveInteger(formState.columns);
+    const rows = parseOptionalPositiveInteger(formState.rows);
+    const frameCount = parseOptionalPositiveInteger(formState.frameCount);
+    const fps = parseOptionalPositiveInteger(formState.fps);
+    const durationMs = parseOptionalPositiveInteger(formState.durationMs);
+    const hue = parseOptionalInteger(formState.hue);
+    const position = parseOptionalInteger(formState.position);
+    const speed = parseOptionalPositiveInteger(formState.speed);
 
-    if (!formState.mediaSrc || appear === null) {
+    if (
+      !formState.mediaSrc ||
+      appear === null ||
+      essentialsAnimationId === null ||
+      essentialsAnimationIndex === null ||
+      sourceWidth === null ||
+      sourceHeight === null ||
+      cellSize === null ||
+      columns === null ||
+      rows === null ||
+      frameCount === null ||
+      fps === null ||
+      durationMs === null ||
+      hue === null ||
+      position === null ||
+      speed === null
+    ) {
       return undefined;
     }
 
@@ -3641,6 +3869,24 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       mediaSrc: formState.mediaSrc,
       applyTo: formState.applyTo,
       appear,
+      essentialsAnimationId,
+      essentialsAnimationIndex,
+      essentialsAnimationName: formState.essentialsAnimationName.trim(),
+      animationKind: formState.animationKind,
+      graphic: formState.graphic.trim(),
+      sourceWidth,
+      sourceHeight,
+      cellSize,
+      columns,
+      rows,
+      frameCount,
+      fps,
+      durationMs,
+      hue,
+      position,
+      speed,
+      warnings: splitCommaList(formState.warnings),
+      linkedMoveIds: splitCommaList(formState.linkedMoveIds),
     };
   };
 
@@ -5791,6 +6037,139 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             />
           </FormControl>
         </SimpleGrid>
+
+        <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+          <FormControl>
+            <FormLabel>Animation Kind</FormLabel>
+            <Select
+              value={formState.animationKind}
+              onChange={(event) =>
+                updateField(
+                  "animationKind",
+                  event.target.value as NonNullable<DesignerSkillGfxProfile["animationKind"]>
+                )
+              }
+            >
+              {MOVE_ANIMATION_KIND_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl isInvalid={formState.essentialsAnimationId !== "" && parseOptionalInteger(formState.essentialsAnimationId) === null}>
+            <FormLabel>Essentials ID</FormLabel>
+            <Input
+              type="number"
+              step={1}
+              value={formState.essentialsAnimationId}
+              onChange={(event) => updateField("essentialsAnimationId", event.target.value)}
+            />
+          </FormControl>
+          <FormControl isInvalid={formState.essentialsAnimationIndex !== "" && parseOptionalInteger(formState.essentialsAnimationIndex) === null}>
+            <FormLabel>Essentials Index</FormLabel>
+            <Input
+              type="number"
+              step={1}
+              value={formState.essentialsAnimationIndex}
+              onChange={(event) => updateField("essentialsAnimationIndex", event.target.value)}
+            />
+          </FormControl>
+        </SimpleGrid>
+
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+          <FormControl>
+            <FormLabel>Essentials Name</FormLabel>
+            <Input
+              value={formState.essentialsAnimationName}
+              onChange={(event) => updateField("essentialsAnimationName", event.target.value)}
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel>Graphic</FormLabel>
+            <Input
+              value={formState.graphic}
+              onChange={(event) => updateField("graphic", event.target.value)}
+            />
+          </FormControl>
+        </SimpleGrid>
+
+        <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4}>
+          {[
+            ["sourceWidth", "Source Width"],
+            ["sourceHeight", "Source Height"],
+            ["cellSize", "Cell Size"],
+            ["columns", "Columns"],
+            ["rows", "Rows"],
+            ["frameCount", "Frames"],
+            ["fps", "FPS"],
+            ["durationMs", "Frame Duration"],
+          ].map(([key, label]) => (
+            <FormControl
+              key={key}
+              isInvalid={
+                formState[key as keyof SkillGfxFormState] !== "" &&
+                parseOptionalPositiveInteger(String(formState[key as keyof SkillGfxFormState])) === null
+              }
+            >
+              <FormLabel>{label}</FormLabel>
+              <Input
+                type="number"
+                min={1}
+                step={1}
+                value={String(formState[key as keyof SkillGfxFormState])}
+                onChange={(event) =>
+                  updateField(key as keyof SkillGfxFormState, event.target.value)
+                }
+              />
+            </FormControl>
+          ))}
+        </SimpleGrid>
+
+        <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+          {[
+            ["hue", "Hue"],
+            ["position", "Position"],
+            ["speed", "Speed"],
+          ].map(([key, label]) => (
+            <FormControl
+              key={key}
+              isInvalid={
+                formState[key as keyof SkillGfxFormState] !== "" &&
+                (key === "speed"
+                  ? parseOptionalPositiveInteger(String(formState[key as keyof SkillGfxFormState]))
+                  : parseOptionalInteger(String(formState[key as keyof SkillGfxFormState]))) === null
+              }
+            >
+              <FormLabel>{label}</FormLabel>
+              <Input
+                type="number"
+                step={1}
+                value={String(formState[key as keyof SkillGfxFormState])}
+                onChange={(event) =>
+                  updateField(key as keyof SkillGfxFormState, event.target.value)
+                }
+              />
+            </FormControl>
+          ))}
+        </SimpleGrid>
+
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+          <FormControl>
+            <FormLabel>Warnings</FormLabel>
+            <Input
+              value={formState.warnings}
+              onChange={(event) => updateField("warnings", event.target.value)}
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel>Linked Move IDs</FormLabel>
+            <Input
+              value={formState.linkedMoveIds}
+              onChange={(event) => updateField("linkedMoveIds", event.target.value)}
+            />
+          </FormControl>
+        </SimpleGrid>
       </>
     );
   };
@@ -6314,6 +6693,18 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     );
   };
 
+  const reviewingSkillGfxProfile = reviewingSkillGfxItem
+    ? sanitizeSkillGfxProfile(reviewingSkillGfxItem.skillGfxProfile)
+    : undefined;
+  const reviewingSkillGfxDetails = reviewingSkillGfxItem
+    ? reviewingSkillGfxItem.details.filter(
+        (itemDetail) =>
+          !["Source Path", "Output Path", "Sheet Source Path", "Sheet Output Path"].includes(
+            itemDetail.label
+          )
+      )
+    : [];
+
   return (
     <Box
       minH="100vh"
@@ -6525,10 +6916,41 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               </Select>
             </FormControl>
           </SimpleGrid>
-          <Text mt={3} color="#55645a" fontSize="sm">
-            Showing {filteredItems.length} of {sectionState.items.length}{" "}
-            {section.itemLabelPlural}.
-          </Text>
+          <Flex
+            mt={3}
+            direction={{ base: "column", md: "row" }}
+            justify="space-between"
+            align={{ base: "flex-start", md: "center" }}
+            gap={3}
+          >
+            <Text color="#55645a" fontSize="sm">
+              Showing {firstVisibleItem}-{lastVisibleItem} of {filteredItems.length} filtered{" "}
+              {section.itemLabelPlural} ({sectionState.items.length} total).
+            </Text>
+            <Flex align="center" gap={2}>
+              <Button
+                size="sm"
+                variant="outline"
+                borderColor="rgba(43, 66, 47, 0.24)"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                isDisabled={visiblePage === 1}
+              >
+                Previous
+              </Button>
+              <Text minW="96px" textAlign="center" color="#55645a" fontSize="sm">
+                Page {visiblePage} of {totalPages}
+              </Text>
+              <Button
+                size="sm"
+                variant="outline"
+                borderColor="rgba(43, 66, 47, 0.24)"
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                isDisabled={visiblePage === totalPages}
+              >
+                Next
+              </Button>
+            </Flex>
+          </Flex>
         </Box>
 
         <Box>
@@ -6558,7 +6980,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             </Box>
           ) : (
             <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={{ base: 4, md: 5 }}>
-              {filteredItems.map((item) => {
+              {paginatedItems.map((item) => {
                 const isSelected = selectedSet.has(item.id);
                 const mapObjectAsset = isObjectsSection
                   ? sanitizeMapObjectAsset(item.mapObjectAsset)
@@ -6598,6 +7020,15 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                       npcProfile.graphics.standingRightSrc ||
                       npcProfile.graphics.trainerFrontImageSrc
                   : "";
+                const visibleDetails =
+                  isSkillGfxSection
+                    ? item.details.filter(
+                        (itemDetail) =>
+                          !["Source Path", "Output Path", "Sheet Source Path", "Sheet Output Path"].includes(
+                            itemDetail.label
+                          )
+                      )
+                    : item.details;
 
                 return (
                   <Box
@@ -6752,8 +7183,30 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                       </Badge>
                     </Flex>
 
+                    {isSkillGfxSection && skillGfxProfile?.mediaSrc ? (
+                      <Flex
+                        mb={4}
+                        minH="168px"
+                        align="center"
+                        justify="center"
+                        borderRadius="16px"
+                        border="1px solid rgba(43, 66, 47, 0.12)"
+                        bg="rgba(255,255,255,0.68)"
+                      >
+                        <Box
+                          as="img"
+                          src={skillGfxProfile.mediaSrc}
+                          alt={`${item.name} animation preview`}
+                          maxW="100%"
+                          maxH="156px"
+                          objectFit="contain"
+                          style={{ imageRendering: "pixelated" }}
+                        />
+                      </Flex>
+                    ) : null}
+
                     <Stack spacing={2}>
-                      {item.details.map((itemDetail) => (
+                      {visibleDetails.map((itemDetail) => (
                         <Flex
                           key={`${item.id}-${itemDetail.label}`}
                           justify="space-between"
@@ -6779,6 +7232,18 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                           onClick={(event) => event.stopPropagation()}
                         >
                           Map Editor
+                        </Button>
+                      ) : isSkillGfxSection && skillGfxProfile?.mediaSrc ? (
+                        <Button
+                          size="sm"
+                          colorScheme="green"
+                          variant="outline"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setReviewingSkillGfxItem(item);
+                          }}
+                        >
+                          Review
                         </Button>
                       ) : (
                         <Box />
@@ -6877,6 +7342,78 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           )}
         </Box>
       </Box>
+
+      <Modal
+        isOpen={Boolean(reviewingSkillGfxItem)}
+        onClose={() => setReviewingSkillGfxItem(null)}
+        size="4xl"
+        scrollBehavior="inside"
+      >
+        <ModalOverlay bg="blackAlpha.500" />
+        <ModalContent
+          borderRadius="24px"
+          bg="#fffdf8"
+          overflow="hidden"
+          maxH="calc(100vh - 2rem)"
+          boxShadow="0 28px 70px rgba(24, 34, 20, 0.24)"
+        >
+          <ModalHeader bg="#fffdf8" borderBottom="1px solid rgba(43, 66, 47, 0.08)">
+            {reviewingSkillGfxItem?.name ?? "Move Animation"}
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody bg="#fffdf8" overflowY="auto">
+            <Stack spacing={5}>
+              <Flex
+                minH={{ base: "260px", md: "420px" }}
+                align="center"
+                justify="center"
+                borderRadius="18px"
+                border="1px solid rgba(43, 66, 47, 0.12)"
+                bg="rgba(255,255,255,0.74)"
+              >
+                {reviewingSkillGfxProfile?.mediaSrc ? (
+                  <Box
+                    as="img"
+                    src={reviewingSkillGfxProfile.mediaSrc}
+                    alt={`${reviewingSkillGfxItem?.name ?? "Move animation"} preview`}
+                    maxW="100%"
+                    maxH={{ base: "240px", md: "400px" }}
+                    objectFit="contain"
+                    style={{ imageRendering: "pixelated" }}
+                  />
+                ) : (
+                  <Text color="#6d7b71">No animation GIF available.</Text>
+                )}
+              </Flex>
+
+              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                {reviewingSkillGfxDetails.map((itemDetail) => (
+                  <Flex
+                    key={`review-${reviewingSkillGfxItem?.id}-${itemDetail.label}`}
+                    justify="space-between"
+                    gap={4}
+                    p={3}
+                    borderRadius="12px"
+                    bg="rgba(237, 244, 234, 0.58)"
+                  >
+                    <Text fontSize="sm" color="#6d7b71">
+                      {itemDetail.label}
+                    </Text>
+                    <Text fontSize="sm" fontWeight="700" color="#233127" textAlign="right">
+                      {itemDetail.value}
+                    </Text>
+                  </Flex>
+                ))}
+              </SimpleGrid>
+            </Stack>
+          </ModalBody>
+          <ModalFooter bg="#fffdf8" borderTop="1px solid rgba(43, 66, 47, 0.08)">
+            <Button variant="ghost" onClick={() => setReviewingSkillGfxItem(null)}>
+              Close
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
       <Modal
         isOpen={isAddOpen}

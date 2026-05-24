@@ -195,6 +195,28 @@ export interface DesignerSkillGfxProfile {
   mediaSrc: string;
   applyTo: DesignerSkillGfxApplyTo;
   appear: number;
+  essentialsAnimationId?: number;
+  essentialsAnimationIndex?: number;
+  essentialsAnimationName?: string;
+  animationKind?: "sheet" | "record" | "battle-animation" | "other";
+  graphic?: string;
+  sourcePath?: string;
+  outputPath?: string;
+  sheetSourcePath?: string;
+  sheetOutputPath?: string;
+  sourceWidth?: number;
+  sourceHeight?: number;
+  cellSize?: number;
+  columns?: number;
+  rows?: number;
+  frameCount?: number;
+  fps?: number;
+  durationMs?: number;
+  hue?: number;
+  position?: number;
+  speed?: number;
+  warnings?: string[];
+  linkedMoveIds?: string[];
   source?: DesignerEssentialsSourceProfile;
 }
 
@@ -1142,6 +1164,11 @@ export const designerSections: DesignerSectionDefinition[] = [
       detail("Media", options?.skillGfxProfile?.mediaSrc ? "Uploaded" : "Required"),
       detail("Apply To", skillGfxDetailValue(options, "applyTo", "selected foe")),
       detail("Appear", skillGfxDetailValue(options, "appear", 1)),
+      detail("Animation Kind", options?.skillGfxProfile?.animationKind || "other"),
+      detail("Essentials Name", options?.skillGfxProfile?.essentialsAnimationName || "None"),
+      detail("Graphic", options?.skillGfxProfile?.graphic || "None"),
+      detail("Frames", skillGfxDetailValue(options, "frameCount", 0)),
+      detail("Duration", `${skillGfxDetailValue(options, "durationMs", 0)} ms`),
     ],
   },
   {
