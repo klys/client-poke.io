@@ -14,6 +14,7 @@ import { Link as RouterLink, Navigate, useNavigate, useSearchParams } from 'reac
 import { useAuth } from '../../../context/authContext';
 import AuthAlerts from './AuthAlerts';
 import AuthShell from './AuthShell';
+import PasswordInput from './PasswordInput';
 import { validatePassword, validateRequired } from './validation';
 
 const RecoverPassword = () => {
@@ -101,10 +102,9 @@ const RecoverPassword = () => {
         {isResetMode ? (
           <FormControl isRequired>
             <FormLabel htmlFor="password">New Password</FormLabel>
-            <Input
+            <PasswordInput
               id="password"
               name="password"
-              type="password"
               placeholder="Create a new password"
               autoComplete="new-password"
               value={password}

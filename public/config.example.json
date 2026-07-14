@@ -1,3 +1,4 @@
 {
-  "backendUrl": "http://localhost:3001/"
+  "backendUrl": "http://localhost:3001/",
+  "assetStorageBaseUrl": "http://localhost:8090"
 }

@@ -7,6 +7,9 @@ const MOVEMENT_KEYS = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
 
 const isMovementKey = (key:string) => MOVEMENT_KEYS.includes(key);
 
+const isEventDialogActive = () =>
+    typeof document !== "undefined" && document.body.dataset.eventActive === "1";
+
 const isUxEventTarget = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false;
     const tagName = target.tagName.toLowerCase();
@@ -46,20 +49,31 @@ const UserControl = () => {
     // CLICK OVER THE GAME
     const clickOverMap = (event:MouseEvent) => {
         if (waiting) return;
-        if (activeNpcInteraction) return;
+        if (activeNpcInteraction || isEventDialogActive()) return;
         if (isUxEventTarget(event.target)) return;
         const map = document.getElementById("map");
         const target = event.target as Node | null;
         if (map == null || target == null || !map.contains(target)) return;
-        //console.log("CLICK!! Left? : " + x + " ; Top? : " + y + ".");
-        
-        socket.emit("move", { x: mouse.x, y: mouse.y })
+
+        // Compute map coordinates AT CLICK TIME from the map's current rect.
+        // The old pointermove-cached position went stale whenever the camera
+        // moved under a still cursor, walking the player to an offset spot.
+        const rect = map.getBoundingClientRect();
+        const clickX = Math.round(event.clientX - rect.left);
+        const clickY = Math.round(event.clientY - rect.top);
+        // Snap to the clicked cell so the player lands tile-aligned (portals,
+        // doors and NPC facing all work in whole tiles).
+        const cellSize = 32;
+        const x = Math.floor(clickX / cellSize) * cellSize;
+        const y = Math.floor(clickY / cellSize) * cellSize;
+
+        socket.emit("move", { x, y })
     }
     useEventListener('click', clickOverMap)
 
     const keyUpEvent = (event:KeyboardEvent) => {
         if (waiting) return;
-        if (activeNpcInteraction) {
+        if (activeNpcInteraction || isEventDialogActive()) {
             if (event.key === "q" || isMovementKey(event.key)) {
                 event.preventDefault()
             }
@@ -118,13 +132,22 @@ const UserControl = () => {
 
     const keyDownEvent = (event:KeyboardEvent) => {
         if (waiting) return;
-        if (activeNpcInteraction) {
+        if (activeNpcInteraction || isEventDialogActive()) {
             if (isMovementKey(event.key)) {
                 event.preventDefault()
             }
             return;
         }
         if (isUxEventTarget(event.target)) return;
+
+        // Space talks to / interacts with whatever the player is facing
+        // (Map.tsx resolves the facing tile and routes the interaction).
+        if (event.key === " " || event.key === "Spacebar") {
+            event.preventDefault();
+            window.dispatchEvent(new CustomEvent("pokecraft:interact-front"));
+            return;
+        }
+
         if (!isMovementKey(event.key)) return;
         event.preventDefault()
         console.log("players", players)

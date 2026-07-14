@@ -1,5 +1,7 @@
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AppContext } from "../../context/appContext";
+import { applyCameraToPosition, reapplyCamera } from "./camera";
+import { assetUrl } from "../tilemap/serverAssets";
 import {
   DESIGNER_CACHE_UPDATED_EVENT,
   type DesignerCacheUpdateDetail,
@@ -68,7 +70,7 @@ const samePosition = (first: Position, second: Position) =>
 const easeOutCubic = (progress: number) => 1 - Math.pow(1 - progress, 3);
 
 const buildSpritePath = (direction: Direction, isWalking: boolean) =>
-  `/character0/player_${isWalking ? "walk" : "stand"}_${direction}.${isWalking ? "gif" : "png"}`;
+  assetUrl(`/character0/player_${isWalking ? "walk" : "stand"}_${direction}.${isWalking ? "gif" : "png"}`);
 
 const Player = (props: any) => {
   const [death, setDeath] = useState(false);
@@ -324,11 +326,20 @@ const Player = (props: any) => {
       return;
     }
 
-    const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
-    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
-
-    window.scroll(pos.x - viewportWidth / 2, pos.y - viewportHeight / 2);
+    applyCameraToPosition(pos.x, pos.y);
   }, [myplayer, playerId, pos]);
+
+  useEffect(() => {
+    if (myplayer !== playerId) {
+      return;
+    }
+
+    window.addEventListener("resize", reapplyCamera);
+
+    return () => {
+      window.removeEventListener("resize", reapplyCamera);
+    };
+  }, [myplayer, playerId]);
 
   const characterSkinProfile = useMemo(
     () =>

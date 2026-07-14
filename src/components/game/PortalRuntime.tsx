@@ -1,6 +1,7 @@
 import { useToast } from "@chakra-ui/react";
 import { useCallback, useContext, useEffect, useRef } from "react";
 import { AppContext } from "../../context/appContext";
+import { gameAudio } from "../ux/game/gameAudio";
 import type { MapEditorPortalPlacement } from "../designer/PlayableMapEditorCanvas";
 import {
   getInitialPlayableMap,
@@ -55,7 +56,12 @@ function normalizeScriptBody(script: string) {
 const PortalRuntime = () => {
   const toast = useToast();
   const { players, socket, myplayer, playableMapsState } = useContext(AppContext);
-  const lastTriggeredPortalRef = useRef<string | null>(null);
+  // The portal the player currently occupies. A portal fires only on the
+  // transition from "not standing on it" to "standing on it"; while this ref
+  // holds a portal's key, that portal stays inert until the player steps off.
+  const standingPortalKeyRef = useRef<string | null>(null);
+  // Last map we observed the player on, to detect teleport/portal arrivals.
+  const lastMapIdRef = useRef<string | null>(null);
   const lastTriggeredAtRef = useRef(0);
 
   const currentPlayer: any =
@@ -65,6 +71,8 @@ const PortalRuntime = () => {
     getInitialPlayableMap(playableMapsState);
 
   const requestTeleport = useCallback((mapId: string, x: number, y: number) => {
+    // Door/exit chime, like the original Essentials transfer events.
+    gameAudio.playEffect("Exit Door", "SE");
     socket.emit("player:teleport", {
       mapId,
       x,
@@ -175,7 +183,8 @@ const PortalRuntime = () => {
 
   useEffect(() => {
     if (!activeMap || !currentPlayer) {
-      lastTriggeredPortalRef.current = null;
+      standingPortalKeyRef.current = null;
+      lastMapIdRef.current = currentPlayer?.currentMapId ?? null;
       return;
     }
 
@@ -183,23 +192,39 @@ const PortalRuntime = () => {
       activeMap.editorData.portals.find((portal) =>
         isOverlappingPortal(currentPlayer, portal, activeMap.config.cellSize)
       ) ?? null;
+    const portalKey = overlappingPortal
+      ? `${activeMap.item.id}:${overlappingPortal.id}`
+      : null;
+
+    const mapChanged = currentPlayer.currentMapId !== lastMapIdRef.current;
+    lastMapIdRef.current = currentPlayer.currentMapId ?? null;
+
+    // The player just arrived on this map (via a portal, admin teleport, or
+    // initial spawn). Whatever portal they land on — typically the return
+    // portal at the destination — is treated as already-consumed so it can't
+    // instantly warp them back. They must step off and re-enter it on foot.
+    if (mapChanged) {
+      standingPortalKeyRef.current = portalKey;
+      return;
+    }
 
     if (!overlappingPortal) {
-      lastTriggeredPortalRef.current = null;
+      standingPortalKeyRef.current = null;
       return;
     }
 
-    const portalKey = `${activeMap.item.id}:${overlappingPortal.id}`;
+    // Still standing on the portal we already handled or were dropped onto.
+    if (portalKey === standingPortalKeyRef.current) {
+      return;
+    }
+
     const now = Date.now();
 
-    if (
-      lastTriggeredPortalRef.current === portalKey ||
-      now - lastTriggeredAtRef.current < PORTAL_COOLDOWN_MS
-    ) {
+    if (now - lastTriggeredAtRef.current < PORTAL_COOLDOWN_MS) {
       return;
     }
 
-    lastTriggeredPortalRef.current = portalKey;
+    standingPortalKeyRef.current = portalKey;
     lastTriggeredAtRef.current = now;
 
     if (overlappingPortal.destinationType === "event-script") {

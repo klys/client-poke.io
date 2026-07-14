@@ -18,6 +18,8 @@ import {
   type DesignerNpcAiType,
   type DesignerNpcType,
 } from "./designerSections";
+import { sanitizeTileMapProfile } from "../tilemap/tileMapProfile";
+import { type PlayableMapTileMapProfile } from "../tilemap/tileMapTypes";
 
 export interface MapEditorObjectCatalogItem {
   id: string;
@@ -135,6 +137,7 @@ export interface PlayableMapEditorData {
   portals: MapEditorPortalPlacement[];
   grass: MapEditorGrassPlacement[];
   npcs: MapEditorNpcPlacement[];
+  tileMap?: PlayableMapTileMapProfile;
   essentials?: {
     mapId: string;
     rxdataPath: string;
@@ -545,6 +548,7 @@ export function sanitizePlayableMapEditorData(value: unknown): PlayableMapEditor
     portals,
     grass,
     npcs,
+    tileMap: sanitizeTileMapProfile(candidate.tileMap),
     essentials,
   };
 }

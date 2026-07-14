@@ -34,10 +34,14 @@ const Network = () => {
         playableMapsState,
         setPlayableMapsState,
         setBattle,
+        appendBattleEvents,
         clearBattle,
         addBattlePrompt,
         removeBattlePrompt,
+        setEventState,
     } = useContext(AppContext);
+    const setEventStateRef = useRef(setEventState);
+    setEventStateRef.current = setEventState;
     const addPlayerRef = useRef(addPlayer);
     const removePlayerRef = useRef(removePlayer);
     const addProjectilRef = useRef(addProjectil);
@@ -49,6 +53,7 @@ const Network = () => {
     const playableMapsStateRef = useRef(playableMapsState);
     const setPlayableMapsStateRef = useRef(setPlayableMapsState);
     const setBattleRef = useRef(setBattle);
+    const appendBattleEventsRef = useRef(appendBattleEvents);
     const clearBattleRef = useRef(clearBattle);
     const addBattlePromptRef = useRef(addBattlePrompt);
     const removeBattlePromptRef = useRef(removeBattlePrompt);
@@ -66,6 +71,7 @@ const Network = () => {
         playableMapsStateRef.current = playableMapsState;
         setPlayableMapsStateRef.current = setPlayableMapsState;
         setBattleRef.current = setBattle;
+        appendBattleEventsRef.current = appendBattleEvents;
         clearBattleRef.current = clearBattle;
         addBattlePromptRef.current = addBattlePrompt;
         removeBattlePromptRef.current = removeBattlePrompt;
@@ -81,6 +87,7 @@ const Network = () => {
         playableMapsState,
         setPlayableMapsState,
         setBattle,
+        appendBattleEvents,
         clearBattle,
         addBattlePrompt,
         removeBattlePrompt,
@@ -141,8 +148,8 @@ const Network = () => {
             const payload = sanitizePlayableMapsSyncPayload(data);
 
             if (payload) {
-                persistPlayableMapsSyncPayload(payload);
                 setPlayableMapsStateRef.current(payload.state);
+                persistPlayableMapsSyncPayload(payload);
                 return;
             }
 
@@ -176,6 +183,12 @@ const Network = () => {
                     clearBattleRef.current();
                     battleClearTimerRef.current = null;
                 }, 12000);
+            }
+        };
+
+        const handleBattleEvents = (data:any) => {
+            if (Array.isArray(data?.events)) {
+                appendBattleEventsRef.current(data.events);
             }
         };
 
@@ -255,7 +268,17 @@ const Network = () => {
         socket.on("world:item-picked-up", handleGroundItemPickedUp)
         socket.on("playableMaps:state", handlePlayableMapsState)
         socket.on("playableMaps:version", handlePlayableMapsVersion)
+        socket.on("event:state", (data:any) => {
+            if (data && typeof data === "object") {
+                setEventStateRef.current({
+                    switches: data.switches ?? {},
+                    variables: data.variables ?? {},
+                    selfSwitches: data.selfSwitches ?? {},
+                })
+            }
+        })
         socket.on("battle:state", handleBattleState)
+        socket.on("battle:events", handleBattleEvents)
         socket.on("battle:ended", handleBattleEnded)
         socket.on("battle:error", handleBattleError)
         socket.on("battle:challenge-received", handleChallengeReceived)
@@ -280,6 +303,7 @@ const Network = () => {
             socket.off("playableMaps:state", handlePlayableMapsState)
             socket.off("playableMaps:version", handlePlayableMapsVersion)
             socket.off("battle:state", handleBattleState)
+            socket.off("battle:events", handleBattleEvents)
             socket.off("battle:ended", handleBattleEnded)
             socket.off("battle:error", handleBattleError)
             socket.off("battle:challenge-received", handleChallengeReceived)

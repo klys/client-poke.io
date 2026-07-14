@@ -57,6 +57,10 @@ export type PlayableMapPortalDestination = {
 };
 
 const PLAYABLE_MAPS_CACHE_KEY = "server-cache:playableMaps";
+
+// localStorage quota (~10MB per origin) cannot be trusted to hold the maps payload,
+// so the last synced payload always lives in memory and storage writes are best-effort.
+let memoryPlayableMapsPayload: PlayableMapsSyncPayload | null = null;
 const MAPS_STORAGE_KEY = "designer:section:mapsEditor";
 const LEGACY_MAPS_STORAGE_KEY = "designer-demo:mapsEditor";
 const MAP_EDITOR_STORAGE_PREFIX = "designer:mapEditor:";
@@ -172,6 +176,13 @@ export function loadPlayableMapsState() {
     categories: designerSectionsByKey.mapsEditor.defaultCategories,
     items: [],
   };
+
+  if (memoryPlayableMapsPayload) {
+    return {
+      categories: memoryPlayableMapsPayload.state.categories,
+      items: memoryPlayableMapsPayload.state.items,
+    };
+  }
 
   if (typeof window === "undefined") {
     return fallback;
@@ -326,6 +337,10 @@ export function sanitizePlayableMapsSyncPayload(value: unknown): PlayableMapsSyn
 }
 
 export function loadPlayableMapsCache(): PlayableMapsSyncPayload | null {
+  if (memoryPlayableMapsPayload) {
+    return memoryPlayableMapsPayload;
+  }
+
   if (typeof window === "undefined") {
     return null;
   }
@@ -361,46 +376,112 @@ export function buildPlayableMapsSnapshot(
   };
 }
 
-export function persistPlayableMapsSyncPayload(payload: PlayableMapsSyncPayload) {
-  if (typeof window === "undefined") {
-    return;
+function tryStorageWrite(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function tryStorageRemove(key: string) {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    /* best effort */
+  }
+}
+
+// Drops per-map editor entries (current and legacy prefixes) for maps that no longer
+// exist in the synced payload — stale maps otherwise pile up against the quota.
+function pruneStaleMapEditorStorage(validMapIds: Set<string>) {
+  const staleKeys: string[] = [];
+
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+
+    if (!key) {
+      continue;
+    }
+
+    if (key.startsWith(MAP_EDITOR_STORAGE_PREFIX)) {
+      if (!validMapIds.has(key.slice(MAP_EDITOR_STORAGE_PREFIX.length))) {
+        staleKeys.push(key);
+      }
+    } else if (key.startsWith(LEGACY_MAP_EDITOR_STORAGE_PREFIX)) {
+      staleKeys.push(key);
+    }
   }
 
+  staleKeys.forEach(tryStorageRemove);
+}
+
+export function persistPlayableMapsSyncPayload(payload: PlayableMapsSyncPayload) {
   const sanitizedPayload = sanitizePlayableMapsSyncPayload(payload);
 
   if (!sanitizedPayload) {
     return;
   }
 
-  window.localStorage.setItem(PLAYABLE_MAPS_CACHE_KEY, JSON.stringify(sanitizedPayload));
-  window.localStorage.setItem(
-    MAPS_STORAGE_KEY,
-    JSON.stringify({
-      state: {
-        categories: sanitizedPayload.state.categories,
-        items: sanitizedPayload.state.items,
-      },
-      version: sanitizedPayload.version,
-      updatedAt: sanitizedPayload.updatedAt,
-      updatedByUsername: sanitizedPayload.updatedByUsername,
-    })
-  );
+  memoryPlayableMapsPayload = sanitizedPayload;
 
-  sanitizedPayload.state.items.forEach((item) => {
-    const editorData = sanitizedPayload.state.editorDataByMapId[item.id];
+  if (typeof window === "undefined") {
+    return;
+  }
 
-    if (editorData) {
-      window.localStorage.setItem(
-        getMapEditorStorageKey(item.id),
+  try {
+    pruneStaleMapEditorStorage(new Set(sanitizedPayload.state.items.map((item) => item.id)));
+    tryStorageRemove(LEGACY_MAPS_STORAGE_KEY);
+
+    if (!tryStorageWrite(PLAYABLE_MAPS_CACHE_KEY, JSON.stringify(sanitizedPayload))) {
+      // Quota pressure: never let a stale payload shadow the in-memory one next session.
+      tryStorageRemove(PLAYABLE_MAPS_CACHE_KEY);
+    }
+
+    if (
+      !tryStorageWrite(
+        MAPS_STORAGE_KEY,
         JSON.stringify({
-          data: editorData,
+          state: {
+            categories: sanitizedPayload.state.categories,
+            items: sanitizedPayload.state.items,
+          },
           version: sanitizedPayload.version,
           updatedAt: sanitizedPayload.updatedAt,
           updatedByUsername: sanitizedPayload.updatedByUsername,
         })
-      );
+      )
+    ) {
+      tryStorageRemove(MAPS_STORAGE_KEY);
     }
-  });
+
+    sanitizedPayload.state.items.forEach((item) => {
+      const editorData = sanitizedPayload.state.editorDataByMapId[item.id];
+
+      if (!editorData) {
+        return;
+      }
+
+      const storageKey = getMapEditorStorageKey(item.id);
+
+      if (
+        !tryStorageWrite(
+          storageKey,
+          JSON.stringify({
+            data: editorData,
+            version: sanitizedPayload.version,
+            updatedAt: sanitizedPayload.updatedAt,
+            updatedByUsername: sanitizedPayload.updatedByUsername,
+          })
+        )
+      ) {
+        tryStorageRemove(storageKey);
+      }
+    });
+  } catch {
+    /* storage is an optimization; the in-memory payload above is authoritative */
+  }
 
   dispatchDesignerCacheUpdated("mapsEditor");
 }
@@ -410,7 +491,17 @@ function resolvePlayableMapsSnapshot(snapshot?: PlayableMapsStateSnapshot) {
 }
 
 export function loadPlayableMapEditorData(mapId: string) {
-  if (typeof window === "undefined" || !mapId) {
+  if (!mapId) {
+    return sanitizePlayableMapEditorData(undefined);
+  }
+
+  const memoryEditorData = memoryPlayableMapsPayload?.state.editorDataByMapId[mapId];
+
+  if (memoryEditorData) {
+    return memoryEditorData;
+  }
+
+  if (typeof window === "undefined") {
     return sanitizePlayableMapEditorData(undefined);
   }
 

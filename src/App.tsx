@@ -3,9 +3,11 @@ import { RouterProvider } from 'react-router-dom';
 import DesignerDataBootstrap from './components/designer/DesignerDataBootstrap';
 import { createAppRouter, type RuntimeConfig } from './endpoint';
 import { AuthProvider } from './context/authContext';
+import { setAssetStorageBaseUrl } from './components/tilemap/serverAssets';
 
 const DEFAULT_CONFIG: RuntimeConfig = {
-  backendUrl: 'https://pokecraft-staging-0.klys.dev'
+  backendUrl: 'https://pokecraft-staging-0.klys.dev',
+  assetStorageBaseUrl: ''
 }
 
 const AUTH_HASHLESS_ROUTES = new Set([
@@ -76,6 +78,12 @@ function App() {
   ), [config]);
 
   useEffect(() => {
+    if (config) {
+      setAssetStorageBaseUrl(config.assetStorageBaseUrl);
+    }
+  }, [config]);
+
+  useEffect(() => {
     let mounted = true;
 
     const loadConfig = async () => {
@@ -88,7 +96,8 @@ function App() {
         const nextConfig = await response.json() as RuntimeConfig;
         if (mounted) {
           setConfig({
-            backendUrl: nextConfig.backendUrl || DEFAULT_CONFIG.backendUrl
+            backendUrl: nextConfig.backendUrl || DEFAULT_CONFIG.backendUrl,
+            assetStorageBaseUrl: nextConfig.assetStorageBaseUrl || DEFAULT_CONFIG.assetStorageBaseUrl
           });
         }
       } catch (error) {

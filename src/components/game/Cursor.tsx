@@ -51,8 +51,25 @@ export default function Cursor({
     };
 
     const onPointerMove = (e: PointerEvent) => {
-      const snappedX = Math.floor(e.pageX / gridSize) * gridSize;
-      const snappedY = Math.floor(e.pageY / gridSize) * gridSize;
+      // Position relative to the game world (#map), which is moved by the
+      // camera transform — page coordinates no longer match world space.
+      const map = document.getElementById("map");
+
+      if (!map) {
+        return;
+      }
+
+      const rect = map.getBoundingClientRect();
+      const worldX = e.clientX - rect.left;
+      const worldY = e.clientY - rect.top;
+
+      if (worldX < 0 || worldY < 0 || worldX >= map.offsetWidth || worldY >= map.offsetHeight) {
+        hide();
+        return;
+      }
+
+      const snappedX = Math.floor(worldX / gridSize) * gridSize;
+      const snappedY = Math.floor(worldY / gridSize) * gridSize;
 
       let x = snappedX;
       let y = snappedY;

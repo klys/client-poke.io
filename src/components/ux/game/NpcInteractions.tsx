@@ -6,7 +6,8 @@ import {
   Text,
   VStack,
 } from "@chakra-ui/react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ReactNode, SyntheticEvent } from "react";
 import {
   DESIGNER_CACHE_UPDATED_EVENT,
@@ -16,6 +17,7 @@ import {
 import type { MapEditorNpcPlacement } from "../../designer/PlayableMapEditorCanvas";
 import type { DesignerItemSeed, DesignerNpcType } from "../../designer/designerSections";
 import { useAuth, type InventoryItem } from "../../../context/authContext";
+import { AppContext } from "../../../context/appContext";
 
 type RuntimeNpcStoreItem = {
   itemId: string;
@@ -137,6 +139,69 @@ function getInitialMode(npcType: DesignerNpcType): InteractionMode {
   return "healer";
 }
 
+/**
+ * Splits an imported RPG Maker event's Show Text chain into individual message
+ * boxes. In RMXP each `101` command opens a new box and the following `401`
+ * commands are that box's extra lines — so every `101` marks a page boundary,
+ * which is what lets the dialog advance one box at a time instead of dumping
+ * the whole conversation at once.
+ */
+function parseEventMessagePages(
+  commands?: Array<{ code: number; parameters: unknown[]; indent?: number }>
+): string[] {
+  if (!Array.isArray(commands)) {
+    return [];
+  }
+
+  const pages: string[] = [];
+  let currentLines: string[] | null = null;
+
+  for (const command of commands) {
+    if (!command || typeof command !== "object") {
+      continue;
+    }
+
+    const line =
+      typeof command.parameters?.[0] === "string" ? (command.parameters[0] as string) : "";
+
+    if (command.code === 101) {
+      if (currentLines !== null) {
+        pages.push(currentLines.join(" "));
+      }
+      currentLines = line ? [line] : [];
+    } else if (command.code === 401) {
+      if (currentLines === null) {
+        currentLines = [];
+      }
+      currentLines.push(line);
+    }
+  }
+
+  if (currentLines !== null) {
+    pages.push(currentLines.join(" "));
+  }
+
+  return pages.map((page) => page.trim()).filter((page) => page.length > 0);
+}
+
+/**
+ * Resolves the RPG Maker / Essentials message control codes that survive import
+ * (e.g. \PN player name, \c[n] colour, \r formatting, timing markers) so the
+ * text reads cleanly in the dialog box.
+ */
+export function cleanRmxpText(raw: string, playerName: string): string {
+  return raw
+    .replace(/\\PN/gi, playerName || "Player")
+    .replace(/\\N\[\d+\]/gi, playerName || "Player")
+    .replace(/\\[a-z]\[[^\]]*\]/gi, "")
+    .replace(/\\[rlgb]/gi, "")
+    .replace(/\\[.|!^><*]/g, "")
+    // Essentials alignment/format tags used by the Venova intro (<ac>, <al>…).
+    .replace(/<\/?(?:ac|al|ar|c[23]?=[^>]*|fs=[^>]*|fn=[^>]*)>/gi, "")
+    .replace(/[^\S\n]+/g, " ")
+    .trim();
+}
+
 function getStoreSellPrice(storeItem: RuntimeNpcStoreItem) {
   const perUnitBuyPrice = Math.floor(storeItem.price / Math.max(1, storeItem.quantity));
   return Math.max(0, Math.floor(perUnitBuyPrice / 2));
@@ -154,6 +219,10 @@ function RetroPanel({
   return (
     <Box
       data-game-ux="true"
+      // The overlay root sets pointer-events:none so empty screen stays
+      // click-through to the game; pointer-events is inherited, so each panel
+      // must opt back in or its buttons (e.g. Close) never receive clicks.
+      pointerEvents="auto"
       bg="#f7f4eb"
       border="4px solid #5d5a7b"
       boxShadow="0 8px 0 rgba(122, 215, 255, 0.75)"
@@ -266,6 +335,7 @@ export function NpcInteractionOverlay({
     buyFromNpcStore,
     sellToNpcStore,
   } = useAuth();
+  const { socket: gameSocket } = useContext(AppContext);
   const [npcCatalogById, setNpcCatalogById] = useState<Map<string, RuntimeNpcDefinition>>(
     () => loadNpcCatalogById()
   );
@@ -273,6 +343,13 @@ export function NpcInteractionOverlay({
   const [selectedStoreItemId, setSelectedStoreItemId] = useState<string | null>(null);
   const [selectedSellItemId, setSelectedSellItemId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pageIndex, setPageIndex] = useState(0);
+
+  const messagePages = useMemo(
+    () => parseEventMessagePages(npcPlacement?.eventCommands),
+    [npcPlacement]
+  );
+  const playerName = user?.name || user?.username || "Player";
 
   useEffect(() => {
     const handleDesignerCacheUpdate = (event: Event) => {
@@ -345,6 +422,7 @@ export function NpcInteractionOverlay({
     setSelectedStoreItemId(storeItems[0]?.itemId ?? null);
     setSelectedSellItemId(sellableItems[0]?.inventoryItem.id ?? null);
     setIsSubmitting(false);
+    setPageIndex(0);
   }, [effectiveNpcType, npcPlacement, sellableItems, storeItems]);
 
   useEffect(() => {
@@ -368,6 +446,129 @@ export function NpcInteractionOverlay({
     }
   }, [errorMessage, infoMessage]);
 
+  // Confirm the highlighted/primary option for the current view — the action a
+  // player expects Enter/Space to take (heal, battle, advance a store step,
+  // confirm a purchase, or dismiss a sign).
+  const hasMorePages = pageIndex < messagePages.length - 1;
+
+  const confirmDefaultOption = useCallback(() => {
+    if (!npcPlacement || isSubmitting) {
+      return;
+    }
+
+    // A talking NPC / sign advances through its message boxes, then dismisses.
+    if (effectiveNpcType === "sign") {
+      if (pageIndex < messagePages.length - 1) {
+        setPageIndex((index) => index + 1);
+      } else {
+        onClose();
+      }
+      return;
+    }
+
+    if (effectiveNpcType === "healer") {
+      if (npcDefinition) {
+        setIsSubmitting(true);
+        healNpcParty({ npcPlacementId: npcPlacement.id });
+      }
+      return;
+    }
+
+    if (effectiveNpcType === "trainer") {
+      if (npcDefinition) {
+        setIsSubmitting(true);
+        gameSocket?.emit("npc:battle", { npcPlacementId: npcPlacement.id });
+        onClose();
+      }
+      return;
+    }
+
+    if (effectiveNpcType === "store") {
+      if (mode === "storeMain") {
+        setMode("storeBuy");
+        return;
+      }
+
+      if (mode === "storeBuy") {
+        if (selectedStoreItem && npcDefinition) {
+          setIsSubmitting(true);
+          buyFromNpcStore({
+            npcPlacementId: npcPlacement.id,
+            itemId: selectedStoreItem.itemId,
+            quantity: 1,
+          });
+        }
+        return;
+      }
+
+      if (selectedSellItem && npcDefinition) {
+        setIsSubmitting(true);
+        sellToNpcStore({
+          npcPlacementId: npcPlacement.id,
+          itemId: selectedSellItem.inventoryItem.id,
+          quantity: 1,
+        });
+      }
+      return;
+    }
+
+    // Signs, chests and any other read-only NPC: the default action is to dismiss.
+    onClose();
+  }, [
+    buyFromNpcStore,
+    effectiveNpcType,
+    gameSocket,
+    healNpcParty,
+    isSubmitting,
+    messagePages.length,
+    mode,
+    npcDefinition,
+    npcPlacement,
+    onClose,
+    pageIndex,
+    selectedSellItem,
+    selectedStoreItem,
+    sellToNpcStore,
+  ]);
+
+  useEffect(() => {
+    if (!npcPlacement) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+
+      // Don't hijack typing in form fields.
+      if (
+        target instanceof HTMLElement &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+        event.preventDefault();
+        confirmDefaultOption();
+      }
+    };
+
+    // Capture phase so this resolves before the world's movement key handlers.
+    window.addEventListener("keydown", handleKeyDown, true);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [confirmDefaultOption, npcPlacement, onClose]);
+
   if (!npcPlacement) {
     return null;
   }
@@ -378,7 +579,11 @@ export function NpcInteractionOverlay({
 
   let dialogueText = "What would you like to do?";
 
-  if (!npcDefinition) {
+  if (effectiveNpcType === "sign") {
+    dialogueText = messagePages.length
+      ? cleanRmxpText(messagePages[Math.min(pageIndex, messagePages.length - 1)], playerName)
+      : "There is nothing written here.";
+  } else if (!npcDefinition) {
     dialogueText = "This NPC is still loading. Please try again in a moment.";
   } else if (effectiveNpcType === "healer") {
     dialogueText = isSubmitting
@@ -396,7 +601,16 @@ export function NpcInteractionOverlay({
     dialogueText = "I only buy items that I keep in stock.";
   }
 
-  return (
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  // Portal to <body> so the overlay escapes #camera-world's CSS transform. A
+  // transformed ancestor becomes the containing block for position:fixed, which
+  // otherwise anchors this dialog to the camera-translated world and lets it
+  // drift off-screen on maps that follow the player. In <body> it is anchored to
+  // the viewport and stays put regardless of camera pan or browser zoom.
+  return createPortal(
     <Flex
       position="fixed"
       inset={0}
@@ -407,6 +621,8 @@ export function NpcInteractionOverlay({
       px={{ base: 3, md: 6 }}
       py={{ base: 3, md: 5 }}
       gap={3}
+      maxH="100dvh"
+      overflowY="auto"
     >
       <Flex justify="space-between" align="flex-start" gap={3} wrap="wrap">
         <VStack align="stretch" spacing={3} pointerEvents="auto">
@@ -471,7 +687,26 @@ export function NpcInteractionOverlay({
                 </MenuChoiceButton>
               </VStack>
             </RetroPanel>
-          ) : (
+          ) : effectiveNpcType === "trainer" ? (
+            <RetroPanel minWidth="200px" maxWidth="260px">
+              <VStack align="stretch" spacing={2}>
+                <MenuChoiceButton
+                  active
+                  isDisabled={!npcDefinition || isSubmitting}
+                  onClick={() => {
+                    setIsSubmitting(true);
+                    gameSocket?.emit("npc:battle", { npcPlacementId: npcPlacement.id });
+                    onClose();
+                  }}
+                >
+                  Battle!
+                </MenuChoiceButton>
+                <MenuChoiceButton active={false} onClick={onClose}>
+                  Not now
+                </MenuChoiceButton>
+              </VStack>
+            </RetroPanel>
+          ) : effectiveNpcType === "sign" ? null : (
             <RetroPanel minWidth="200px" maxWidth="260px">
               <VStack align="stretch" spacing={2}>
                 <MenuChoiceButton active isDisabled>
@@ -598,7 +833,31 @@ export function NpcInteractionOverlay({
             </HStack>
           ) : null}
 
-          {effectiveNpcType !== "store" && effectiveNpcType !== "healer" ? (
+          {effectiveNpcType === "sign" ? (
+            <HStack justify="space-between" align="center">
+              <Text
+                fontFamily="mono"
+                fontWeight="700"
+                fontSize={{ base: "xs", md: "sm" }}
+                color="#8a89a8"
+              >
+                {messagePages.length > 1
+                  ? `${Math.min(pageIndex, messagePages.length - 1) + 1} / ${messagePages.length}`
+                  : ""}
+              </Text>
+              <Button
+                variant="outline"
+                borderColor="#5d5a7b"
+                color="#4a4964"
+                rightIcon={hasMorePages ? <Text as="span">▶</Text> : undefined}
+                onClick={() =>
+                  hasMorePages ? setPageIndex((index) => index + 1) : onClose()
+                }
+              >
+                {hasMorePages ? "Next" : "Close"}
+              </Button>
+            </HStack>
+          ) : effectiveNpcType !== "store" && effectiveNpcType !== "healer" ? (
             <HStack justify="flex-end">
               <Button variant="outline" borderColor="#5d5a7b" color="#4a4964" onClick={onClose}>
                 Close
@@ -607,7 +866,8 @@ export function NpcInteractionOverlay({
           ) : null}
         </VStack>
       </RetroPanel>
-    </Flex>
+    </Flex>,
+    document.body
   );
 }
 

@@ -23,6 +23,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../../context/authContext';
+import ApiKeysManager from './ApiKeysManager';
 import MapsOverview from './MapsOverview';
 import type {
   AdminRoleDefinition,
@@ -33,7 +34,7 @@ import type {
   OnlineMapOverview
 } from './types';
 
-type AdminSection = 'users' | 'maps' | 'roles';
+type AdminSection = 'users' | 'maps' | 'roles' | 'apikeys';
 
 type AdminPageProps = {
   section: AdminSection
@@ -58,7 +59,15 @@ const PERMISSION_OPTIONS: Array<{ value: AdminRolePermission; label: string }> =
 const SECTION_LABELS: Record<AdminSection, string> = {
   users: 'Users',
   maps: 'Maps',
-  roles: 'Roles Manager'
+  roles: 'Roles Manager',
+  apikeys: 'API Keys'
+};
+
+const SECTION_ROUTES: Record<AdminSection, string> = {
+  users: '/admin/users',
+  maps: '/admin/maps',
+  roles: '/admin/roles',
+  apikeys: '/admin/api-keys'
 };
 
 const INITIAL_USER_LIST: UserListPayload = {
@@ -236,7 +245,10 @@ export default function AdminPage({ section }: AdminPageProps) {
       return;
     }
 
-    loadRoles();
+    if (section === 'roles') {
+      loadRoles();
+    }
+    // 'apikeys' is self-loading via <ApiKeysManager />
   }, [loadMaps, loadRoles, loadUsers, section]);
 
   const selectedUserStats = useMemo(() => ({
@@ -300,6 +312,21 @@ export default function AdminPage({ section }: AdminPageProps) {
     }
   };
 
+  const resetUserProgress = () => {
+    if (!selectedUser) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Reset ${selectedUser.username}'s adventure? Their party, inventory, money, battle history, and saved location will return to a fresh start.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    socket?.emit('admin:user:reset-progress', { userId: selectedUser.id });
+  };
+
   const saveRole = (roleKey: AdminUserRole) => {
     const draft = roleDrafts[roleKey];
     if (!draft) {
@@ -336,11 +363,11 @@ export default function AdminPage({ section }: AdminPageProps) {
               </Box>
 
               <HStack spacing={3} flexWrap="wrap">
-                {(['users', 'maps', 'roles'] as AdminSection[]).map((item) => (
+                {(['users', 'maps', 'roles', 'apikeys'] as AdminSection[]).map((item) => (
                   <Button
                     key={item}
                     as={RouterLink}
-                    to={item === 'users' ? '/admin/users' : item === 'maps' ? '/admin/maps' : '/admin/roles'}
+                    to={SECTION_ROUTES[item]}
                     colorScheme={section === item ? 'green' : 'gray'}
                     variant={section === item ? 'solid' : 'outline'}
                     borderRadius="full"
@@ -532,9 +559,18 @@ export default function AdminPage({ section }: AdminPageProps) {
                       <Textarea value={userEditor.battleHistoryJson} onChange={(event) => setUserEditor((current) => ({ ...current, battleHistoryJson: event.target.value }))} rows={8} fontFamily="mono" fontSize="sm" />
                     </FormControl>
 
-                    <Button colorScheme="green" onClick={saveUser} isLoading={isSavingUser}>
-                      Save User Changes
-                    </Button>
+                    <HStack spacing={3} flexWrap="wrap">
+                      <Button colorScheme="green" onClick={saveUser} isLoading={isSavingUser}>
+                        Save User Changes
+                      </Button>
+                      <Button colorScheme="red" variant="outline" onClick={resetUserProgress}>
+                        Reset Adventure
+                      </Button>
+                    </HStack>
+                    <Text fontSize="xs" color="gray.500">
+                      Reset Adventure clears the party, inventory, money, battle history, and saved
+                      location. The trainer restarts on the initial map and picks a starter again.
+                    </Text>
                   </Stack>
                 )}
               </Box>
@@ -649,6 +685,8 @@ export default function AdminPage({ section }: AdminPageProps) {
               })}
             </Stack>
           ) : null}
+
+          {section === 'apikeys' ? <ApiKeysManager /> : null}
         </Stack>
       </Box>
     </Box>

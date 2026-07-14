@@ -9,8 +9,6 @@ import {
   Heading,
   HStack,
   Input,
-  Radio,
-  RadioGroup,
   SimpleGrid,
   Text,
   VStack
@@ -42,7 +40,6 @@ function toStarterPokemon(item: DesignerItemSeed): StarterPokemon | null {
 
 const StartupPokemonSelection = () => {
   const { authReady, authenticated, chooseStarter, socket, user } = useAuth();
-  const [gender, setGender] = useState(user?.trainerGender || '');
   const [selectedPokemonId, setSelectedPokemonId] = useState('');
   const [nickname, setNickname] = useState('');
   const [starters, setStarters] = useState<StarterPokemon[]>([]);
@@ -83,47 +80,14 @@ const StartupPokemonSelection = () => {
   );
   const nicknameError = nickname ? validatePokemonNickname(nickname) : null;
 
-  const selectStarterPokemon = (pokemon: StarterPokemon) => {
-    setSelectedPokemonId(pokemon.id);
-
-    if (selectedPokemonId === pokemon.id && nickname) {
-      return;
-    }
-
-    const value = window.prompt(`Select a name for ${pokemon.name}. Letters only, no spaces, max 10 characters.`, nickname);
-    if (value === null) {
-      return;
-    }
-
-    const nextNickname = value.trim();
-    const validationMessage = validatePokemonNickname(nextNickname);
-    if (validationMessage) {
-      window.alert(validationMessage);
-      return;
-    }
-
-    setNickname(nextNickname);
-  };
-
   return (
     <Box minH="100vh" bg="#050505" color="white" display="flex" alignItems="center" justifyContent="center" p={4}>
       <Box width="min(920px, 100%)" bg="rgba(17, 24, 39, 0.98)" border="1px solid rgba(255,255,255,0.16)" borderRadius="8px" p={{ base: 5, md: 8 }}>
         <VStack align="stretch" spacing={6}>
           <Box>
             <Heading size="lg">Welcome, trainer {user?.name}.</Heading>
-            <Text color="gray.300" mt={2}>Before you enter the first map, choose how you want to be addressed and pick your first Pokemon. You will choose your character skin on the next screen.</Text>
+            <Text color="gray.300" mt={2}>Pick your first Pokemon. You will choose your character skin on the next screen.</Text>
           </Box>
-
-          <FormControl>
-            <FormLabel>Trainer gender</FormLabel>
-            <RadioGroup value={gender} onChange={setGender}>
-              <HStack spacing={5} flexWrap="wrap">
-                <Radio value="female">Female</Radio>
-                <Radio value="male">Male</Radio>
-                <Radio value="nonbinary">Non-binary</Radio>
-              </HStack>
-            </RadioGroup>
-          </FormControl>
 
           <Box>
             <Text fontWeight="700" mb={3}>Choose one initial Pokemon</Text>
@@ -138,7 +102,7 @@ const StartupPokemonSelection = () => {
                   borderRadius="8px"
                   border={selectedPokemonId === pokemon.id ? '2px solid #38b2ac' : '1px solid rgba(255,255,255,0.14)'}
                   bg={selectedPokemonId === pokemon.id ? 'rgba(20, 184, 166, 0.16)' : 'whiteAlpha.100'}
-                  onClick={() => selectStarterPokemon(pokemon)}
+                  onClick={() => setSelectedPokemonId(pokemon.id)}
                 >
                   <HStack spacing={3}>
                     <Avatar name={pokemon.name} src={pokemon.profile.iconImageSrc} />
@@ -161,7 +125,7 @@ const StartupPokemonSelection = () => {
           </Box>
 
           <FormControl isInvalid={Boolean(nicknameError)}>
-            <FormLabel>Pokemon name</FormLabel>
+            <FormLabel>Pokemon name (optional)</FormLabel>
             <Input
               value={nickname}
               maxLength={10}
@@ -169,22 +133,20 @@ const StartupPokemonSelection = () => {
               onChange={(event) => setNickname(sanitizePokemonNicknameInput(event.target.value))}
             />
             <FormHelperText color={nicknameError ? 'red.200' : 'gray.300'}>
-              {nicknameError ?? 'This name is permanent once your Pokemon joins your team.'}
+              {nicknameError ?? (nickname ? 'This name is permanent once your Pokemon joins your team.' : `Leave blank to keep ${selectedPokemon?.name ?? 'the Pokemon'}'s species name.`)}
             </FormHelperText>
           </FormControl>
 
           <Button
             colorScheme="teal"
             size="lg"
-            isDisabled={!gender || !selectedPokemon || Boolean(validatePokemonNickname(nickname))}
+            isDisabled={!selectedPokemon || Boolean(nicknameError)}
             onClick={() => {
-              const validationMessage = validatePokemonNickname(nickname);
-
-              if (!selectedPokemon || validationMessage) {
+              if (!selectedPokemon || nicknameError) {
                 return;
               }
 
-              chooseStarter({ gender, pokemonId: selectedPokemon.id, nickname: nickname.trim() });
+              chooseStarter({ pokemonId: selectedPokemon.id, nickname: nickname.trim() });
             }}
           >
             Continue with {selectedPokemon?.name ?? 'Pokemon'}

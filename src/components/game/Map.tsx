@@ -1,9 +1,20 @@
-import { useContext, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { AppContext } from "../../context/appContext";
 import { useEventListener } from "usehooks-ts";
 import Cursor from "./Cursor";
 import GameObject from "./Object";
+import MapNeighbors from "./MapNeighbors";
+import TileMapSurface from "./TileMapSurface";
 import NpcInteractionOverlay from "../ux/game/NpcInteractions";
+import NpcSprite from "./NpcSprite";
+import { assetUrl, resolveServerAssetUrl } from "../tilemap/serverAssets";
+import {
+    selectActiveEventPage,
+    pageIsInteractable,
+    EMPTY_EVENT_STATE,
+    type EssentialsEvent,
+    type EventPlayerState,
+} from "./npcEventState";
 import {
     getInitialPlayableMap,
     getPlayableMapById,
@@ -101,7 +112,9 @@ const Map = ({children}:{children:any}) => {
         socket,
         activeNpcInteraction,
         setActiveNpcInteraction,
+        eventState,
     } = useContext(AppContext);
+    const playerEventState: EventPlayerState = eventState ?? EMPTY_EVENT_STATE;
 
     const mapRef = useRef<HTMLDivElement | null>(null);
     const [npcPreviewById, setNpcPreviewById] = useState(() => loadNpcPreviewById());
@@ -114,9 +127,12 @@ const Map = ({children}:{children:any}) => {
     const activeMapEditorData = activeMap?.editorData ?? null;
     const mapPixelWidth = activeMapConfig ? activeMapConfig.width * activeMapConfig.cellSize : 3200;
     const mapPixelHeight = activeMapConfig ? activeMapConfig.height * activeMapConfig.cellSize : 3200;
-    const backgroundStyle = activeMapConfig
-        ? getPlayableMapBackgroundStyle(activeMapConfig)
-        : { background: "repeat center/1% url('/map0/Tile_Grass.png')" };
+    const activeTileMap = activeMapEditorData?.tileMap?.baked ? activeMapEditorData.tileMap : null;
+    const backgroundStyle = activeTileMap
+        ? { backgroundColor: activeMapConfig?.backgroundColor ?? "#000000" }
+        : activeMapConfig
+            ? getPlayableMapBackgroundStyle(activeMapConfig)
+            : { background: `repeat center/1% url('${assetUrl("/map0/Tile_Grass.png")}')` };
 
     // MOVE THE MOUSE OVER THE GAME
     const mapPointerMoveEvent = (event: MouseEvent) => {
@@ -175,8 +191,69 @@ const Map = ({children}:{children:any}) => {
         }
 
         socket.emit("stopMove");
+
+        // Imported RPG Maker events run through the server-authoritative event
+        // runtime (it picks the active page for the player's state, or no-ops if
+        // none applies). Designer-authored NPCs (healer/store/trainer) keep the
+        // local interaction overlay.
+        const eventNpc = npc as MapEditorNpcPlacement & { essentialsEvent?: unknown };
+        if (eventNpc.essentialsEvent) {
+            socket.emit("event:interact", { npcPlacementId: npc.id });
+            return;
+        }
+
         setActiveNpcInteraction(npc);
     };
+
+    // Space-to-interact: UserControl dispatches this when the player presses
+    // Space; talk to the NPC/sign on the tile the player is facing (or the
+    // tile under the player, for floor triggers like signposts).
+    const interactFrontRef = useRef<() => void>(() => undefined);
+    interactFrontRef.current = () => {
+        if (!activeMapConfig || !activeMapEditorData || !currentPlayer) {
+            return;
+        }
+        const cellSize = activeMapConfig.cellSize;
+        const playerCellX = Math.round((currentPlayer.x ?? 0) / cellSize);
+        const playerCellY = Math.round((currentPlayer.y ?? 0) / cellSize);
+        const angle = currentPlayer.angle ?? 270;
+        // Same angle→direction mapping the sprite renderer uses.
+        const delta =
+            angle === 90 || angle === 450 ? { x: 0, y: -1 } // up
+            : angle === 180 ? { x: 1, y: 0 } // right
+            : angle === 0 || angle === 360 ? { x: -1, y: 0 } // left
+            : { x: 0, y: 1 }; // down
+        const targetX = playerCellX + delta.x;
+        const targetY = playerCellY + delta.y;
+
+        const candidates = activeMapEditorData.npcs.filter((npc) => {
+            if (npc.x === targetX && npc.y === targetY) {
+                return true;
+            }
+            // Floor triggers (signs placed on the player's own tile).
+            return npc.x === playerCellX && npc.y === playerCellY;
+        });
+
+        for (const npc of candidates) {
+            const essentialsEvent = (npc as { essentialsEvent?: EssentialsEvent }).essentialsEvent;
+            if (essentialsEvent) {
+                const activePage = selectActiveEventPage(essentialsEvent, playerEventState);
+                if (!activePage) {
+                    continue;
+                }
+            }
+            openNpcInteraction(npc);
+            return;
+        }
+    };
+
+    useEffect(() => {
+        const handleInteractFront = () => interactFrontRef.current();
+        window.addEventListener("pokecraft:interact-front", handleInteractFront);
+        return () => {
+            window.removeEventListener("pokecraft:interact-front", handleInteractFront);
+        };
+    }, []);
     
     return(<>
         <div
@@ -195,6 +272,20 @@ const Map = ({children}:{children:any}) => {
                 ...backgroundStyle,
             }}
         >
+            {activeTileMap ? (
+                <>
+                    <TileMapSurface tileMap={activeTileMap} plane="background" zIndex={0} />
+                    <TileMapSurface tileMap={activeTileMap} plane="foreground" zIndex={1200} />
+                </>
+            ) : null}
+            {activeMap && currentPlayer ? (
+                <MapNeighbors
+                    activeMap={activeMap}
+                    playerX={typeof currentPlayer.x === "number" ? currentPlayer.x : 0}
+                    playerY={typeof currentPlayer.y === "number" ? currentPlayer.y : 0}
+                    snapshot={playableMapsState}
+                />
+            ) : null}
             {activeMapConfig && activeMapEditorData
                 ? activeMapEditorData.objects.map((object) => (
                     <GameObject
@@ -209,53 +300,77 @@ const Map = ({children}:{children:any}) => {
                 ))
                 : null}
             {activeMapConfig && activeMapEditorData
-                ? activeMapEditorData.npcs.map((npc) =>
-                    (npcPreviewById.get(npc.npcId) || npc.previewImageSrc) ? (
-                        <GameObject
-                            key={npc.id}
-                            x={npc.x * activeMapConfig.cellSize}
-                            y={npc.y * activeMapConfig.cellSize}
-                            imageSrc={npcPreviewById.get(npc.npcId) || npc.previewImageSrc}
-                            width={activeMapConfig.cellSize}
-                            height={activeMapConfig.cellSize}
-                            alt={npc.name}
-                            label={npc.name}
-                            cursor="pointer"
-                            onClick={(event: ReactMouseEvent<HTMLDivElement>) => {
-                                event.stopPropagation();
-                                openNpcInteraction(npc);
-                            }}
-                        />
-                    ) : (
-                        <div
-                            key={npc.id}
-                            title={npc.name}
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                openNpcInteraction(npc);
-                            }}
-                            style={{
-                                position: "absolute",
-                                top: `${npc.y * activeMapConfig.cellSize}px`,
-                                left: `${npc.x * activeMapConfig.cellSize}px`,
-                                width: `${activeMapConfig.cellSize}px`,
-                                height: `${activeMapConfig.cellSize}px`,
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                border: "1px solid rgba(8, 145, 178, 0.75)",
-                                background: "rgba(6, 182, 212, 0.2)",
-                                color: "#0f172a",
-                                fontSize: "12px",
-                                fontWeight: 700,
-                                cursor: "pointer",
-                                zIndex: 999,
-                            }}
-                        >
-                            N
-                        </div>
-                    )
-                )
+                ? activeMapEditorData.npcs.map((npc) => {
+                    const imageSrc = resolveServerAssetUrl(
+                        npcPreviewById.get(npc.npcId) || npc.previewImageSrc || ""
+                    );
+                    const essentialsEvent = (npc as { essentialsEvent?: EssentialsEvent }).essentialsEvent;
+
+                    // Imported Venova events: only render according to the page that
+                    // is active for the player's current switch/variable state, so
+                    // conditionally-hidden events (cutscene actors, later story NPCs)
+                    // don't appear before their story beat.
+                    if (essentialsEvent) {
+                        const activePage = selectActiveEventPage(essentialsEvent, playerEventState);
+                        if (!activePage) {
+                            return null;
+                        }
+                        const hasGraphic = Boolean(activePage.graphic?.characterName);
+                        const interactable = pageIsInteractable(activePage);
+
+                        if (hasGraphic && imageSrc) {
+                            return (
+                                <NpcSprite
+                                    key={npc.id}
+                                    npc={{
+                                        ...(npc as MapEditorNpcPlacement & { spriteAspect?: number }),
+                                        movement: activePage.move,
+                                    }}
+                                    cellSize={activeMapConfig.cellSize}
+                                    imageSrc={imageSrc}
+                                    onClick={() => openNpcInteraction(npc)}
+                                />
+                            );
+                        }
+                        if (interactable) {
+                            // Invisible but clickable (signpost / hidden trigger).
+                            return (
+                                <div
+                                    key={npc.id}
+                                    title={npc.name}
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        openNpcInteraction(npc);
+                                    }}
+                                    style={{
+                                        position: "absolute",
+                                        top: `${npc.y * activeMapConfig.cellSize}px`,
+                                        left: `${npc.x * activeMapConfig.cellSize}px`,
+                                        width: `${activeMapConfig.cellSize}px`,
+                                        height: `${activeMapConfig.cellSize}px`,
+                                        cursor: "pointer",
+                                        zIndex: 997,
+                                    }}
+                                />
+                            );
+                        }
+                        return null;
+                    }
+
+                    // Designer-authored NPC (healer/store/trainer): render its sprite.
+                    if (imageSrc) {
+                        return (
+                            <NpcSprite
+                                key={npc.id}
+                                npc={npc as MapEditorNpcPlacement & { spriteAspect?: number }}
+                                cellSize={activeMapConfig.cellSize}
+                                imageSrc={imageSrc}
+                                onClick={() => openNpcInteraction(npc)}
+                            />
+                        );
+                    }
+                    return null;
+                })
                 : null}
             {activeMapConfig
                 ? (groundItems ?? [])
@@ -265,7 +380,7 @@ const Map = ({children}:{children:any}) => {
                             key={item.id}
                             x={item.x}
                             y={item.y}
-                            imageSrc={item.iconSrc || "/objects/Rock.png"}
+                            imageSrc={item.iconSrc || assetUrl("/objects/Rock.png")}
                             width={item.width ?? 32}
                             height={item.height ?? 32}
                             alt={item.itemName}
@@ -274,13 +389,13 @@ const Map = ({children}:{children:any}) => {
                     ))
                 : null}
             {(children) ? children : null}
+            <Cursor
+                gridSize={activeMapConfig?.cellSize ?? 32}
+                squareSize={activeMapConfig?.cellSize ?? 32}
+                color="#00ff88"
+                mode="cell"
+            />
         </div>
-        <Cursor
-            gridSize={36}
-            squareSize={36}
-            color="#00ff88"
-            mode="cell"
-        />
         <NpcInteractionOverlay
             npcPlacement={activeNpcInteraction}
             onClose={() => setActiveNpcInteraction(null)}

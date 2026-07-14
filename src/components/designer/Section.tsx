@@ -59,6 +59,8 @@ import {
   type DesignerPlayableMapType,
   type DesignerSkillGfxApplyTo,
   type DesignerSkillGfxProfile,
+  type DesignerAssetProfile,
+  type DesignerBattleBackgroundProfile,
   type DesignerWeatherEffect,
   designerSectionsByKey,
   type DesignerItemSeed,
@@ -205,6 +207,16 @@ const POKEMON_ELEMENTS = [
   "Flying",
   "Ghost",
 ];
+const POKEMON_ELEMENT_ALIASES = POKEMON_ELEMENTS.reduce<Record<string, string>>(
+  (aliases, element) => ({
+    ...aliases,
+    [element.toLowerCase()]: element,
+  }),
+  {
+    electric: "Electricity",
+    fighting: "Fight",
+  }
+);
 const WEATHER_EFFECT_DESCRIPTIONS: Record<DesignerWeatherEffect, string> = {
   None: "No weather is created by this move.",
   "Sunny Day": "Fire moves are favored while Water pressure is reduced.",
@@ -862,6 +874,13 @@ function createMigrationProfileDetails(
   ];
 }
 
+function getAssetImageSrc(profile?: DesignerAssetProfile | DesignerBattleBackgroundProfile | null) {
+  if (!profile) {
+    return "";
+  }
+  return profile.imageSrc || profile.dataUri || "";
+}
+
 function parsePokemonStat(value: string) {
   const parsedValue = Number.parseInt(value, 10);
 
@@ -1074,8 +1093,84 @@ function sanitizeMapObjectAsset(value: unknown): DesignerMapObjectAsset | undefi
   };
 }
 
+function normalizePokemonElement(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const key = value.trim().toLowerCase().replace(/[\s_-]+/g, "");
+
+  return POKEMON_ELEMENT_ALIASES[key] ?? null;
+}
+
+function readPokemonElementValue(value: unknown): unknown {
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  const candidate = value as {
+    element?: unknown;
+    id?: unknown;
+    name?: unknown;
+    type?: unknown;
+  };
+
+  return candidate.name ?? candidate.type ?? candidate.element ?? candidate.id;
+}
+
 function isPokemonElement(value: unknown): value is string {
-  return typeof value === "string" && POKEMON_ELEMENTS.includes(value);
+  return normalizePokemonElement(value) !== null;
+}
+
+function sanitizePokemonElements(value: unknown) {
+  const values = Array.isArray(value)
+    ? value.flatMap((element) =>
+        typeof element === "string" ? element.split(",") : [readPokemonElementValue(element)]
+      )
+    : typeof value === "string"
+      ? value.split(",")
+      : [readPokemonElementValue(value)];
+
+  return Array.from(
+    new Set(
+      values
+        .map((element) => normalizePokemonElement(element))
+        .filter((element): element is string => Boolean(element))
+    )
+  );
+}
+
+function resolvePokemonElements(
+  candidate:
+    | (Partial<DesignerPokemonProfile | DesignerPokemonSkillProfile> & {
+        element?: unknown;
+        type?: unknown;
+        types?: unknown;
+      })
+    | null,
+  fallbackItem?: Pick<DesignerItemSeed, "category" | "details">
+) {
+  const fallbackElements = fallbackItem?.details
+    .find((item) => ["elements", "types", "type"].includes(item.label.toLowerCase()))
+    ?.value;
+  const sources = [
+    candidate?.elements,
+    candidate?.types,
+    candidate?.type,
+    candidate?.element,
+    fallbackElements,
+    fallbackItem?.category,
+  ];
+
+  for (const source of sources) {
+    const elements = sanitizePokemonElements(source);
+
+    if (elements.length > 0) {
+      return elements;
+    }
+  }
+
+  return [];
 }
 
 function parsePokemonDetailNumber(
@@ -1134,17 +1229,13 @@ function sanitizePokemonProfile(
 ): DesignerPokemonProfile | undefined {
   const candidate =
     value && typeof value === "object"
-      ? (value as Partial<DesignerPokemonProfile>)
+      ? (value as Partial<DesignerPokemonProfile> & {
+          element?: unknown;
+          type?: unknown;
+          types?: unknown;
+        })
       : null;
-  const fallbackElements = fallbackItem?.details
-    .find((item) => item.label === "Elements")
-    ?.value.split(",")
-    .map((element) => element.trim())
-    .filter(isPokemonElement);
-  const rawElements = candidate && Array.isArray(candidate.elements)
-    ? candidate.elements
-    : fallbackElements ?? [fallbackItem?.category];
-  const elements = Array.from(new Set(rawElements.filter(isPokemonElement)));
+  const elements = resolvePokemonElements(candidate, fallbackItem);
 
   if (!candidate && !fallbackItem) {
     return undefined;
@@ -1595,17 +1686,13 @@ function sanitizePokemonSkillProfile(
 ): DesignerPokemonSkillProfile | undefined {
   const candidate =
     value && typeof value === "object"
-      ? (value as Partial<DesignerPokemonSkillProfile>)
+      ? (value as Partial<DesignerPokemonSkillProfile> & {
+          element?: unknown;
+          type?: unknown;
+          types?: unknown;
+        })
       : null;
-  const fallbackElements = fallbackItem?.details
-    .find((item) => item.label === "Elements")
-    ?.value.split(",")
-    .map((element) => element.trim())
-    .filter(isPokemonElement);
-  const rawElements = candidate && Array.isArray(candidate.elements)
-    ? candidate.elements
-    : fallbackElements ?? [fallbackItem?.category];
-  const elements = Array.from(new Set(rawElements.filter(isPokemonElement)));
+  const elements = resolvePokemonElements(candidate, fallbackItem);
   const weatherEffect = candidate?.weatherEffect;
   const fallbackValue = (label: string) =>
     fallbackItem?.details.find((item) => item.label === label)?.value ?? "";
@@ -2012,6 +2099,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const isNpcsSection = sectionKey === "npcs";
   const isPokemonSection = sectionKey === "pokemons";
   const isSkillsSection = sectionKey === "skills";
+  const isAssetsSection = sectionKey === "assets";
+  const isBattleBackgroundsSection = sectionKey === "battleBackgrounds";
   const isMigrationProfileSection = isMigrationProfileSectionKey(sectionKey);
   const isGenericRealtimeSection = !isMapsSection;
   const isRealtimeSection = true;
@@ -6994,6 +7083,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 const skillGfxProfile = isSkillGfxSection
                   ? sanitizeSkillGfxProfile(item.skillGfxProfile)
                   : undefined;
+                const assetPreviewSrc = isAssetsSection
+                  ? getAssetImageSrc(item.assetProfile)
+                  : "";
+                const battleBackgroundPreviewSrc = isBattleBackgroundsSection
+                  ? getAssetImageSrc(item.battleBackgroundProfile)
+                  : "";
                 const characterSkinProfile = isPlayersSection
                   ? sanitizeCharacterSkinProfile(item.characterSkinProfile)
                   : undefined;
@@ -7081,6 +7176,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                             mapObjectAsset ||
                             itemProfile?.iconSrc ||
                             skillGfxProfile?.mediaSrc ||
+                            assetPreviewSrc ||
+                            battleBackgroundPreviewSrc ||
                             characterSkinPreviewSrc ||
                             npcPreviewSrc ||
                             pokemonProfile?.iconImageSrc
@@ -7115,6 +7212,26 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                               as="img"
                               src={skillGfxProfile.mediaSrc}
                               alt={`${item.name} GFX`}
+                              maxW="48px"
+                              maxH="48px"
+                              objectFit="contain"
+                              style={{ imageRendering: "pixelated" }}
+                            />
+                          ) : assetPreviewSrc ? (
+                            <Box
+                              as="img"
+                              src={assetPreviewSrc}
+                              alt={`${item.name} asset`}
+                              maxW="48px"
+                              maxH="48px"
+                              objectFit="contain"
+                              style={{ imageRendering: "pixelated" }}
+                            />
+                          ) : battleBackgroundPreviewSrc ? (
+                            <Box
+                              as="img"
+                              src={battleBackgroundPreviewSrc}
+                              alt={`${item.name} battle background`}
                               maxW="48px"
                               maxH="48px"
                               objectFit="contain"
@@ -7197,6 +7314,28 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                           as="img"
                           src={skillGfxProfile.mediaSrc}
                           alt={`${item.name} animation preview`}
+                          maxW="100%"
+                          maxH="156px"
+                          objectFit="contain"
+                          style={{ imageRendering: "pixelated" }}
+                        />
+                      </Flex>
+                    ) : null}
+
+                    {(assetPreviewSrc || battleBackgroundPreviewSrc) ? (
+                      <Flex
+                        mb={4}
+                        minH="168px"
+                        align="center"
+                        justify="center"
+                        borderRadius="16px"
+                        border="1px solid rgba(43, 66, 47, 0.12)"
+                        bg="rgba(255,255,255,0.68)"
+                      >
+                        <Box
+                          as="img"
+                          src={assetPreviewSrc || battleBackgroundPreviewSrc}
+                          alt={`${item.name} preview`}
                           maxW="100%"
                           maxH="156px"
                           objectFit="contain"

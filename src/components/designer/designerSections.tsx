@@ -1,5 +1,8 @@
 import React from "react";
 import { Icon, type IconProps } from "@chakra-ui/react";
+import type { DesignerTilesetProfile } from "../tilemap/tileMapTypes";
+
+export type { DesignerTilesetProfile } from "../tilemap/tileMapTypes";
 
 export type DesignerIconName =
   | "playableMaps"
@@ -37,7 +40,9 @@ export type DesignerSectionKey =
   | "assets"
   | "battleBackgrounds"
   | "audio"
-  | "fonts";
+  | "fonts"
+  | "tilesets"
+  | "battleInterface";
 
 export interface DesignerItemDetail {
   label: string;
@@ -45,6 +50,16 @@ export interface DesignerItemDetail {
 }
 
 export type DesignerMapObjectType = "obstacle" | "mob area" | "floor" | "water";
+
+export type PlayableMapConnectionDirection = "north" | "south" | "east" | "west";
+
+export interface PlayableMapConnection {
+  direction: PlayableMapConnectionDirection;
+  targetMapId: string;
+  /** Neighbor map's top-left cell relative to this map's top-left cell. */
+  offsetXCells: number;
+  offsetYCells: number;
+}
 
 export type DesignerMapSizePreset = "small" | "medium" | "large" | "custom";
 
@@ -273,7 +288,7 @@ export interface DesignerGameItemProfile {
 
 export type DesignerNpcAiType = "standing" | "moving" | "scriptable";
 
-export type DesignerNpcType = "healer" | "trainer" | "store" | "chest";
+export type DesignerNpcType = "healer" | "trainer" | "store" | "chest" | "sign";
 
 export type DesignerNpcGraphicsSource = "custom" | "characterSkin";
 
@@ -474,6 +489,8 @@ export interface DesignerAssetFrameProfile {
 export interface DesignerAssetProfile {
   assetId: string;
   sourcePath: string;
+  dataUri?: string;
+  imageSrc?: string;
   kind: "image" | "gif" | "sprite-sheet" | "tileset" | "battleback" | "animation" | "ui" | "audio" | "font" | "other";
   width?: number;
   height?: number;
@@ -489,6 +506,12 @@ export interface DesignerBattleBackgroundProfile extends DesignerAssetProfile {
   kind: "battleback";
   environment?: string;
   mapIds?: string[];
+  componentAssetIds?: string[];
+  componentAssets?: Array<DesignerAssetProfile & {
+    role?: string;
+    filename?: string;
+    byteSize?: number;
+  }>;
 }
 
 export interface DesignerAudioProfile {
@@ -506,6 +529,37 @@ export interface DesignerFontProfile {
   sourcePath: string;
   familyName?: string;
   source?: DesignerEssentialsSourceProfile;
+}
+
+/**
+ * Battle scene customization. Read by the game runtime through the designer
+ * cache (see ux/game/battle/battleInterfaceConfig.ts for defaults/sanitizing).
+ */
+export interface DesignerBattleInterfaceProfile {
+  battleBackgroundId?: string;
+  backgroundImageSrc?: string;
+  playerBaseImageSrc?: string;
+  enemyBaseImageSrc?: string;
+  databoxPlayerColor?: string;
+  databoxEnemyColor?: string;
+  databoxTextColor?: string;
+  messageBoxColor?: string;
+  messageBoxTextColor?: string;
+  messageBoxBorderColor?: string;
+  messageRows?: number;
+  textSpeedMsPerChar?: number;
+  battleBgmSrc?: string;
+  victoryMeSrc?: string;
+  wildIntroSeSrc?: string;
+  trainerIntroSeSrc?: string;
+  bgmVolume?: number;
+  seVolume?: number;
+  muteBgm?: boolean;
+  muteSe?: boolean;
+  introTransition?: "flash-wipe" | "fade" | "none";
+  animationSpeed?: number;
+  showBattleLog?: boolean;
+  logRows?: number;
 }
 
 export interface DesignerItemCreateOptions {
@@ -529,6 +583,8 @@ export interface DesignerItemCreateOptions {
   battleBackgroundProfile?: DesignerBattleBackgroundProfile;
   audioProfile?: DesignerAudioProfile;
   fontProfile?: DesignerFontProfile;
+  tilesetProfile?: DesignerTilesetProfile;
+  battleInterfaceProfile?: DesignerBattleInterfaceProfile;
 }
 
 export interface DesignerItemSeed {
@@ -556,6 +612,8 @@ export interface DesignerItemSeed {
   battleBackgroundProfile?: DesignerBattleBackgroundProfile;
   audioProfile?: DesignerAudioProfile;
   fontProfile?: DesignerFontProfile;
+  tilesetProfile?: DesignerTilesetProfile;
+  battleInterfaceProfile?: DesignerBattleInterfaceProfile;
 }
 
 export interface DesignerPlayableMapConfig {
@@ -598,6 +656,7 @@ export interface DesignerPlayableMapConfig {
   };
   bgm?: string;
   bgs?: string;
+  connections?: PlayableMapConnection[];
   source?: DesignerEssentialsSourceProfile;
 }
 
@@ -1722,6 +1781,23 @@ export const designerSections: DesignerSectionDefinition[] = [
     ],
   },
   {
+    key: "tilesets",
+    title: "Tilesets",
+    description: "RPG Maker XP style tilesets: tileset image, autotile slots, passability, priority, and terrain tags used by the tile map editor.",
+    path: "/designer/tilesets",
+    itemLabel: "tileset",
+    itemLabelPlural: "tilesets",
+    categoryLabel: "group",
+    icon: "database",
+    defaultCategories: ["Outdoor", "Interior", "Cave"],
+    demoItems: [],
+    createDetails: (_name, category) => [
+      detail("Group", category),
+      detail("Schema", "RMXP tileset profile"),
+      detail("Tile Size", "32 px"),
+    ],
+  },
+  {
     key: "fonts",
     title: "Fonts",
     description: "Store runtime font assets and family names for the migrated client.",
@@ -1748,6 +1824,19 @@ export const designerSections: DesignerSectionDefinition[] = [
     categoryLabel: "group",
     icon: "levelingCurve",
     defaultCategories: ["Progression"],
+    demoItems: [],
+    createDetails: () => [],
+  },
+  {
+    key: "battleInterface",
+    title: "Battle Interface",
+    description: "Customize the battle scene: backgrounds, databoxes, message window, sounds, transitions, and log size.",
+    path: "/designer/battle-interface",
+    itemLabel: "config",
+    itemLabelPlural: "configs",
+    categoryLabel: "group",
+    icon: "levelingCurve",
+    defaultCategories: ["Battle UI"],
     demoItems: [],
     createDetails: () => [],
   },

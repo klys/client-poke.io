@@ -1,54 +1,61 @@
 import React from "react"
 import { Provider } from "../../context/appContext";
-import { useAuth } from "../../context/authContext";
 import Players from "./Players"
 import Network from "./Network";
 import PortalRuntime from "./PortalRuntime";
 import PlayerBoundaryGuard from "./PlayerBoundaryGuard";
 import UserControl from "./UserControl"
+import VirtualControls from "./VirtualControls"
 import Map from "./Map"
+import MapNameBanner from "./MapNameBanner"
 import AccountMenu from "../ux/auth/AccountMenu";
-import StartupPokemonSelection from "../ux/game/StartupPokemonSelection";
-import StartupCharacterSkinSelection from "../ux/game/StartupCharacterSkinSelection";
-import BattleOverlay from "../ux/game/BattleOverlay";
+import BattleScene from "../ux/game/battle/BattleScene";
+import EventDialog from "../ux/game/EventDialog";
+import MapMusic from "./MapMusic";
 import { BattlePrompts, TrainerInteractionCard } from "../ux/game/TrainerInteractions";
 
 
 const Game = ({ socketUrl }:{ socketUrl:string }) => {
-    const { user } = useAuth();
-
-    if ((user?.pokemonParty ?? []).length === 0) {
-        return <StartupPokemonSelection />;
-    }
-
-    if (!user?.characterSkinId) {
-        return <StartupCharacterSkinSelection />;
-    }
-
+    // New adventurers go straight into the world: the server assigns the
+    // default protagonist skin and Venova's intro event (Chrisanta) handles
+    // onboarding — gender pick (skin), name entry and the game tutorial.
     return (
         <div
             style={{
-                position: "relative",
-                minWidth: "100vw",
-                minHeight: "100vh",
+                position: "fixed",
+                inset: 0,
                 background: "#000",
-                overflow: "visible",
+                overflow: "hidden",
             }}
         >
         <Provider socketUrl={socketUrl}>
             <AccountMenu />
-  
+
             <Network />
             <PortalRuntime />
             <PlayerBoundaryGuard />
             <UserControl />
-            <Map>
-                <Players />
-            </Map>
+            <div
+                id="camera-world"
+                style={{
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    willChange: "transform",
+                }}
+            >
+                <Map>
+                    <Players />
+                </Map>
+            </div>
+            <MapNameBanner />
+            <MapMusic />
             <TrainerInteractionCard />
             <BattlePrompts />
-            <BattleOverlay />
-                        
+            <BattleScene />
+            <EventDialog />
+            <VirtualControls />
+
         </Provider>
         </div>
     )

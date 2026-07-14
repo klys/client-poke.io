@@ -1,0 +1,97 @@
+/* On-screen touch controls (Capacitor build only). See VirtualControls.tsx. */
+
+.vc-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none; /* let the game surface receive touches between the pads */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.vc-dpad,
+.vc-actions {
+  position: absolute;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+  display: grid;
+  gap: 6px;
+}
+
+.vc-dpad {
+  left: calc(env(safe-area-inset-left, 0px) + 18px);
+  grid-template-columns: repeat(3, 58px);
+  grid-template-rows: repeat(3, 58px);
+}
+
+.vc-actions {
+  right: calc(env(safe-area-inset-right, 0px) + 18px);
+  grid-template-columns: repeat(3, 62px);
+  grid-template-rows: repeat(3, 62px);
+}
+
+/* D-pad cross placement */
+.vc-up { grid-column: 2; grid-row: 1; }
+.vc-left { grid-column: 1; grid-row: 2; }
+.vc-right { grid-column: 3; grid-row: 2; }
+.vc-down { grid-column: 2; grid-row: 3; }
+
+/* Action diamond placement (Xbox layout: Y top, X left, B right, A bottom) */
+.vc-y { grid-column: 2; grid-row: 1; }
+.vc-x { grid-column: 1; grid-row: 2; }
+.vc-b { grid-column: 3; grid-row: 2; }
+.vc-a { grid-column: 2; grid-row: 3; }
+
+.vc-dbtn,
+.vc-abtn {
+  pointer-events: auto;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  transition: transform 0.05s ease, filter 0.05s ease;
+  opacity: 0.9;
+}
+
+.vc-dbtn {
+  background: rgba(30, 30, 34, 0.55);
+  font-size: 22px;
+}
+
+.vc-abtn {
+  font-size: 24px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+/* Xbox-ish button colours */
+.vc-a { background: rgba(63, 170, 88, 0.85); }   /* green  - Enter  */
+.vc-b { background: rgba(209, 73, 91, 0.85); }   /* red    - Escape */
+.vc-x { background: rgba(58, 124, 165, 0.9); }   /* blue   - Space  */
+.vc-y { background: rgba(224, 163, 37, 0.9); }   /* yellow - Menu   */
+
+.vc-dbtn:active,
+.vc-abtn:active {
+  transform: scale(0.92);
+  filter: brightness(1.25);
+  opacity: 1;
+}
+
+/* Smaller phones: shrink the pads a touch. */
+@media (max-height: 420px), (max-width: 720px) {
+  .vc-dpad { grid-template-columns: repeat(3, 50px); grid-template-rows: repeat(3, 50px); }
+  .vc-actions { grid-template-columns: repeat(3, 54px); grid-template-rows: repeat(3, 54px); }
+  .vc-dbtn { font-size: 19px; }
+  .vc-abtn { font-size: 21px; }
+}

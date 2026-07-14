@@ -12,6 +12,7 @@ import {
   type DesignerSectionKey,
 } from "./designerSections";
 import {
+  cleanupStaleDesignerStorage,
   persistStoredDesignerSectionPayload,
   readStoredDesignerSectionPayload,
   type DesignerSectionState,
@@ -34,7 +35,15 @@ type DesignerSectionVersionPayload = {
 const DESIGNER_SECTION_KEYS = Object.keys(
   designerSectionsByKey
 ) as DesignerSectionKey[];
-const PUBLIC_DESIGNER_SECTION_KEYS: DesignerSectionKey[] = ["pokemons", "npcs", "players"];
+const PUBLIC_DESIGNER_SECTION_KEYS: DesignerSectionKey[] = [
+  "pokemons",
+  "npcs",
+  "players",
+  "skillsGfx",
+  "audio",
+  "types",
+  "battleInterface",
+];
 const GENERIC_DESIGNER_SECTION_KEYS = DESIGNER_SECTION_KEYS.filter(
   (sectionKey) => sectionKey !== "mapsEditor"
 );
@@ -131,6 +140,10 @@ export default function DesignerDataBootstrap() {
     if (!authReady || !authenticated || !socket) {
       return;
     }
+
+    // Purge dirty storage from previous sessions before syncing, so oversized or
+    // legacy entries can't hold the quota hostage and keep caches stale.
+    cleanupStaleDesignerStorage();
 
     const preloadSharedData = () => {
       PUBLIC_DESIGNER_SECTION_KEYS.forEach((sectionKey) => {

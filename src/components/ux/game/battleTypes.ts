@@ -36,6 +36,12 @@ export type BattlePublicPokemon = {
   types: string[];
   hp: number;
   maxHp: number;
+  experience?: number;
+  nextLevelExperience?: number;
+  status?: import("./battle/battleEvents").BattleStatusId | null;
+  confused?: boolean;
+  statStages?: Record<string, number>;
+  heldItemName?: string | null;
   frontImageSrc: string;
   backImageSrc: string;
   moves: BattlePublicMove[];

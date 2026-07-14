@@ -57,6 +57,8 @@ import {
   getCharacterSkinPreview,
   loadCharacterSkinCatalog,
 } from "../ux/game/characterSkinCatalog";
+import TileMapEditor from "./TileMapEditor";
+import { bakeTileMapForSave } from "./tileMapBakeUpload";
 
 type DesignerSectionState = {
   categories: string[];
@@ -492,15 +494,19 @@ function saveMapEditorData(mapId: string, data: PlayableMapEditorData) {
     return;
   }
 
-  window.localStorage.setItem(
-    getMapEditorStorageKey(mapId),
-    JSON.stringify({
-      data,
-      version: getPlayableMapsCacheVersion(),
-      updatedAt: null,
-      updatedByUsername: null,
-    })
-  );
+  try {
+    window.localStorage.setItem(
+      getMapEditorStorageKey(mapId),
+      JSON.stringify({
+        data,
+        version: getPlayableMapsCacheVersion(),
+        updatedAt: null,
+        updatedByUsername: null,
+      })
+    );
+  } catch {
+    /* quota pressure — the server copy saved through the socket is authoritative */
+  }
 }
 
 function readBackgroundImage(
@@ -598,6 +604,8 @@ export default function MapEditorPage() {
   const [npcCatalog, setNpcCatalog] = useState<MapEditorNpcCatalogItem[]>(() => loadNpcCatalog());
   const [mapsState, setMapsState] = useState<DesignerSectionState>(() => loadMapsState());
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<"tiles" | "placements">("placements");
+  const [isSaving, setIsSaving] = useState(false);
   const [editorData, setEditorData] = useState<PlayableMapEditorData>(() =>
     loadMapEditorData(mapId)
   );
@@ -844,17 +852,57 @@ export default function MapEditorPage() {
     });
   };
 
-  const handleToolbarSave = () => {
-    if (!mapId) {
+  const handleToolbarSave = async () => {
+    if (!mapId || isSaving) {
       return;
     }
 
-    saveMapEditorData(mapId, editorData);
-    setSavedEditorData(editorData);
+    let nextEditorData = editorData;
+
+    if (editorData.tileMap) {
+      setIsSaving(true);
+
+      try {
+        const bakeResult = await bakeTileMapForSave(mapId, editorData.tileMap, socket);
+
+        nextEditorData = { ...editorData, tileMap: bakeResult.tileMap };
+        setEditorData(nextEditorData);
+
+        if (!bakeResult.uploaded) {
+          toast({
+            title: "Baked map surfaces stored inline.",
+            description:
+              "The asset upload was unavailable, so the baked images were embedded in the map data.",
+            status: "warning",
+            duration: 4000,
+            isClosable: true,
+            position: "top",
+          });
+        }
+      } catch (error) {
+        setIsSaving(false);
+        toast({
+          title: "Unable to bake the tile map.",
+          description: error instanceof Error ? error.message : "Unknown baking error.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+          position: "top",
+        });
+        return;
+      }
+
+      setIsSaving(false);
+    }
+
+    saveMapEditorData(mapId, nextEditorData);
+    setSavedEditorData(nextEditorData);
     publishMapsState(mapsState);
     toast({
       title: "Map editor changes saved.",
-      description: `${editorData.objects.length} objects, ${editorData.portals.length} portals, and ${editorData.npcs.length} NPCs stored for this map.`,
+      description: `${nextEditorData.objects.length} objects, ${nextEditorData.portals.length} portals, ${nextEditorData.npcs.length} NPCs${
+        nextEditorData.tileMap ? ", and the baked tile map" : ""
+      } stored for this map.`,
       status: "success",
       duration: 3000,
       isClosable: true,
@@ -971,7 +1019,13 @@ export default function MapEditorPage() {
           </Text>
         </Box>
         <Flex wrap="wrap" gap={3}>
-          <Button onClick={handleToolbarSave} colorScheme="green" isDisabled={!isEditorDirty}>
+          <Button
+            onClick={handleToolbarSave}
+            colorScheme="green"
+            isDisabled={!isEditorDirty}
+            isLoading={isSaving}
+            loadingText="Baking..."
+          >
             Save
           </Button>
           <Button
@@ -1028,29 +1082,59 @@ export default function MapEditorPage() {
                 each, rendered as {mapPixelWidth} x {mapPixelHeight}px.
               </Text>
             </Box>
-            <Text fontSize="sm" color="#4d6652">
-              Selector, grass, object placement, portal tools, and NPC placement all edit the saved map editor data.
-            </Text>
+            <Flex gap={2} align="center">
+              <Button
+                size="sm"
+                variant={editorMode === "tiles" ? "solid" : "outline"}
+                colorScheme="green"
+                onClick={() => setEditorMode("tiles")}
+              >
+                Tiles
+              </Button>
+              <Button
+                size="sm"
+                variant={editorMode === "placements" ? "solid" : "outline"}
+                colorScheme="green"
+                onClick={() => setEditorMode("placements")}
+              >
+                Placements
+              </Button>
+              <Text fontSize="sm" color="#4d6652">
+                {editorMode === "tiles"
+                  ? "RPG Maker XP style tile layers with autotiles, passability, and baked surfaces."
+                  : "Selector, grass, object placement, portal tools, and NPC placement all edit the saved map editor data."}
+              </Text>
+            </Flex>
           </Flex>
 
           <Box p={{ base: 4, md: 5 }}>
-            <PlayableMapEditorCanvas
-              cellSize={previewConfig.cellSize}
-              mapWidth={previewConfig.width}
-              mapHeight={previewConfig.height}
-              pixelWidth={mapPixelWidth}
-              pixelHeight={mapPixelHeight}
-              iframeSrc={editorFrameSrc}
-              backgroundStyle={mapSurfaceBackgroundStyle}
-              objectCatalog={objectCatalog}
-              pokemonCatalog={pokemonCatalog}
-              npcCatalog={npcCatalog}
-              maps={mapSummaries}
-              currentMapId={mapId}
-              value={editorData}
-              onChange={setEditorData}
-              isDirty={isEditorDirty}
-            />
+            {editorMode === "tiles" ? (
+              <TileMapEditor
+                mapWidth={previewConfig.width}
+                mapHeight={previewConfig.height}
+                cellSize={previewConfig.cellSize}
+                value={editorData}
+                onChange={setEditorData}
+              />
+            ) : (
+              <PlayableMapEditorCanvas
+                cellSize={previewConfig.cellSize}
+                mapWidth={previewConfig.width}
+                mapHeight={previewConfig.height}
+                pixelWidth={mapPixelWidth}
+                pixelHeight={mapPixelHeight}
+                iframeSrc={editorFrameSrc}
+                backgroundStyle={mapSurfaceBackgroundStyle}
+                objectCatalog={objectCatalog}
+                pokemonCatalog={pokemonCatalog}
+                npcCatalog={npcCatalog}
+                maps={mapSummaries}
+                currentMapId={mapId}
+                value={editorData}
+                onChange={setEditorData}
+                isDirty={isEditorDirty}
+              />
+            )}
           </Box>
         </Box>
       </Box>

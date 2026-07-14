@@ -12,6 +12,7 @@ import { Link as RouterLink, Navigate } from 'react-router-dom';
 import { useAuth } from '../../../context/authContext';
 import AuthAlerts from './AuthAlerts';
 import AuthShell from './AuthShell';
+import PasswordInput from './PasswordInput';
 import { validateRequired } from './validation';
 
 const Login = () => {
@@ -74,10 +75,9 @@ const Login = () => {
 
         <FormControl isRequired>
           <FormLabel htmlFor="password">Password</FormLabel>
-          <Input
+          <PasswordInput
             id="password"
             name="password"
-            type="password"
             placeholder="Password"
             autoComplete="current-password"
             value={password}

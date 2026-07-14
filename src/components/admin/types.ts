@@ -108,6 +108,27 @@ export type AdminRoleDefinition = {
   userCount: number
 }
 
+export type ApiKeyScope = 'read' | 'write' | 'admin'
+
+export type ApiKeySummary = {
+  id: number
+  name: string
+  keyPrefix: string
+  scopes: ApiKeyScope[]
+  createdBy: string | null
+  createdAt: string
+  lastUsedAt: string | null
+  expiresAt: string | null
+  revokedAt: string | null
+  enabled: boolean
+  status: 'active' | 'revoked' | 'disabled' | 'expired'
+}
+
+export type CreatedApiKey = {
+  key: string
+  meta: ApiKeySummary
+}
+
 export type OnlineMapOverview = {
   mapId: string
   onlinePlayers: number

@@ -11,6 +11,7 @@ import RequireAuth from './components/ux/auth/RequireAuth';
 import ValidateEmail from './components/ux/auth/ValidateEmail';
 import Frame from './components/gameFrame/Frame';
 import LevelingCurvePage from './components/designer/LevelingCurvePage';
+import BattleInterfacePage from './components/designer/BattleInterfacePage';
 import Main from './components/designer/Main';
 import MapEditorPage from './components/designer/MapEditorPage';
 import Section from './components/designer/Section';
@@ -21,6 +22,9 @@ const withAuth = (element: ReactNode, requiredPermission?: RolePermission) =>
 
 export type RuntimeConfig = {
   backendUrl: string
+  // Origin of the asset-storage nginx server; "" keeps asset paths relative
+  // to the frontend origin.
+  assetStorageBaseUrl: string
 }
 
 export const createEndpoints = (config: RuntimeConfig): RouteObject[] => [
@@ -67,6 +71,10 @@ export const createEndpoints = (config: RuntimeConfig): RouteObject[] => [
   {
     path: "/designer/leveling-curve",
     element: withAuth(createElement(LevelingCurvePage), 'designer.access')
+  },
+  {
+    path: "/designer/battle-interface",
+    element: withAuth(createElement(BattleInterfacePage), 'designer.access')
   },
   {
     path: "/designer/skills-gfx",
@@ -149,6 +157,10 @@ export const createEndpoints = (config: RuntimeConfig): RouteObject[] => [
     element: withAuth(createElement(Section, { sectionKey: "fonts" }), 'designer.access')
   },
   {
+    path: "/designer/tilesets",
+    element: withAuth(createElement(Section, { sectionKey: "tilesets" }), 'designer.access')
+  },
+  {
     path: '/moderator',
     element: withAuth(createElement(ModeratorPage), 'moderator.access')
   },
@@ -167,6 +179,10 @@ export const createEndpoints = (config: RuntimeConfig): RouteObject[] => [
   {
     path: '/admin/roles',
     element: withAuth(createElement(AdminPage, { section: 'roles' }), 'admin.access')
+  },
+  {
+    path: '/admin/api-keys',
+    element: withAuth(createElement(AdminPage, { section: 'apikeys' }), 'admin.access')
   },
   {
     path: '*',

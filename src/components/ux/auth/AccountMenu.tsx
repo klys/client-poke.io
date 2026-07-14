@@ -32,6 +32,7 @@ import {
 } from '@chakra-ui/react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
+import PasswordInput from './PasswordInput';
 import {
   useAuth,
   type BattleHistoryEntry,
@@ -375,11 +376,11 @@ function AccountWindow() {
       <Divider borderColor="whiteAlpha.300" />
       <FormControl>
         <FormLabel>Current password</FormLabel>
-        <Input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
+        <PasswordInput value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
       </FormControl>
       <FormControl>
         <FormLabel>New password</FormLabel>
-        <Input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+        <PasswordInput value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
       </FormControl>
       <Button
         onClick={() => {

@@ -1,4 +1,5 @@
 import React from "react";
+import { assetUrl } from "../tilemap/serverAssets";
 /**
  * 
  * @param props {
@@ -10,7 +11,7 @@ import React from "react";
  * @returns 
  */
 const Object = (props:any) => {
-  const imageSrc = props.imageSrc ?? "/objects/Rock.png";
+  const imageSrc = assetUrl(props.imageSrc ?? "/objects/Rock.png");
   const width = props.width ?? 32;
   const height = props.height ?? 32;
   const alt = props.alt ?? "Rock";

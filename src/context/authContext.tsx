@@ -152,7 +152,6 @@ type UpdateProfilePayload = {
 }
 
 type ChooseStarterPayload = {
-  gender: string
   pokemonId: string
   nickname: string
 }

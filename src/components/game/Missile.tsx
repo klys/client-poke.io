@@ -1,6 +1,7 @@
 import {useState, useContext, useEffect, useCallback} from "react"
 
 import { AppContext } from "../../context/appContext"
+import { assetUrl } from "../tilemap/serverAssets"
 
 const Missile = (props:any) => {
   const {socket} = useContext(AppContext)
@@ -30,7 +31,7 @@ useEffect(() => {
     >
       <img
         style={{ transform: "rotate("+props.data.angle+"deg)" }}
-        src="/missile0.gif"
+        src={assetUrl("/missile0.gif")}
         alt="Picture of a missile shot"
         width={32}
         height={32}

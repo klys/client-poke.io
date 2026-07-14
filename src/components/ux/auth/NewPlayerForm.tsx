@@ -13,6 +13,7 @@ import { Link as RouterLink, Navigate } from 'react-router-dom';
 import { useAuth } from '../../../context/authContext';
 import AuthAlerts from './AuthAlerts';
 import AuthShell from './AuthShell';
+import PasswordInput from './PasswordInput';
 import { validateEmail, validateName, validatePassword, validateUsername } from './validation';
 
 const NewPlayerForm = () => {
@@ -109,10 +110,9 @@ const NewPlayerForm = () => {
 
         <FormControl isRequired>
           <FormLabel htmlFor="password">Password</FormLabel>
-          <Input
+          <PasswordInput
             id="password"
             name="password"
-            type="password"
             placeholder="Create a password"
             autoComplete="new-password"
             title="Use 8 to 150 characters with at least one uppercase letter, one lowercase letter, one number, and one symbol."

@@ -2,6 +2,7 @@ import { createContext, useReducer, useState } from "react"
 import io, { Socket } from "socket.io-client"
 import Player from "../components/game/Player"
 import { loadPlayableMapsSnapshot } from "../components/game/playableMapRuntime"
+import { EMPTY_EVENT_STATE, type EventPlayerState } from "../components/game/npcEventState"
 import type { MapEditorNpcPlacement } from "../components/designer/PlayableMapEditorCanvas"
 import type { BattlePrompt, BattlePublicState, TrainerCardPlayer } from "../components/ux/game/battleTypes"
 
@@ -25,9 +26,11 @@ export type InitialStateType = {
     pointerAngle:number
     myplayer:string
     battle: BattlePublicState | null
+    battleEvents: any[]
     battlePrompts: BattlePrompt[]
     selectedTrainer: TrainerCardPlayer | null
     activeNpcInteraction: MapEditorNpcPlacement | null
+    eventState: EventPlayerState
 }
 
 const createInitialState = (socket: Socket) => ({
@@ -45,9 +48,11 @@ const createInitialState = (socket: Socket) => ({
     waiting:false,
     myplayer:"",
     battle: null,
+    battleEvents: [],
     battlePrompts: [],
     selectedTrainer: null,
-    activeNpcInteraction: null
+    activeNpcInteraction: null,
+    eventState: EMPTY_EVENT_STATE
 })
 
 export const networkEvents = {
@@ -74,11 +79,13 @@ enum actions {
     ADD_GROUND_ITEM = 'ADD_GROUND_ITEM',
     REMOVE_GROUND_ITEM = 'REMOVE_GROUND_ITEM',
     SET_BATTLE = 'SET_BATTLE',
+    APPEND_BATTLE_EVENTS = 'APPEND_BATTLE_EVENTS',
     CLEAR_BATTLE = 'CLEAR_BATTLE',
     ADD_BATTLE_PROMPT = 'ADD_BATTLE_PROMPT',
     REMOVE_BATTLE_PROMPT = 'REMOVE_BATTLE_PROMPT',
     SET_SELECTED_TRAINER = 'SET_SELECTED_TRAINER',
-    SET_ACTIVE_NPC_INTERACTION = 'SET_ACTIVE_NPC_INTERACTION'
+    SET_ACTIVE_NPC_INTERACTION = 'SET_ACTIVE_NPC_INTERACTION',
+    SET_EVENT_STATE = 'SET_EVENT_STATE'
 }
 
 // Actions are handle on this reducer
@@ -251,12 +258,32 @@ const reducer = (state:any, action:any) => {
             return {
                 ...state,
                 battle: action.battle,
+                battleEvents:
+                    action.battle && state.battle && action.battle.id !== state.battle.id
+                        ? []
+                        : state.battleEvents ?? [],
                 waiting: Boolean(action.battle && action.battle.status === "active")
             }
+        case actions.APPEND_BATTLE_EVENTS: {
+            const incoming = Array.isArray(action.events) ? action.events : []
+            const existing = state.battleEvents ?? []
+            const lastSeq = existing.length > 0 ? existing[existing.length - 1].seq : 0
+            const fresh = incoming.filter((event: any) => typeof event?.seq === "number" && event.seq > lastSeq)
+            if (fresh.length === 0) {
+                return state
+            }
+            // Cap retained events so long battles do not grow unbounded.
+            const merged = [...existing, ...fresh]
+            return {
+                ...state,
+                battleEvents: merged.length > 400 ? merged.slice(-400) : merged
+            }
+        }
         case actions.CLEAR_BATTLE:
             return {
                 ...state,
                 battle: null,
+                battleEvents: [],
                 waiting: false
             }
         case actions.ADD_BATTLE_PROMPT:
@@ -282,7 +309,12 @@ const reducer = (state:any, action:any) => {
                 ...state,
                 activeNpcInteraction: action.npcInteraction
             }
-            
+        case actions.SET_EVENT_STATE:
+            return {
+                ...state,
+                eventState: action.eventState
+            }
+
     }
 }
 
@@ -290,7 +322,12 @@ const reducer = (state:any, action:any) => {
 export const AppContext = createContext<any>(null);
 
 export const Provider = ({ children, socketUrl }:{children:any, socketUrl:string}) => {
-    const [socket] = useState(() => io(socketUrl))
+    // websocket-only transport: the default polling handshake is an XHR that is
+    // CORS-checked, which fails from the Capacitor WebView origin
+    // (https://localhost) and leaves the game with no map data (green/grass
+    // fallback screen). WebSockets are exempt from browser CORS, matching the
+    // auth socket, so the game connects on web, Capacitor and Electron alike.
+    const [socket] = useState(() => io(socketUrl, { transports: ["websocket"] }))
     const [state, dispatch] = useReducer(reducer, createInitialState(socket));
 
     /*useEffect(() => {
@@ -314,9 +351,14 @@ export const Provider = ({ children, socketUrl }:{children:any, socketUrl:string
         objects:state.objects ?? [],
         groundItems: state.groundItems ?? [],
         battle: state.battle ?? null,
+        battleEvents: state.battleEvents ?? [],
         battlePrompts: state.battlePrompts ?? [],
         selectedTrainer: state.selectedTrainer ?? null,
         activeNpcInteraction: state.activeNpcInteraction ?? null,
+        eventState: state.eventState ?? EMPTY_EVENT_STATE,
+        setEventState: (eventState: EventPlayerState) => {
+            dispatch({ type: actions.SET_EVENT_STATE, eventState })
+        },
         connect: () => {
             dispatch({ type: actions.CONNECT })
         },
@@ -376,6 +418,9 @@ export const Provider = ({ children, socketUrl }:{children:any, socketUrl:string
         },
         setBattle: (battle: BattlePublicState) => {
             dispatch({type: actions.SET_BATTLE, battle})
+        },
+        appendBattleEvents: (events: any[]) => {
+            dispatch({type: actions.APPEND_BATTLE_EVENTS, events})
         },
         clearBattle: () => {
             dispatch({type: actions.CLEAR_BATTLE})
