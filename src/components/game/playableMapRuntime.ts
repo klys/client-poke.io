@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { dispatchDesignerCacheUpdated } from "../designer/designerCache";
+import { resolveServerAssetUrl } from "../tilemap/serverAssets";
 import {
   designerSectionsByKey,
   type DesignerItemSeed,
@@ -142,10 +143,14 @@ export function getPlayableMapBackgroundStyle(config: DesignerPlayableMapConfig)
     };
   }
 
+  // Designer background may be a data URI or a root-relative asset-storage path;
+  // resolve so remote backgrounds load off the asset-storage origin.
+  const backgroundImageSrc = resolveServerAssetUrl(config.backgroundImageSrc);
+
   if (config.backgroundImageMode === "centered") {
     return {
       backgroundColor,
-      backgroundImage: `url("${config.backgroundImageSrc}")`,
+      backgroundImage: `url("${backgroundImageSrc}")`,
       backgroundPosition: "center",
       backgroundRepeat: "no-repeat",
       backgroundSize: "auto",
@@ -155,7 +160,7 @@ export function getPlayableMapBackgroundStyle(config: DesignerPlayableMapConfig)
   if (config.backgroundImageMode === "stretched") {
     return {
       backgroundColor,
-      backgroundImage: `url("${config.backgroundImageSrc}")`,
+      backgroundImage: `url("${backgroundImageSrc}")`,
       backgroundPosition: "center",
       backgroundRepeat: "no-repeat",
       backgroundSize: "100% 100%",
@@ -164,7 +169,7 @@ export function getPlayableMapBackgroundStyle(config: DesignerPlayableMapConfig)
 
   return {
     backgroundColor,
-    backgroundImage: `url("${config.backgroundImageSrc}")`,
+    backgroundImage: `url("${backgroundImageSrc}")`,
     backgroundPosition: "top left",
     backgroundRepeat: "repeat",
     backgroundSize: "auto",

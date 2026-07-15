@@ -1,6 +1,7 @@
 import {
   readStoredDesignerSectionPayload,
 } from "../../designer/designerCache";
+import { resolveServerAssetUrl } from "../../tilemap/serverAssets";
 import type {
   DesignerCharacterSkinProfile,
   DesignerItemSeed,
@@ -74,7 +75,7 @@ export function getCharacterSkinPreview(profile?: DesignerCharacterSkinProfile) 
     return "";
   }
 
-  return (
+  return resolveServerAssetUrl(
     profile.standingDownSrc ||
     profile.standingUpSrc ||
     profile.standingLeftSrc ||
@@ -93,29 +94,33 @@ export function getCharacterSkinSprite(
     return "";
   }
 
-  if (isWalking) {
+  const pick = (): string => {
+    if (isWalking) {
+      switch (direction) {
+        case "up":
+          return profile.walkingUpSrc;
+        case "left":
+          return profile.walkingLeftSrc;
+        case "right":
+          return profile.walkingRightSrc;
+        case "down":
+        default:
+          return profile.walkingDownSrc;
+      }
+    }
+
     switch (direction) {
       case "up":
-        return profile.walkingUpSrc;
+        return profile.standingUpSrc;
       case "left":
-        return profile.walkingLeftSrc;
+        return profile.standingLeftSrc;
       case "right":
-        return profile.walkingRightSrc;
+        return profile.standingRightSrc;
       case "down":
       default:
-        return profile.walkingDownSrc;
+        return profile.standingDownSrc;
     }
-  }
+  };
 
-  switch (direction) {
-    case "up":
-      return profile.standingUpSrc;
-    case "left":
-      return profile.standingLeftSrc;
-    case "right":
-      return profile.standingRightSrc;
-    case "down":
-    default:
-      return profile.standingDownSrc;
-  }
+  return resolveServerAssetUrl(pick());
 }

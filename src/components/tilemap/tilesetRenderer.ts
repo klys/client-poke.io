@@ -1,4 +1,5 @@
 import { AUTOTILE_PATTERNS } from "./autotile";
+import { resolveServerAssetUrl } from "./serverAssets";
 import {
   AUTOTILE_ID_UNIT,
   AUTOTILE_SLOTS,
@@ -18,7 +19,9 @@ export function loadImageElement(src: string): Promise<HTMLImageElement | null> 
     const image = new Image();
     image.onload = () => resolve(image);
     image.onerror = () => resolve(null);
-    image.src = src;
+    // Tileset/autotile sources may be data URIs or root-relative asset-storage
+    // paths; resolve so remote images load off the asset-storage origin.
+    image.src = resolveServerAssetUrl(src);
   });
 }
 

@@ -46,6 +46,7 @@ import {
 } from '../../designer/designerCache';
 import type { DesignerItemSeed, DesignerPokemonProfile } from '../../designer/designerSections';
 import { getPokemonDisplayName, validatePokemonNickname } from '../game/pokemonName';
+import { resolveServerAssetUrl } from '../../tilemap/serverAssets';
 
 type WindowKey = 'account' | 'settings' | 'bag' | 'pokemons' | 'trainerCard' | 'battleHistory';
 type PokemonStatsWindowId = `pokemonStats:${string}`;
@@ -631,7 +632,7 @@ function PokemonStatsWindow({
       <HStack spacing={4} align="center">
         <Avatar
           name={getPokemonDisplayName(pokemon)}
-          src={catalogEntry?.profile.iconImageSrc}
+          src={resolveServerAssetUrl(catalogEntry?.profile.iconImageSrc ?? '')}
           bg="whiteAlpha.200"
         />
         <Box minW={0}>
@@ -650,7 +651,7 @@ function PokemonStatsWindow({
         <HStack align="center" spacing={4}>
           {catalogEntry?.profile.frontImageSrc ? (
             <Image
-              src={catalogEntry.profile.frontImageSrc}
+              src={resolveServerAssetUrl(catalogEntry.profile.frontImageSrc)}
               alt={pokemon.name}
               boxSize="88px"
               objectFit="contain"
@@ -660,7 +661,7 @@ function PokemonStatsWindow({
           ) : (
             <Avatar
               name={pokemon.name}
-              src={catalogEntry?.profile.iconImageSrc}
+              src={resolveServerAssetUrl(catalogEntry?.profile.iconImageSrc ?? '')}
               size="xl"
               bg="whiteAlpha.200"
               flexShrink={0}
@@ -762,7 +763,7 @@ function PokemonCard({
           <Avatar
             size="sm"
             name={pokemon.name}
-            src={catalogEntry?.profile.iconImageSrc}
+            src={resolveServerAssetUrl(catalogEntry?.profile.iconImageSrc ?? '')}
             bg="whiteAlpha.200"
             flexShrink={0}
           />

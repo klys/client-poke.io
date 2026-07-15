@@ -4,6 +4,7 @@ import {
   readStoredDesignerSectionPayload,
   type DesignerCacheUpdateDetail
 } from "../../../designer/designerCache";
+import { resolveServerAssetUrl } from "../../../tilemap/serverAssets";
 
 /**
  * Battle interface customization published through the `battleInterface`
@@ -172,5 +173,12 @@ export function readBattleBackgroundImages(config: BattleInterfaceConfig): {
     }
   }
 
-  return { backgroundSrc, playerBaseSrc, enemyBaseSrc };
+  // Designer values may be data URIs (uploads) or root-relative asset-storage
+  // paths ("/migration_exports/..."); resolveServerAssetUrl prefixes the latter
+  // with the asset-storage origin and passes data/absolute URLs through.
+  return {
+    backgroundSrc: resolveServerAssetUrl(backgroundSrc),
+    playerBaseSrc: resolveServerAssetUrl(playerBaseSrc),
+    enemyBaseSrc: resolveServerAssetUrl(enemyBaseSrc)
+  };
 }
