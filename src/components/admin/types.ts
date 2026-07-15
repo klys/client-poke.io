@@ -16,12 +16,16 @@ export type AdminSavedLocation = {
   y: number
 }
 
+export type AdminInventoryCategory = 'usable' | 'berries' | 'moves' | 'quest'
+
 export type AdminInventoryItem = {
   id: string
   name: string
-  category: 'usable' | 'berries' | 'moves' | 'quest'
+  category: AdminInventoryCategory
   quantity: number
   description: string
+  /** Root-relative asset path, resolved via assetUrl(). Present on read only. */
+  iconSrc?: string
 }
 
 export type AdminPokemonSummary = {
@@ -46,6 +50,43 @@ export type AdminPokemonSummary = {
     specialDefense: number
     speed: number
   }
+  /** Root-relative asset paths, resolved via assetUrl(). Present on read only. */
+  iconImageSrc?: string
+  frontImageSrc?: string
+  ivs?: Record<string, number>
+  evs?: Record<string, number>
+  status?: { id: string; counter: number } | null
+  heldItemId?: string
+  heldItemName?: string
+  pendingMoveLearns?: string[]
+}
+
+export type AdminItemCatalogEntry = {
+  id: string
+  name: string
+  category: AdminInventoryCategory
+  description: string
+  iconSrc: string
+}
+
+export type AdminPokemonCatalogEntry = {
+  id: string
+  name: string
+  types: string[]
+  iconImageSrc: string
+  hp: number
+}
+
+export type AdminMapCatalogEntry = {
+  mapId: string
+  name: string
+  category: string
+}
+
+export type AdminCatalogPayload = {
+  items: AdminItemCatalogEntry[]
+  pokemons: AdminPokemonCatalogEntry[]
+  maps: AdminMapCatalogEntry[]
 }
 
 export type AdminBattleHistoryEntry = {
