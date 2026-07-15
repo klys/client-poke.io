@@ -13,6 +13,7 @@ import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, SyntheticEvent } from "react";
 import { AppContext } from "../../../context/appContext";
 import type { BattleAction, BattlePublicItem, BattlePublicPokemon, BattlePublicState } from "./battleTypes";
+import { resolveServerAssetUrl } from "../../tilemap/serverAssets";
 import { getPokemonDisplayName } from "./pokemonName";
 
 type BattleView = "menu" | "fight" | "bag" | "bagTarget" | "pokemon";
@@ -83,9 +84,11 @@ function PokemonSprite({
   pokemon: BattlePublicPokemon;
   perspective: "back" | "front";
 }) {
-  const src = perspective === "back"
-    ? pokemon.backImageSrc || pokemon.frontImageSrc
-    : pokemon.frontImageSrc || pokemon.backImageSrc;
+  const src = resolveServerAssetUrl(
+    perspective === "back"
+      ? pokemon.backImageSrc || pokemon.frontImageSrc
+      : pokemon.frontImageSrc || pokemon.backImageSrc
+  );
 
   return (
     <Box

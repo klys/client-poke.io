@@ -1,5 +1,6 @@
 import { Box, Text, keyframes } from "@chakra-ui/react";
 import type { ActiveEvolution } from "./useBattleEventQueue";
+import { resolveServerAssetUrl } from "../../../tilemap/serverAssets";
 
 const evolutionGlow = keyframes`
   0% { filter: brightness(1); transform: scale(1); }
@@ -25,7 +26,7 @@ export default function EvolutionScreen({ evolution }: { evolution: ActiveEvolut
       <Box animation={`${evolutionGlow} 3.2s ease-in-out forwards`}>
         {evolution.frontImageSrc ? (
           <img
-            src={evolution.frontImageSrc}
+            src={resolveServerAssetUrl(evolution.frontImageSrc)}
             alt={evolution.toName}
             style={{
               width: "min(46vw, 240px)",

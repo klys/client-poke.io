@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../../context/authContext';
 import type { DesignerItemSeed, DesignerPokemonProfile } from '../../designer/designerSections';
 import { sanitizePokemonNicknameInput, validatePokemonNickname } from './pokemonName';
+import { resolveServerAssetUrl } from '../../tilemap/serverAssets';
 
 type StarterPokemon = {
   id: string;
@@ -105,7 +106,7 @@ const StartupPokemonSelection = () => {
                   onClick={() => setSelectedPokemonId(pokemon.id)}
                 >
                   <HStack spacing={3}>
-                    <Avatar name={pokemon.name} src={pokemon.profile.iconImageSrc} />
+                    <Avatar name={pokemon.name} src={resolveServerAssetUrl(pokemon.profile.iconImageSrc)} />
                     <Box>
                       <Text fontWeight="800">{pokemon.name}</Text>
                       <HStack mt={1}>

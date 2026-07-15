@@ -13,6 +13,7 @@ import {
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, SyntheticEvent } from "react";
 import { AppContext } from "../../../../context/appContext";
+import { resolveServerAssetUrl } from "../../../tilemap/serverAssets";
 import type {
   BattleAction,
   BattlePublicItem,
@@ -327,9 +328,11 @@ export default function BattleScene() {
     fx: BattleSpriteFx,
     hidden: boolean
   ) => {
-    const src = perspective === "back"
-      ? pokemon.backImageSrc || pokemon.frontImageSrc
-      : pokemon.frontImageSrc || pokemon.backImageSrc;
+    const src = resolveServerAssetUrl(
+      perspective === "back"
+        ? pokemon.backImageSrc || pokemon.frontImageSrc
+        : pokemon.frontImageSrc || pokemon.backImageSrc
+    );
 
     if (hidden) {
       return null;
