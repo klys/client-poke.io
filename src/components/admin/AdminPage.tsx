@@ -117,18 +117,36 @@ export default function AdminPage({ section }: AdminPageProps) {
       });
     };
 
+    // Re-request the active section's data after a reconnect — any response
+    // that was in flight when the socket dropped is gone for good.
+    const handleReconnect = () => {
+      if (section === 'maps') {
+        loadMaps();
+      } else if (section === 'roles') {
+        loadRoles();
+      }
+    };
+
+    const handleDisconnect = () => {
+      setIsSavingRoleKey(null);
+    };
+
     socket.on('admin:roles:list', handleRoles);
     socket.on('moderation:maps:list', handleMaps);
     socket.on('admin:error', handleAdminError);
     socket.on('moderation:error', handleModerationError);
+    socket.on('connect', handleReconnect);
+    socket.on('disconnect', handleDisconnect);
 
     return () => {
       socket.off('admin:roles:list', handleRoles);
       socket.off('moderation:maps:list', handleMaps);
       socket.off('admin:error', handleAdminError);
       socket.off('moderation:error', handleModerationError);
+      socket.off('connect', handleReconnect);
+      socket.off('disconnect', handleDisconnect);
     };
-  }, [socket, toast]);
+  }, [socket, toast, section, loadMaps, loadRoles]);
 
   useEffect(() => {
     if (section === 'maps') {

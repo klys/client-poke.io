@@ -121,6 +121,22 @@ export default function UsersSection({ socket }: UsersSectionProps) {
       setIsSendingRecovery(false);
     };
 
+    // Requests in flight when the socket drops are lost; without this the
+    // panel would sit on stale data (or a stuck spinner) after a reconnect.
+    const handleReconnect = () => {
+      emitListLoad(currentPageRef.current, currentSearchRef.current, true);
+      socket.emit('admin:catalog:get');
+      socket.emit('admin:presence:subscribe');
+    };
+
+    const handleDisconnect = () => {
+      setIsSaving(false);
+      setIsSettingPassword(false);
+      setIsSendingRecovery(false);
+      setIsDeleting(false);
+      setDetailLoading(false);
+    };
+
     socket.on('admin:users:list', handleUsers);
     socket.on('admin:user:details', handleUserDetails);
     socket.on('admin:user:deleted', handleUserDeleted);
@@ -128,6 +144,8 @@ export default function UsersSection({ socket }: UsersSectionProps) {
     socket.on('admin:presence:state', handlePresence);
     socket.on('admin:error', handleAdminError);
     socket.on('auth:info', handleAuthInfo);
+    socket.on('connect', handleReconnect);
+    socket.on('disconnect', handleDisconnect);
 
     emitListLoad(1, '', true);
     socket.emit('admin:catalog:get');
@@ -141,6 +159,8 @@ export default function UsersSection({ socket }: UsersSectionProps) {
       socket.off('admin:presence:state', handlePresence);
       socket.off('admin:error', handleAdminError);
       socket.off('auth:info', handleAuthInfo);
+      socket.off('connect', handleReconnect);
+      socket.off('disconnect', handleDisconnect);
       socket.emit('admin:presence:unsubscribe');
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);

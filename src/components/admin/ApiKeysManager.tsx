@@ -118,15 +118,30 @@ export default function ApiKeysManager() {
       toast({ title: message, status: 'error', duration: 4000, isClosable: true, position: 'top' });
     };
 
+    // Reload after a reconnect; a list response lost to a dropped socket
+    // would otherwise leave the table stale or the spinner stuck.
+    const handleReconnect = () => {
+      loadKeys();
+    };
+
+    const handleDisconnect = () => {
+      setIsCreating(false);
+      setRevokingId(null);
+    };
+
     socket.on('admin:apikeys:list', handleList);
     socket.on('admin:apikeys:created', handleCreated);
     socket.on('admin:error', handleError);
+    socket.on('connect', handleReconnect);
+    socket.on('disconnect', handleDisconnect);
     loadKeys();
 
     return () => {
       socket.off('admin:apikeys:list', handleList);
       socket.off('admin:apikeys:created', handleCreated);
       socket.off('admin:error', handleError);
+      socket.off('connect', handleReconnect);
+      socket.off('disconnect', handleDisconnect);
     };
   }, [socket, toast, loadKeys]);
 
