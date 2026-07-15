@@ -266,6 +266,17 @@ export default function BattleScene() {
     setSelectedItem(null);
   }, [battle?.id, battle?.turn]);
 
+  const mustReplace = Boolean(battle?.mustSelectReplacement) && battle?.status === "active";
+  const queueBusy = playback.queueBusy;
+
+  // A fainted active mon forces the switch panel open until a replacement is picked.
+  useEffect(() => {
+    if (mustReplace && !queueBusy && view !== "pokemon") {
+      setView("pokemon");
+      setSelectedItem(null);
+    }
+  }, [mustReplace, queueBusy, view]);
+
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 250);
     return () => window.clearInterval(timer);
@@ -285,7 +296,8 @@ export default function BattleScene() {
   }
 
   const sendAction = (action: BattleAction) => {
-    if (!battle.canAct) {
+    const canSendReplacement = mustReplace && action.type === "pokemon";
+    if (!battle.canAct && !canSendReplacement) {
       return;
     }
 
@@ -309,10 +321,15 @@ export default function BattleScene() {
   const fxForSelf = playback.spriteFx[battle.self.id];
   const fxForEnemy = playback.spriteFx[battle.opponent.id];
   const actionDisabled = !battle.canAct || battle.status !== "active" || playback.queueBusy;
+  const switchDisabled = battle.status !== "active"
+    || playback.queueBusy
+    || (!battle.canAct && !mustReplace);
   const idleMessage = battle.result
-    ?? (battle.waitingForOpponent
-      ? "Waiting for the other trainer..."
-      : `What will ${getPokemonDisplayName(selfPokemon)} do?`);
+    ?? (mustReplace
+      ? "Choose your next Venomon."
+      : battle.waitingForOpponent
+        ? "Waiting for the other trainer..."
+        : `What will ${getPokemonDisplayName(selfPokemon)} do?`);
   const message = playback.message ?? idleMessage;
   const showCommandMenu = !playback.queueBusy && battle.status === "active" && battle.canAct;
   const enemyBallVisible = playback.catchPlayback !== null || playback.enemyCaught;
@@ -563,7 +580,7 @@ export default function BattleScene() {
           <SimpleGrid columns={2} spacing={1.5}>
             <MenuButton colorScheme="red" onClick={() => setView("fight")}>FIGHT</MenuButton>
             <MenuButton colorScheme="yellow" onClick={() => setView("bag")}>BAG</MenuButton>
-            <MenuButton colorScheme="green" onClick={() => setView("pokemon")}>POKEMON</MenuButton>
+            <MenuButton colorScheme="green" onClick={() => setView("pokemon")}>VENOMONS</MenuButton>
             <MenuButton
               colorScheme="blue"
               onClick={() => sendAction({ type: battle.kind === "trainer" ? "surrender" : "run" })}
@@ -678,6 +695,11 @@ export default function BattleScene() {
 
         {view === "pokemon" ? (
           <Box overflowY="auto" overscrollBehavior="contain">
+            {mustReplace ? (
+              <Text color={config.messageBoxTextColor} fontWeight="900" mb={1.5}>
+                Choose your next Venomon:
+              </Text>
+            ) : null}
             <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={1.5}>
               {battle.self.party.map((pokemon) => (
                 <Button
@@ -687,7 +709,7 @@ export default function BattleScene() {
                   colorScheme="orange"
                   variant={pokemon.id === selfPokemon.id ? "solid" : "outline"}
                   color={pokemon.id === selfPokemon.id ? undefined : config.messageBoxTextColor}
-                  isDisabled={pokemon.id === selfPokemon.id || pokemon.hp <= 0 || actionDisabled}
+                  isDisabled={pokemon.id === selfPokemon.id || pokemon.hp <= 0 || switchDisabled}
                   onClick={() => sendAction({ type: "pokemon", pokemonId: pokemon.id })}
                 >
                   <Text as="span" noOfLines={1}>{getPokemonDisplayName(pokemon)}</Text>
@@ -695,9 +717,11 @@ export default function BattleScene() {
                 </Button>
               ))}
             </SimpleGrid>
-            <Button mt={2} size="sm" variant="outline" color={config.messageBoxTextColor} onClick={() => setView("menu")}>
-              Back
-            </Button>
+            {!mustReplace ? (
+              <Button mt={2} size="sm" variant="outline" color={config.messageBoxTextColor} onClick={() => setView("menu")}>
+                Back
+              </Button>
+            ) : null}
           </Box>
         ) : null}
       </Grid>

@@ -86,6 +86,7 @@ export type BattlePublicState = {
   availableItems: BattlePublicItem[];
   canAct: boolean;
   waitingForOpponent: boolean;
+  mustSelectReplacement?: boolean;
   selectedActionType: string | null;
   turnEndsAt: string | null;
   log: string[];

@@ -1,6 +1,43 @@
 import { Box } from "@chakra-ui/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ResolvedSkillGfx } from "./skillGfx";
+
+// Sheet effects are authored at a fixed cell size (default 192px), so on a
+// large screen they used to look tiny next to viewport-scaled battlers. Scale
+// them to cover this fraction of the battler slot instead, clamped so effects
+// never collapse on tiny slots nor blow up past readable pixel-art sizes.
+const EFFECT_SLOT_COVERAGE = 0.9;
+const MIN_EFFECT_SCALE = 0.75;
+const MAX_EFFECT_SCALE = 4;
+
+function useSlotSize(ref: React.RefObject<HTMLDivElement>) {
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) {
+      return;
+    }
+
+    const measure = () => {
+      const rect = element.getBoundingClientRect();
+      setSize({ width: rect.width, height: rect.height });
+    };
+
+    measure();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref]);
+
+  return size;
+}
 
 /**
  * Plays a migrated move-effect animation over a battler slot. Rendered GIF
@@ -19,6 +56,8 @@ export default function MoveAnimationPlayer({
   const durationMs = Math.max(120, gfx.durationMs / Math.max(0.25, animationSpeed));
   const [frame, setFrame] = useState(0);
   const isSheet = gfx.animationKind === "sheet" && gfx.frameCount > 1;
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const slotSize = useSlotSize(wrapperRef);
 
   useEffect(() => {
     const timeout = window.setTimeout(onFinished, durationMs + 80);
@@ -38,6 +77,16 @@ export default function MoveAnimationPlayer({
     return () => window.clearInterval(interval);
   }, [isSheet, durationMs, gfx.frameCount]);
 
+  const effectScale = useMemo(() => {
+    if (!slotSize || slotSize.width <= 0) {
+      return 1.2;
+    }
+
+    const targetSize = Math.min(slotSize.width, Math.max(slotSize.height, slotSize.width * 0.6));
+    const scale = (targetSize * EFFECT_SLOT_COVERAGE) / gfx.cellSize;
+    return Math.min(MAX_EFFECT_SCALE, Math.max(MIN_EFFECT_SCALE, scale));
+  }, [slotSize, gfx.cellSize]);
+
   const sheetStyle = useMemo(() => {
     if (!isSheet) {
       return null;
@@ -52,13 +101,14 @@ export default function MoveAnimationPlayer({
       backgroundPosition: `-${column * gfx.cellSize}px -${row * gfx.cellSize}px`,
       backgroundRepeat: "no-repeat" as const,
       imageRendering: "pixelated" as const,
-      transform: "scale(1.2)",
+      transform: `scale(${effectScale})`,
       transformOrigin: "center"
     };
-  }, [isSheet, frame, gfx]);
+  }, [isSheet, frame, gfx, effectScale]);
 
   return (
     <Box
+      ref={wrapperRef}
       position="absolute"
       inset={0}
       display="flex"

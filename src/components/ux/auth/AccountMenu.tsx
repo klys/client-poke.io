@@ -74,7 +74,7 @@ const WINDOW_TITLES: Record<WindowKey, string> = {
   account: 'Account',
   settings: 'Settings',
   bag: 'Bag',
-  pokemons: 'Pokemons',
+  pokemons: 'Venomons',
   trainerCard: 'Trainer Card',
   battleHistory: 'Battle History'
 };
@@ -441,14 +441,14 @@ function BagWindow() {
   ];
   const selectPokemonTarget = (item: InventoryItem) => {
     if (party.length === 0) {
-      window.alert('You do not have Pokemon in your party.');
+      window.alert('You do not have Venomons in your party.');
       return null;
     }
 
     const promptText = party
       .map((pokemon, index) => `${index + 1}. ${getPokemonDisplayName(pokemon)} HP ${pokemon.hp}/${pokemon.maxHp}`)
       .join('\n');
-    const selection = window.prompt(`Select a Pokemon for ${item.name}:\n${promptText}`);
+    const selection = window.prompt(`Select a Venomon for ${item.name}:\n${promptText}`);
     const selectedIndex = selection ? Number.parseInt(selection, 10) - 1 : -1;
 
     return party[selectedIndex]?.id ?? null;
@@ -710,6 +710,7 @@ function PokemonStatsWindow({
           label="Speed"
           value={catalogEntry ? String(catalogEntry.profile.speed) : 'Unknown'}
         />
+        <PokemonStatTile label="Held Item" value={pokemon.heldItemName ?? 'None'} />
       </SimpleGrid>
 
       <Box bg="whiteAlpha.100" border="1px solid rgba(255,255,255,0.12)" p={3} borderRadius="8px">
@@ -723,7 +724,7 @@ function PokemonStatsWindow({
 
       {!catalogEntry ? (
         <Text color="yellow.200" fontSize="sm">
-          Extra stat art was not found in the local Pokemon catalog, so this card is using the party data only.
+          Extra stat art was not found in the local Venomon catalog, so this card is using the party data only.
         </Text>
       ) : null}
     </VStack>
@@ -733,13 +734,49 @@ function PokemonStatsWindow({
 function PokemonCard({
   pokemon,
   catalogEntry,
-  onOpenStats
+  partyIndex,
+  partySize,
+  onOpenStats,
+  onMoveInParty
 }: {
   pokemon: PokemonSummary;
   catalogEntry: PokemonCatalogEntry | null;
+  partyIndex: number;
+  partySize: number;
   onOpenStats: (pokemonId: string) => void;
+  onMoveInParty: (partyIndex: number, direction: -1 | 1) => void;
 }) {
-  const { namePokemon } = useAuth();
+  const { user, namePokemon, holdInventoryItem, takeHeldItem } = useAuth();
+
+  const handleGiveHeldItem = () => {
+    const berries = (user?.inventory ?? []).filter(
+      (item) => item.category === 'berries' && item.quantity > 0
+    );
+
+    if (berries.length === 0) {
+      window.alert('You do not have any berries to give.');
+      return;
+    }
+
+    const promptText = berries
+      .map((item, index) => `${index + 1}. ${item.name} x${item.quantity}`)
+      .join('\n');
+    const selection = window.prompt(
+      `Select a berry for ${getPokemonDisplayName(pokemon)} to hold.\n`
+        + `It will be used automatically during battle when its condition is met:\n${promptText}`
+    );
+    const selectedIndex = selection ? Number.parseInt(selection, 10) - 1 : -1;
+    const item = berries[selectedIndex];
+
+    if (item) {
+      holdInventoryItem({ pokemonId: pokemon.id, itemId: item.id });
+    }
+  };
+
+  const handleTakeHeldItem = () => {
+    takeHeldItem({ pokemonId: pokemon.id });
+  };
+
   const handleSelectName = () => {
     const value = window.prompt(`Select a name for ${pokemon.name}. Letters only, no spaces, max 10 characters.`);
     if (value === null) {
@@ -773,6 +810,7 @@ function PokemonCard({
           </Box>
         </HStack>
         <HStack spacing={2} align="start">
+          {partyIndex === 0 ? <Badge colorScheme="orange">Lead</Badge> : null}
           <Badge colorScheme="teal">Lv {pokemon.level}</Badge>
           <Menu placement="bottom-end">
             <MenuButton
@@ -786,12 +824,30 @@ function PokemonCard({
             <MenuList color="gray.900">
               <MenuItem onClick={() => onOpenStats(pokemon.id)}>Stats</MenuItem>
               <MenuItem onClick={handleSelectName}>{pokemon.nickname ? 'Rename' : 'Select Name'}</MenuItem>
+              <MenuItem isDisabled={partyIndex === 0} onClick={() => onMoveInParty(partyIndex, -1)}>
+                Move Up
+              </MenuItem>
+              <MenuItem
+                isDisabled={partyIndex >= partySize - 1}
+                onClick={() => onMoveInParty(partyIndex, 1)}
+              >
+                Move Down
+              </MenuItem>
+              <MenuItem onClick={handleGiveHeldItem}>
+                {pokemon.heldItemName ? 'Swap Held Berry' : 'Give Berry to Hold'}
+              </MenuItem>
+              {pokemon.heldItemName ? (
+                <MenuItem onClick={handleTakeHeldItem}>Take Held Item</MenuItem>
+              ) : null}
             </MenuList>
           </Menu>
         </HStack>
       </HStack>
-      <HStack mt={2}>
+      <HStack mt={2} flexWrap="wrap">
         {pokemon.types.map((type) => <Badge key={type}>{type}</Badge>)}
+        {pokemon.heldItemName ? (
+          <Badge colorScheme="purple">Holding: {pokemon.heldItemName}</Badge>
+        ) : null}
       </HStack>
       <Text mt={3} fontSize="sm">HP {pokemon.hp}/{pokemon.maxHp}</Text>
       <Progress value={(pokemon.hp / pokemon.maxHp) * 100} colorScheme="green" size="sm" borderRadius="8px" />
@@ -821,20 +877,39 @@ function PokemonsWindow({
   pokemonCatalog: Map<string, PokemonCatalogEntry>;
   onOpenStats: (pokemonId: string) => void;
 }) {
+  const { reorderPokemonParty } = useAuth();
+
+  const handleMoveInParty = (partyIndex: number, direction: -1 | 1) => {
+    const targetIndex = partyIndex + direction;
+    if (targetIndex < 0 || targetIndex >= party.length) {
+      return;
+    }
+
+    const order = party.map((pokemon) => pokemon.id);
+    [order[partyIndex], order[targetIndex]] = [order[targetIndex], order[partyIndex]];
+    reorderPokemonParty({ order });
+  };
+
   return (
     <VStack align="stretch" spacing={3}>
-      <Text color="gray.300">Pokemon on hand: {party.length}/6</Text>
+      <Text color="gray.300">Venomons on hand: {party.length}/6</Text>
+      <Text color="gray.500" fontSize="xs">
+        The first Venomon in the list battles first. Use Move Up / Move Down to change the order.
+      </Text>
       <Grid templateColumns={{ base: '1fr', sm: '1fr 1fr' }} gap={3}>
-        {party.map((pokemon) => (
+        {party.map((pokemon, index) => (
           <PokemonCard
             key={pokemon.id}
             pokemon={pokemon}
             catalogEntry={resolvePokemonCatalogEntry(pokemon, pokemonCatalog)}
+            partyIndex={index}
+            partySize={party.length}
             onOpenStats={onOpenStats}
+            onMoveInParty={handleMoveInParty}
           />
         ))}
       </Grid>
-      {party.length === 0 ? <Text color="gray.400">No Pokemon in your party yet.</Text> : null}
+      {party.length === 0 ? <Text color="gray.400">No Venomons in your party yet.</Text> : null}
     </VStack>
   );
 }
@@ -843,10 +918,10 @@ function PokemonStatsFallback({ pokemonId }: { pokemonId: string }) {
   return (
     <VStack align="stretch" spacing={3}>
       <Text color="gray.300">
-        Pokemon `{pokemonId}` is no longer in your party, so this stats window cannot be updated.
+        Venomon `{pokemonId}` is no longer in your party, so this stats window cannot be updated.
       </Text>
       <Text color="gray.500" fontSize="sm">
-        You can close this window or reopen the Pokemon list to inspect a different party member.
+        You can close this window or reopen the Venomons list to inspect a different party member.
       </Text>
     </VStack>
   );
@@ -958,7 +1033,7 @@ const AccountMenu = () => {
     }
 
     const pokemon = party.find((entry) => entry.id === getPokemonIdFromStatsWindow(windowKey));
-    return pokemon ? `${getPokemonDisplayName(pokemon)} Stats` : 'Pokemon Stats';
+    return pokemon ? `${getPokemonDisplayName(pokemon)} Stats` : 'Venomon Stats';
   };
 
   const getWindowDesktopWidth = (windowKey: OpenWindowId) => (
@@ -1042,7 +1117,7 @@ const AccountMenu = () => {
           <MenuItem onClick={() => openWindow('account')}>Account</MenuItem>
           <MenuItem onClick={() => openWindow('settings')}>Settings</MenuItem>
           <MenuItem onClick={() => openWindow('bag')}>Bag</MenuItem>
-          <MenuItem onClick={() => openWindow('pokemons')}>Pokemons</MenuItem>
+          <MenuItem onClick={() => openWindow('pokemons')}>Venomons</MenuItem>
           <MenuItem onClick={() => openWindow('trainerCard')}>Trainer Card</MenuItem>
           <MenuItem onClick={() => openWindow('battleHistory')}>Battle History</MenuItem>
           {hasPermission('designer.access') ? (

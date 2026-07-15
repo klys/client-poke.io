@@ -76,6 +76,8 @@ export type PokemonSummary = {
   experience: number
   experienceCurve: 'fast' | 'medium' | 'slow'
   nextLevelExperience: number
+  heldItemId?: string
+  heldItemName?: string
   statBonuses?: {
     hp: number
     attack: number
@@ -179,6 +181,9 @@ type AuthContextValue = {
   useInventoryItem: (payload: { itemId: string; targetPokemonId: string }) => void
   teachInventoryMove: (payload: { itemId: string; targetPokemonId: string }) => void
   throwAwayInventoryItem: (payload: { itemId: string; quantity: number }) => void
+  holdInventoryItem: (payload: { pokemonId: string; itemId: string }) => void
+  takeHeldItem: (payload: { pokemonId: string }) => void
+  reorderPokemonParty: (payload: { order: string[] }) => void
   healNpcParty: (payload: { npcPlacementId: string }) => void
   buyFromNpcStore: (payload: { npcPlacementId: string; itemId: string; quantity: number }) => void
   sellToNpcStore: (payload: { npcPlacementId: string; itemId: string; quantity: number }) => void
@@ -443,6 +448,9 @@ export const AuthProvider = (
     useInventoryItem: (payload) => emitAuthEvent('inventory:use-item', payload),
     teachInventoryMove: (payload) => emitAuthEvent('inventory:teach-move', payload),
     throwAwayInventoryItem: (payload) => emitAuthEvent('inventory:throw-away', payload),
+    holdInventoryItem: (payload) => emitAuthEvent('inventory:hold-item', payload),
+    takeHeldItem: (payload) => emitAuthEvent('inventory:take-held-item', payload),
+    reorderPokemonParty: (payload) => emitAuthEvent('pokemon:reorder', payload),
     healNpcParty: (payload) => emitAuthEvent('npc:heal-party', payload),
     buyFromNpcStore: (payload) => emitAuthEvent('npc:store-buy', payload),
     sellToNpcStore: (payload) => emitAuthEvent('npc:store-sell', payload),
