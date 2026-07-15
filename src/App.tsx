@@ -4,6 +4,7 @@ import DesignerDataBootstrap from './components/designer/DesignerDataBootstrap';
 import { createAppRouter, type RuntimeConfig } from './endpoint';
 import { AuthProvider } from './context/authContext';
 import { setAssetStorageBaseUrl } from './components/tilemap/serverAssets';
+import { setBackendBaseUrl } from './components/game/backendConfig';
 
 const DEFAULT_CONFIG: RuntimeConfig = {
   backendUrl: 'https://pokecraft-staging-0.klys.dev',
@@ -80,6 +81,7 @@ function App() {
   useEffect(() => {
     if (config) {
       setAssetStorageBaseUrl(config.assetStorageBaseUrl);
+      setBackendBaseUrl(config.backendUrl);
     }
   }, [config]);
 

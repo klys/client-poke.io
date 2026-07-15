@@ -1,9 +1,6 @@
 import { useEffect } from "react";
 import { useAuth } from "../../context/authContext";
 import {
-  buildPlayableMapsSnapshot,
-  getPlayableMapsCacheVersion,
-  loadPlayableMapsState,
   persistPlayableMapsSyncPayload,
   sanitizePlayableMapsSyncPayload,
 } from "../game/playableMapRuntime";
@@ -47,12 +44,72 @@ const PUBLIC_DESIGNER_SECTION_KEYS: DesignerSectionKey[] = [
 const GENERIC_DESIGNER_SECTION_KEYS = DESIGNER_SECTION_KEYS.filter(
   (sectionKey) => sectionKey !== "mapsEditor"
 );
+// Never eagerly preload the heavy media catalogs (assets/tilesets/battle-
+// backgrounds run to tens of MB): they cannot fit in localStorage, so their
+// cached version never persists and every connect would re-stream the full
+// payload over the websocket — enough queued traffic to starve the Socket.IO
+// heartbeat into "ping timeout"/"transport error" loops. Their designer pages
+// join the sections on demand instead.
+const HEAVY_DESIGNER_SECTION_KEYS: DesignerSectionKey[] = [
+  "assets",
+  "tilesets",
+  "battleBackgrounds",
+];
 const DESIGNER_ONLY_SECTION_KEYS = GENERIC_DESIGNER_SECTION_KEYS.filter(
-  (sectionKey) => !PUBLIC_DESIGNER_SECTION_KEYS.includes(sectionKey)
+  (sectionKey) =>
+    !PUBLIC_DESIGNER_SECTION_KEYS.includes(sectionKey) &&
+    !HEAVY_DESIGNER_SECTION_KEYS.includes(sectionKey)
 );
 
 function isDesignerSectionKey(value: unknown): value is DesignerSectionKey {
   return typeof value === "string" && value in designerSectionsByKey;
+}
+
+// Native app builds (Capacitor / Electron) ship snapshots of the public
+// sections at /bundled-data/sections/<key>.json. Seeding them before the
+// first designer:section:join gives each join a version to negotiate with,
+// so the server answers with a tiny version payload instead of streaming the
+// full state. Browsers don't have the files — the fetches fail once and the
+// normal socket sync takes over.
+let bundledSectionsSeedPromise: Promise<void> | null = null;
+
+function ensureBundledSectionsSeeded(): Promise<void> {
+  if (!bundledSectionsSeedPromise) {
+    bundledSectionsSeedPromise = (async () => {
+      await Promise.all(
+        PUBLIC_DESIGNER_SECTION_KEYS.map(async (sectionKey) => {
+          try {
+            if (readStoredDesignerSectionPayload(sectionKey).version !== null) {
+              return; // a cached (possibly newer) payload already exists
+            }
+
+            const response = await fetch(`/bundled-data/sections/${sectionKey}.json`);
+
+            if (!response.ok) {
+              return;
+            }
+
+            const payload = sanitizeSectionStatePayload(await response.json());
+
+            if (!payload || payload.sectionKey !== sectionKey) {
+              return;
+            }
+
+            persistStoredDesignerSectionPayload(sectionKey, {
+              state: sanitizeBootstrapSectionState(sectionKey, payload.state),
+              version: payload.version,
+              updatedAt: payload.updatedAt,
+              updatedByUsername: payload.updatedByUsername,
+            });
+          } catch {
+            /* no bundle for this section — the socket sync handles it */
+          }
+        })
+      );
+    })();
+  }
+
+  return bundledSectionsSeedPromise;
 }
 
 function sanitizeBootstrapSectionState(
@@ -145,7 +202,11 @@ export default function DesignerDataBootstrap() {
     // legacy entries can't hold the quota hostage and keep caches stale.
     cleanupStaleDesignerStorage();
 
-    const preloadSharedData = () => {
+    const preloadSharedData = async () => {
+      // Native builds seed the bundled snapshots first so the joins below
+      // carry a version and the server skips the full-state stream.
+      await ensureBundledSectionsSeeded();
+
       PUBLIC_DESIGNER_SECTION_KEYS.forEach((sectionKey) => {
         const storedPayload = readStoredDesignerSectionPayload(sectionKey);
 
@@ -173,11 +234,9 @@ export default function DesignerDataBootstrap() {
               : undefined,
         });
       });
-
-      socket.emit("designer:maps:join", {
-        version: getPlayableMapsCacheVersion(),
-        seedState: buildPlayableMapsSnapshot(loadPlayableMapsState()),
-      });
+      // No eager designer:maps:join here: MapEditorPage and Section join the
+      // maps room themselves when opened, and the old eager join uploaded the
+      // full multi-MB local maps snapshot as seedState on every connect.
     };
 
     const handleSectionState = (payload: unknown) => {
@@ -203,6 +262,14 @@ export default function DesignerDataBootstrap() {
       }
 
       const storedPayload = readStoredDesignerSectionPayload(nextPayload.sectionKey);
+
+      // Only refresh metadata when it matches the state we actually hold.
+      // Native clients receive version-only payloads even when the server is
+      // ahead (their bundle is intentionally used as-is); adopting the newer
+      // version number here would mislabel the older state as current.
+      if (storedPayload.version !== nextPayload.version) {
+        return;
+      }
 
       persistStoredDesignerSectionPayload(nextPayload.sectionKey, {
         ...storedPayload,

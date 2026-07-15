@@ -341,6 +341,42 @@ export function sanitizePlayableMapsSyncPayload(value: unknown): PlayableMapsSyn
   };
 }
 
+// Native app builds (Capacitor / Electron) ship a snapshot of the playable
+// maps payload at /bundled-data/playable-maps.json inside the app bundle.
+// Seeding it here (before the first playableMaps:sync) gives the client a
+// version to negotiate with, so the server never streams the multi-MB state
+// to native clients. Browsers don't have the file — the fetch 404s once and
+// the normal HTTP/socket sync takes over.
+let bundledMapsSeedPromise: Promise<void> | null = null;
+
+export function ensureBundledPlayableMapsSeeded(): Promise<void> {
+  if (!bundledMapsSeedPromise) {
+    bundledMapsSeedPromise = (async () => {
+      try {
+        if (getPlayableMapsCacheVersion() !== null) {
+          return; // a cached (possibly newer) payload already exists
+        }
+
+        const response = await fetch("/bundled-data/playable-maps.json");
+
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = sanitizePlayableMapsSyncPayload(await response.json());
+
+        if (payload) {
+          persistPlayableMapsSyncPayload(payload);
+        }
+      } catch {
+        /* no bundle available — the regular sync path handles it */
+      }
+    })();
+  }
+
+  return bundledMapsSeedPromise;
+}
+
 export function loadPlayableMapsCache(): PlayableMapsSyncPayload | null {
   if (memoryPlayableMapsPayload) {
     return memoryPlayableMapsPayload;

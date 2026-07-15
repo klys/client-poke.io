@@ -3,11 +3,13 @@ import { useToast } from "@chakra-ui/react";
 import { AppContext } from "../../context/appContext"
 import { AUTH_SESSION_SYNC_EVENT } from "../../context/authContext";
 import {
+    ensureBundledPlayableMapsSeeded,
     getPlayableMapsCacheVersion,
     persistPlayableMapsSyncPayload,
     sanitizePlayableMapsSnapshot,
     sanitizePlayableMapsSyncPayload,
 } from "./playableMapRuntime";
+import { getBackendBaseUrl } from "./backendConfig";
 
 const AUTH_TOKEN_STORAGE_KEY = "client-poke.io.auth.token";
 
@@ -94,9 +96,46 @@ const Network = () => {
     ]);
 
     useEffect(() => {
-        const joinGame = () => {
+        // The maps payload is far too large for the websocket (streaming it
+        // there queues heartbeats behind the transfer and drops the
+        // connection) and for localStorage. Fetch it over plain HTTP where
+        // the browser cache + ETag make repeat loads cheap; the socket sync
+        // below stays as a fallback when the endpoint is unavailable.
+        const fetchPlayableMapsOverHttp = async () => {
+            try {
+                const response = await fetch(`${getBackendBaseUrl()}/playable-maps.json`);
+
+                if (!response.ok) {
+                    return false;
+                }
+
+                const payload = sanitizePlayableMapsSyncPayload(await response.json());
+
+                if (!payload) {
+                    return false;
+                }
+
+                setPlayableMapsStateRef.current(payload.state);
+                persistPlayableMapsSyncPayload(payload);
+                return true;
+            } catch {
+                return false;
+            }
+        };
+
+        const joinGame = async () => {
             const token = getStoredAuthToken();
 
+            // Native app builds ship the maps payload inside the app; seed it
+            // before negotiating versions so nothing has to be downloaded.
+            await ensureBundledPlayableMapsSeeded();
+
+            if (getPlayableMapsCacheVersion() === null) {
+                await fetchPlayableMapsOverHttp();
+            }
+
+            // With a warm cache the server answers with a tiny version
+            // payload; the full-state socket stream only happens as fallback.
             socket.emit("playableMaps:sync", {
                 version: getPlayableMapsCacheVersion()
             });
@@ -104,27 +143,22 @@ const Network = () => {
         };
 
         const handleAddPlayer = (data:any) => {
-            console.log("addPlayer",data)
             addPlayerRef.current(data)
         };
 
         const handleRemovePlayer = (data:any) => {
-            console.log("removePlayer",data)
             removePlayerRef.current(data)
         };
 
         const handleShotProjectil = (data:any) => {
-            console.log("shotProjectil",data)
             addProjectilRef.current(data)
         };
 
         const handleExplodeProjectil = (data:any) => {
-            console.log("explodeProjectil",data)
             removeProjectilRef.current(data)
         };
 
         const handleAddObject = (data:any) => {
-            console.log("addObject", data)
             addObjectRef.current(data)
         };
 
@@ -156,13 +190,21 @@ const Network = () => {
             setPlayableMapsStateRef.current(sanitizePlayableMapsSnapshot(data))
         };
 
-        const handlePlayableMapsVersion = (data:any) => {
+        const handlePlayableMapsVersion = async (data:any) => {
             if (data?.hasState !== true || typeof data.version !== "number") {
                 return;
             }
 
             if (data.version === getPlayableMapsCacheVersion()) {
                 return;
+            }
+
+            // Prefer the HTTP endpoint for the bulk transfer; only fall back
+            // to the socket stream when it can't provide the announced version.
+            if (await fetchPlayableMapsOverHttp()) {
+                if (getPlayableMapsCacheVersion() === data.version) {
+                    return;
+                }
             }
 
             socket.emit("playableMaps:sync", {

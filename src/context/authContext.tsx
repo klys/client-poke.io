@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '@chakra-ui/react';
 import { io, type Socket } from 'socket.io-client';
+import { getPlatform } from '../platform';
 
 export type RolePermission =
   | 'game.access'
@@ -214,6 +215,13 @@ const getSocketAuthToken = (socket: Socket) => {
   return typeof socketAuth?.token === 'string' ? socketAuth.token : null;
 };
 
+// Every handshake carries the runtime platform ("android" | "ios" |
+// "electron" | "web") so the server knows native app builds ship the heavy
+// shared payloads bundled and must not stream them over the socket.
+const buildSocketAuth = (token: string | null) => (
+  token ? { token, platform: getPlatform() } : { platform: getPlatform() }
+);
+
 const getSharedAuthSocket = (socketUrl: string) => {
   if (sharedAuthSocket && sharedAuthSocketUrl === socketUrl) {
     return sharedAuthSocket;
@@ -268,7 +276,7 @@ export const AuthProvider = (
     const currentToken = getSocketAuthToken(socket);
     const shouldReconnect = currentToken !== nextToken;
 
-    socket.auth = nextToken ? { token: nextToken } : {};
+    socket.auth = buildSocketAuth(nextToken);
 
     if (shouldReconnect && socket.connected) {
       socket.disconnect();
@@ -284,7 +292,7 @@ export const AuthProvider = (
     }
 
     const storedToken = getStoredAuthToken();
-    socket.auth = storedToken ? { token: storedToken } : {};
+    socket.auth = buildSocketAuth(storedToken);
 
     if (!socket.connected) {
       socket.connect();
@@ -335,7 +343,7 @@ export const AuthProvider = (
     socketRef.current = socket;
     setAuthReady(false);
     setToken(storedToken);
-    socket.auth = storedToken ? { token: storedToken } : {};
+    socket.auth = buildSocketAuth(storedToken);
 
     const handleConnect = () => {
       socket.emit('auth:session');
