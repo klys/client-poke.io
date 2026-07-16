@@ -5,6 +5,7 @@ import { AUTH_SESSION_SYNC_EVENT } from "../../context/authContext";
 import {
     ensureBundledPlayableMapsSeeded,
     getPlayableMapsCacheVersion,
+    loadPlayableMapsCache,
     persistPlayableMapsSyncPayload,
     sanitizePlayableMapsSnapshot,
     sanitizePlayableMapsSyncPayload,
@@ -132,6 +133,16 @@ const Network = () => {
 
             if (getPlayableMapsCacheVersion() === null) {
                 await fetchPlayableMapsOverHttp();
+            }
+
+            // Push the cached payload into the game state. The app context
+            // initializes from storage BEFORE the async seeding/fetch above
+            // completes, and when the server then answers the sync below with
+            // a version match it sends no state — without this the map would
+            // stay empty even though the payload sits in the cache.
+            const cachedPayload = loadPlayableMapsCache();
+            if (cachedPayload) {
+                setPlayableMapsStateRef.current(cachedPayload.state);
             }
 
             // With a warm cache the server answers with a tiny version
