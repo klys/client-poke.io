@@ -5,6 +5,7 @@ import { createAppRouter, type RuntimeConfig } from './endpoint';
 import { AuthProvider } from './context/authContext';
 import { setAssetStorageBaseUrl } from './components/tilemap/serverAssets';
 import { setBackendBaseUrl } from './components/game/backendConfig';
+import { installCompactUxAttribute } from './components/ux/useCompactUx';
 
 const DEFAULT_CONFIG: RuntimeConfig = {
   backendUrl: 'https://pokecraft-staging-0.klys.dev',
@@ -70,6 +71,7 @@ const normalizeInitialAuthRoute = () => {
 
 if (typeof window !== 'undefined') {
   normalizeInitialAuthRoute();
+  installCompactUxAttribute();
 }
 
 function App() {

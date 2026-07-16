@@ -21,8 +21,8 @@
 
 .vc-dpad {
   left: calc(env(safe-area-inset-left, 0px) + 18px);
-  grid-template-columns: repeat(3, 58px);
-  grid-template-rows: repeat(3, 58px);
+  grid-template-columns: repeat(3, 70px);
+  grid-template-rows: repeat(3, 70px);
 }
 
 .vc-actions {
@@ -67,7 +67,7 @@
 
 .vc-dbtn {
   background: rgba(30, 30, 34, 0.55);
-  font-size: 22px;
+  font-size: 26px;
 }
 
 .vc-abtn {
@@ -88,10 +88,10 @@
   opacity: 1;
 }
 
-/* Smaller phones: shrink the pads a touch. */
+/* Smaller phones: shrink the pads a touch (d-pad keeps its +20% ratio). */
 @media (max-height: 420px), (max-width: 720px) {
-  .vc-dpad { grid-template-columns: repeat(3, 50px); grid-template-rows: repeat(3, 50px); }
+  .vc-dpad { grid-template-columns: repeat(3, 60px); grid-template-rows: repeat(3, 60px); }
   .vc-actions { grid-template-columns: repeat(3, 54px); grid-template-rows: repeat(3, 54px); }
-  .vc-dbtn { font-size: 19px; }
+  .vc-dbtn { font-size: 23px; }
   .vc-abtn { font-size: 21px; }
 }

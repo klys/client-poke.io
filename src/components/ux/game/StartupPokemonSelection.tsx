@@ -82,9 +82,12 @@ const StartupPokemonSelection = () => {
   const nicknameError = nickname ? validatePokemonNickname(nickname) : null;
 
   return (
-    <Box minH="100vh" bg="#050505" color="white" display="flex" alignItems="center" justifyContent="center" p={4}>
-      <Box width="min(920px, 100%)" bg="rgba(17, 24, 39, 0.98)" border="1px solid rgba(255,255,255,0.16)" borderRadius="8px" p={{ base: 5, md: 8 }}>
-        <VStack align="stretch" spacing={6}>
+    // safeAlignItems: center the panel when it fits, but keep the top edge
+    // reachable (and the page scrollable) when it is taller than a short
+    // phone-landscape viewport — `center` alone clips the heading off-screen.
+    <Box minH="100dvh" maxH="100dvh" overflowY="auto" bg="#050505" color="white" display="flex" alignItems="safe center" justifyContent="center" p={{ base: 2, md: 4 }}>
+      <Box width="min(920px, 100%)" bg="rgba(17, 24, 39, 0.98)" border="1px solid rgba(255,255,255,0.16)" borderRadius="8px" p={{ base: 4, md: 8 }} my="auto">
+        <VStack align="stretch" spacing={{ base: 4, md: 6 }}>
           <Box>
             <Heading size="lg">Welcome, trainer {user?.name}.</Heading>
             <Text color="gray.300" mt={2}>Pick your first Pokemon. You will choose your character skin on the next screen.</Text>
@@ -92,7 +95,7 @@ const StartupPokemonSelection = () => {
 
           <Box>
             <Text fontWeight="700" mb={3}>Choose one initial Pokemon</Text>
-            <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+            <SimpleGrid columns={{ base: 1, sm: 3 }} spacing={{ base: 3, md: 4 }}>
               {starters.map((pokemon) => (
                 <Box
                   key={pokemon.id}

@@ -23,3 +23,11 @@ code {
 div:hover > .game-object-label {
   display: block !important;
 }
+
+/* Compact UX (native app shells + small/short screens — see useCompactUx.ts).
+   Chakra sizes fonts and spacing in rem, so shrinking the root font scales
+   the whole UI down for touch screens without touching the game canvas
+   (which is pixel-based). */
+html[data-compact-ux] {
+  font-size: 13px;
+}

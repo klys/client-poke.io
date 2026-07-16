@@ -46,6 +46,7 @@ import {
 } from '../../designer/designerCache';
 import type { DesignerItemSeed, DesignerPokemonProfile } from '../../designer/designerSections';
 import { getPokemonDisplayName, validatePokemonNickname } from '../game/pokemonName';
+import { useCompactUx } from '../useCompactUx';
 import { resolveServerAssetUrl } from '../../tilemap/serverAssets';
 
 type WindowKey = 'account' | 'settings' | 'bag' | 'pokemons' | 'trainerCard' | 'battleHistory';
@@ -216,6 +217,13 @@ function DraggableWindow({
   onClose,
   children
 }: DraggableWindowProps) {
+  // On touch/small screens the desktop mechanics (free-floating draggable
+  // windows positioned in px) are unusable — windows land half off-screen and
+  // dragging fights scrolling. Compact mode docks every window as a
+  // full-width sheet instead. Width breakpoints alone can't decide this:
+  // landscape phones are wider than the md breakpoint.
+  const compact = useCompactUx();
+  const canDrag = dragEnabled && !compact;
   const dragStartRef = useRef<{
     pointerId: number;
     startX: number;
@@ -228,7 +236,7 @@ function DraggableWindow({
     onFocus(id);
     stopUxEvent(event);
 
-    if (!dragEnabled) {
+    if (!canDrag) {
       return;
     }
 
@@ -271,11 +279,11 @@ function DraggableWindow({
   return (
     <Box
       position="fixed"
-      left={{ base: 3, md: `${position.x}px` }}
-      top={{ base: 20, md: `${position.y}px` }}
-      width={{ base: 'calc(100vw - 24px)', md: desktopWidth }}
-      maxW="calc(100vw - 24px)"
-      maxH="calc(100vh - 96px)"
+      left={compact ? 2 : { base: 3, md: `${position.x}px` }}
+      top={compact ? 2 : { base: 20, md: `${position.y}px` }}
+      width={compact ? 'calc(100vw - 16px)' : { base: 'calc(100vw - 24px)', md: desktopWidth }}
+      maxW={compact ? 'calc(100vw - 16px)' : 'calc(100vw - 24px)'}
+      maxH={compact ? 'calc(100dvh - 16px)' : 'calc(100vh - 96px)'}
       overflow="hidden"
       bg="rgba(17, 24, 39, 0.97)"
       border="1px solid rgba(255,255,255,0.16)"
@@ -293,10 +301,10 @@ function DraggableWindow({
     >
       <HStack
         justify="space-between"
-        px={4}
-        py={3}
+        px={compact ? 3 : 4}
+        py={compact ? 2 : 3}
         bg="rgba(255,255,255,0.08)"
-        cursor={dragEnabled ? 'move' : 'default'}
+        cursor={canDrag ? 'move' : 'default'}
         onPointerDown={startDrag}
         onPointerMove={moveDrag}
         onPointerUp={endDrag}
@@ -315,7 +323,7 @@ function DraggableWindow({
           X
         </Button>
       </HStack>
-      <Box p={4} overflowY="auto" maxH="calc(100vh - 156px)">
+      <Box p={compact ? 3 : 4} overflowY="auto" maxH={compact ? 'calc(100dvh - 64px)' : 'calc(100vh - 156px)'}>
         {children}
       </Box>
     </Box>

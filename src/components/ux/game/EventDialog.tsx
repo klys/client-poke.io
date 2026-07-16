@@ -7,6 +7,7 @@ import { readStoredDesignerSectionPayload } from "../../designer/designerCache";
 import { assetUrl, resolveServerAssetUrl } from "../../tilemap/serverAssets";
 import { cleanRmxpText } from "./NpcInteractions";
 import { gameAudio } from "./gameAudio";
+import { useCompactUx } from "../useCompactUx";
 
 type EventStep =
   | { type: "text"; npcName: string; text: string; portraitSrc?: string; portraitPokemonId?: string }
@@ -83,8 +84,20 @@ export default function EventDialog() {
   const [screenFx, setScreenFx] = useState<{ darken: number; durationMs: number }>({ darken: 0, durationMs: 400 });
   const [stageScale, setStageScale] = useState(1);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+  // Touch screens (and short landscape viewports) get a smaller message box:
+  // width-based breakpoints alone would pick the desktop sizes on a landscape
+  // phone, where the full-size dialog covers most of the playfield.
+  const compact = useCompactUx();
 
   const playerName = user?.name || user?.username || "Player";
+  const bodyFontSize = compact ? "sm" : { base: "lg", md: "2xl" };
+  const nameFontSize = compact ? "xs" : { base: "sm", md: "md" };
+  const choiceFontSize = compact ? "sm" : { base: "md", md: "lg" };
+  const portraitSize = compact ? "72px" : { base: "108px", md: "148px" };
+  const panelBorder = compact ? "3px solid #5d5a7b" : "4px solid #5d5a7b";
+  const panelShadow = compact
+    ? "0 5px 0 rgba(122, 215, 255, 0.75)"
+    : "0 8px 0 rgba(122, 215, 255, 0.75)";
 
   useEffect(() => {
     ensurePictureManifest();
@@ -326,9 +339,9 @@ export default function EventDialog() {
           pointerEvents="none"
           direction="column"
           justify="flex-end"
-          px={{ base: 3, md: 6 }}
-          py={{ base: 3, md: 5 }}
-          gap={3}
+          px={compact ? 2 : { base: 3, md: 6 }}
+          py={compact ? 2 : { base: 3, md: 5 }}
+          gap={compact ? 2 : 3}
           maxH="100dvh"
         >
           {/* Portrait (left) and the choice menu (top-right) float above the text box
@@ -339,11 +352,11 @@ export default function EventDialog() {
                 data-game-ux="true"
                 pointerEvents="auto"
                 bg="#f7f4eb"
-                border="4px solid #5d5a7b"
-                boxShadow="0 8px 0 rgba(122, 215, 255, 0.75)"
-                p={2}
-                width={{ base: "108px", md: "148px" }}
-                height={{ base: "108px", md: "148px" }}
+                border={panelBorder}
+                boxShadow={panelShadow}
+                p={compact ? 1 : 2}
+                width={portraitSize}
+                height={portraitSize}
                 display="flex"
                 alignItems="center"
                 justifyContent="center"
@@ -369,10 +382,10 @@ export default function EventDialog() {
                 data-game-ux="true"
                 pointerEvents="auto"
                 bg="#f7f4eb"
-                border="4px solid #5d5a7b"
-                boxShadow="0 8px 0 rgba(122, 215, 255, 0.75)"
-                px={3}
-                py={2}
+                border={panelBorder}
+                boxShadow={panelShadow}
+                px={compact ? 2 : 3}
+                py={compact ? 1 : 2}
                 minW="120px"
                 onClick={(clickEvent) => clickEvent.stopPropagation()}
               >
@@ -383,7 +396,7 @@ export default function EventDialog() {
                       align="center"
                       gap={2}
                       px={2}
-                      py={1}
+                      py={compact ? 2 : 1}
                       cursor="pointer"
                       bg={index === choiceIndex ? "#fff3cf" : "transparent"}
                       onMouseEnter={() => setChoiceIndex(index)}
@@ -393,7 +406,7 @@ export default function EventDialog() {
                         fontFamily="mono"
                         fontWeight="800"
                         color="#ff7b73"
-                        fontSize={{ base: "md", md: "lg" }}
+                        fontSize={choiceFontSize}
                         visibility={index === choiceIndex ? "visible" : "hidden"}
                       >
                         ▶
@@ -402,7 +415,7 @@ export default function EventDialog() {
                         fontFamily="mono"
                         fontWeight="800"
                         color="#404040"
-                        fontSize={{ base: "md", md: "lg" }}
+                        fontSize={choiceFontSize}
                       >
                         {cleanRmxpText(choice, playerName)}
                       </Text>
@@ -419,10 +432,10 @@ export default function EventDialog() {
             data-game-ux="true"
             pointerEvents="auto"
             bg="#f7f4eb"
-            border="4px solid #5d5a7b"
-            boxShadow="0 8px 0 rgba(122, 215, 255, 0.75)"
-            px={4}
-            py={4}
+            border={panelBorder}
+            boxShadow={panelShadow}
+            px={compact ? 3 : 4}
+            py={compact ? 2 : 4}
             onClick={(clickEvent) => {
               clickEvent.stopPropagation();
               if (step.type !== "choices" && step.type !== "nameInput") {
@@ -436,12 +449,12 @@ export default function EventDialog() {
                 display="inline-block"
                 px={2}
                 py={1}
-                mb={2}
+                mb={compact ? 1 : 2}
                 bg="#1f1f1f"
                 color="#ffef69"
                 fontFamily="mono"
                 fontWeight="800"
-                fontSize={{ base: "sm", md: "md" }}
+                fontSize={nameFontSize}
                 textTransform="uppercase"
               >
                 {step.npcName}
@@ -453,10 +466,10 @@ export default function EventDialog() {
                 <Text
                   fontFamily="mono"
                   fontWeight="800"
-                  fontSize={{ base: "lg", md: "2xl" }}
+                  fontSize={bodyFontSize}
                   color="#5a5a5a"
                   lineHeight="1.35"
-                  mb={3}
+                  mb={compact ? 2 : 3}
                 >
                   {cleanRmxpText(step.text ?? "", playerName)}
                 </Text>
@@ -496,7 +509,7 @@ export default function EventDialog() {
                   <Text
                     fontFamily="mono"
                     fontWeight="800"
-                    fontSize={{ base: "lg", md: "2xl" }}
+                    fontSize={bodyFontSize}
                     color="#5a5a5a"
                     lineHeight="1.35"
                     whiteSpace="pre-wrap"
@@ -506,8 +519,8 @@ export default function EventDialog() {
                 ) : null}
 
                 {step.type !== "choices" ? (
-                  <Flex justify="flex-end" mt={2}>
-                    <Text fontFamily="mono" fontWeight="800" color="#8a89a8" fontSize="lg">
+                  <Flex justify="flex-end" mt={compact ? 1 : 2}>
+                    <Text fontFamily="mono" fontWeight="800" color="#8a89a8" fontSize={compact ? "sm" : "lg"}>
                       ▶
                     </Text>
                   </Flex>

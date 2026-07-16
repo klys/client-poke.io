@@ -61,6 +61,7 @@ const Network = () => {
     const addBattlePromptRef = useRef(addBattlePrompt);
     const removeBattlePromptRef = useRef(removeBattlePrompt);
     const battleClearTimerRef = useRef<number | null>(null);
+    const latestBattleRef = useRef<{ id: string | null; status: string | null } | null>(null);
 
     useEffect(() => {
         addPlayerRef.current = addPlayer;
@@ -223,19 +224,43 @@ const Network = () => {
             });
         };
 
+        // All deferred battle clears go through the single tracked timer and
+        // re-check the latest battle before wiping it, so a stale "ended"
+        // timer from a previous battle can never erase a battle that started
+        // in the meantime (which left the player stuck with no battle view).
+        const scheduleBattleClear = (battleId: string | null) => {
+            if (battleClearTimerRef.current !== null) {
+                window.clearTimeout(battleClearTimerRef.current);
+            }
+
+            battleClearTimerRef.current = window.setTimeout(() => {
+                battleClearTimerRef.current = null;
+
+                const latest = latestBattleRef.current;
+                if (latest && latest.status === "active") {
+                    return;
+                }
+                if (battleId && latest && latest.id && latest.id !== battleId) {
+                    return;
+                }
+
+                clearBattleRef.current();
+            }, 12000);
+        };
+
         const handleBattleState = (data:any) => {
             if (battleClearTimerRef.current !== null) {
                 window.clearTimeout(battleClearTimerRef.current);
                 battleClearTimerRef.current = null;
             }
 
+            latestBattleRef.current = data
+                ? { id: data.id ?? null, status: data.status ?? null }
+                : null;
             setBattleRef.current(data);
 
             if (data?.status === "ended") {
-                battleClearTimerRef.current = window.setTimeout(() => {
-                    clearBattleRef.current();
-                    battleClearTimerRef.current = null;
-                }, 12000);
+                scheduleBattleClear(data.id ?? null);
             }
         };
 
@@ -245,10 +270,16 @@ const Network = () => {
             }
         };
 
-        const handleBattleEnded = () => {
-            window.setTimeout(() => {
-                clearBattleRef.current();
-            }, 12000);
+        const handleBattleEnded = (data:any) => {
+            const latest = latestBattleRef.current;
+            const endedBattleId = typeof data?.battleId === "string" ? data.battleId : null;
+
+            // Stale end notice for a battle we already replaced — ignore it.
+            if (endedBattleId && latest && latest.id && latest.id !== endedBattleId) {
+                return;
+            }
+
+            scheduleBattleClear(endedBattleId);
         };
 
         const handleBattleError = (data:any) => {

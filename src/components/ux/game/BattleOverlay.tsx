@@ -15,6 +15,7 @@ import { AppContext } from "../../../context/appContext";
 import type { BattleAction, BattlePublicItem, BattlePublicPokemon, BattlePublicState } from "./battleTypes";
 import { resolveServerAssetUrl } from "../../tilemap/serverAssets";
 import { getPokemonDisplayName } from "./pokemonName";
+import { useCompactUx } from "../useCompactUx";
 
 type BattleView = "menu" | "fight" | "bag" | "bagTarget" | "pokemon";
 
@@ -36,30 +37,33 @@ function PokemonStatusBox({
   align?: "left" | "right";
 }) {
   const hpPercent = pokemon.maxHp > 0 ? (pokemon.hp / pokemon.maxHp) * 100 : 0;
+  // Landscape phones are wider than the md breakpoint, so width-based sizes
+  // alone would render two 420px desktop cards side by side on a 5" screen.
+  const compact = useCompactUx();
 
   return (
     <Box
       bg="#fffbea"
       color="#2d2926"
-      border="4px solid #464236"
+      border={compact ? "3px solid #464236" : "4px solid #464236"}
       borderRadius="8px"
-      boxShadow="8px 8px 0 rgba(38, 50, 44, 0.45)"
-      p={{ base: 2, sm: 3, md: 4 }}
-      width={{ base: "min(92vw, 340px)", sm: "min(44vw, 360px)", md: "420px" }}
+      boxShadow={compact ? "5px 5px 0 rgba(38, 50, 44, 0.45)" : "8px 8px 0 rgba(38, 50, 44, 0.45)"}
+      p={compact ? 2 : { base: 2, sm: 3, md: 4 }}
+      width={compact ? "min(44vw, 300px)" : { base: "min(92vw, 340px)", sm: "min(44vw, 360px)", md: "420px" }}
       justifySelf={align === "right" ? "end" : "start"}
     >
       <HStack justify="space-between" align="center">
-        <Text fontSize={{ base: "md", sm: "lg", md: "2xl" }} fontWeight="900" noOfLines={1}>
+        <Text fontSize={compact ? "sm" : { base: "md", sm: "lg", md: "2xl" }} fontWeight="900" noOfLines={1}>
           {getPokemonDisplayName(pokemon)}
         </Text>
-        <Badge colorScheme="purple" fontSize="0.8rem">Lv {pokemon.level}</Badge>
+        <Badge colorScheme="purple" fontSize={compact ? "0.65rem" : "0.8rem"}>Lv {pokemon.level}</Badge>
       </HStack>
-      <HStack mt={2} spacing={2}>
+      <HStack mt={compact ? 1 : 2} spacing={2}>
         {pokemon.types.map((type) => (
           <Badge key={type} colorScheme="teal">{type}</Badge>
         ))}
       </HStack>
-      <HStack mt={3} spacing={2}>
+      <HStack mt={compact ? 2 : 3} spacing={2}>
         <Text fontSize="xs" fontWeight="900" color="orange.500">HP</Text>
         <Progress
           value={hpPercent}
@@ -130,14 +134,16 @@ function ActionButton({
   onClick: () => void;
   isDisabled?: boolean;
 }) {
+  const compact = useCompactUx();
+
   return (
     <Button
       variant="ghost"
       justifyContent="flex-start"
-      fontSize={{ base: "lg", md: "2xl" }}
+      fontSize={compact ? "md" : { base: "lg", md: "2xl" }}
       fontWeight="900"
       color="#3f3f46"
-      minH="54px"
+      minH={compact ? "44px" : "54px"}
       borderRadius="4px"
       _hover={{ bg: "#e8e3df" }}
       isDisabled={isDisabled}
@@ -166,17 +172,20 @@ function getActionLabel(actionType: string | null) {
 }
 
 const LOG_ROW_HEIGHT = 42;
+const COMPACT_LOG_ROW_HEIGHT = 30;
 const LOG_WINDOW_SIZE = 15;
 
 function BattleLogWindow({ logs }: { logs: string[] }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
+  const compact = useCompactUx();
+  const rowHeight = compact ? COMPACT_LOG_ROW_HEIGHT : LOG_ROW_HEIGHT;
   const safeLogs = logs.length > 0 ? logs : ["Waiting for battle..."];
   const maxStart = Math.max(0, safeLogs.length - LOG_WINDOW_SIZE);
-  const startIndex = Math.min(maxStart, Math.max(0, Math.floor(scrollTop / LOG_ROW_HEIGHT)));
+  const startIndex = Math.min(maxStart, Math.max(0, Math.floor(scrollTop / rowHeight)));
   const visibleLogs = safeLogs.slice(startIndex, startIndex + LOG_WINDOW_SIZE);
-  const topSpacerHeight = startIndex * LOG_ROW_HEIGHT;
-  const bottomSpacerHeight = Math.max(0, safeLogs.length - startIndex - visibleLogs.length) * LOG_ROW_HEIGHT;
+  const topSpacerHeight = startIndex * rowHeight;
+  const bottomSpacerHeight = Math.max(0, safeLogs.length - startIndex - visibleLogs.length) * rowHeight;
 
   useEffect(() => {
     const element = scrollRef.current;
@@ -201,8 +210,8 @@ function BattleLogWindow({ logs }: { logs: string[] }) {
         {visibleLogs.map((entry, index) => (
           <Text
             key={`${startIndex + index}-${entry}`}
-            minH={`${LOG_ROW_HEIGHT - 8}px`}
-            fontSize={{ base: "md", sm: "lg", md: "2xl" }}
+            minH={`${rowHeight - 8}px`}
+            fontSize={compact ? "sm" : { base: "md", sm: "lg", md: "2xl" }}
             fontWeight="900"
             lineHeight="1.25"
           >

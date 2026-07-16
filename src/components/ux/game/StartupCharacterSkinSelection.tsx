@@ -67,23 +67,29 @@ const StartupCharacterSkinSelection = () => {
   );
 
   return (
+    // "safe center" keeps the top edge reachable (and the page scrollable) on
+    // short phone-landscape viewports where the panel is taller than the
+    // screen — plain `center` clips the heading off-screen.
     <Box
-      minH="100vh"
+      minH="100dvh"
+      maxH="100dvh"
+      overflowY="auto"
       bg="#050505"
       color="white"
       display="flex"
-      alignItems="center"
+      alignItems="safe center"
       justifyContent="center"
-      p={4}
+      p={{ base: 2, md: 4 }}
     >
       <Box
         width="min(920px, 100%)"
         bg="rgba(17, 24, 39, 0.98)"
         border="1px solid rgba(255,255,255,0.16)"
         borderRadius="8px"
-        p={{ base: 5, md: 8 }}
+        p={{ base: 4, md: 8 }}
+        my="auto"
       >
-        <VStack align="stretch" spacing={6}>
+        <VStack align="stretch" spacing={{ base: 4, md: 6 }}>
           <Box>
             <Heading size="lg">Choose your character skin.</Heading>
             <Text color="gray.300" mt={2}>
@@ -93,7 +99,7 @@ const StartupCharacterSkinSelection = () => {
 
           <Box>
             <Text fontWeight="700" mb={3}>Available character skins</Text>
-            <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+            <SimpleGrid columns={{ base: 1, sm: 3 }} spacing={{ base: 3, md: 4 }}>
               {characterSkins.map((skin) => {
                 const previewSrc = getCharacterSkinPreview(skin.profile);
 

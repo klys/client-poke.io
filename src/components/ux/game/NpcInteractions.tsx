@@ -18,6 +18,7 @@ import type { MapEditorNpcPlacement } from "../../designer/PlayableMapEditorCanv
 import type { DesignerItemSeed, DesignerNpcType } from "../../designer/designerSections";
 import { useAuth, type InventoryItem } from "../../../context/authContext";
 import { AppContext } from "../../../context/appContext";
+import { useCompactUx } from "../useCompactUx";
 
 type RuntimeNpcStoreItem = {
   itemId: string;
@@ -216,6 +217,8 @@ function RetroPanel({
   minWidth?: string | number;
   maxWidth?: string | number;
 }) {
+  const compact = useCompactUx();
+
   return (
     <Box
       data-game-ux="true"
@@ -224,10 +227,10 @@ function RetroPanel({
       // must opt back in or its buttons (e.g. Close) never receive clicks.
       pointerEvents="auto"
       bg="#f7f4eb"
-      border="4px solid #5d5a7b"
-      boxShadow="0 8px 0 rgba(122, 215, 255, 0.75)"
-      px={3}
-      py={3}
+      border={compact ? "3px solid #5d5a7b" : "4px solid #5d5a7b"}
+      boxShadow={compact ? "0 5px 0 rgba(122, 215, 255, 0.75)" : "0 8px 0 rgba(122, 215, 255, 0.75)"}
+      px={compact ? 2 : 3}
+      py={compact ? 2 : 3}
       minW={minWidth}
       maxW={maxWidth}
       onClick={stopUxEvent}
@@ -250,11 +253,15 @@ function MenuChoiceButton({
   onClick?: () => void;
   isDisabled?: boolean;
 }) {
+  const compact = useCompactUx();
+
   return (
     <Button
       justifyContent="flex-start"
       variant="unstyled"
       width="100%"
+      // Keep a comfortable touch target even in compact mode; only the type
+      // scales down.
       minH="38px"
       px={3}
       py={2}
@@ -263,7 +270,7 @@ function MenuChoiceButton({
       bg={active ? "#fff3cf" : "#ffffff"}
       color="#404040"
       fontFamily="mono"
-      fontSize={{ base: "md", md: "lg" }}
+      fontSize={compact ? "sm" : { base: "md", md: "lg" }}
       fontWeight="800"
       textTransform="uppercase"
       lineHeight="1.1"
@@ -287,19 +294,21 @@ function StoreSelectionList({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
+  const compact = useCompactUx();
+
   return (
-    <RetroPanel minWidth="280px" maxWidth="360px">
+    <RetroPanel minWidth={compact ? "240px" : "280px"} maxWidth="360px">
       <Text
         fontFamily="mono"
         fontWeight="800"
-        fontSize={{ base: "sm", md: "md" }}
+        fontSize={compact ? "xs" : { base: "sm", md: "md" }}
         textTransform="uppercase"
         color="#4a4964"
-        mb={3}
+        mb={compact ? 2 : 3}
       >
         {title}
       </Text>
-      <VStack align="stretch" spacing={2} maxH="300px" overflowY="auto">
+      <VStack align="stretch" spacing={2} maxH={compact ? "min(300px, 42dvh)" : "300px"} overflowY="auto">
         {rows.map((row) => (
           <MenuChoiceButton
             key={row.id}
@@ -336,6 +345,7 @@ export function NpcInteractionOverlay({
     sellToNpcStore,
   } = useAuth();
   const { socket: gameSocket } = useContext(AppContext);
+  const compact = useCompactUx();
   const [npcCatalogById, setNpcCatalogById] = useState<Map<string, RuntimeNpcDefinition>>(
     () => loadNpcCatalogById()
   );
@@ -618,9 +628,9 @@ export function NpcInteractionOverlay({
       pointerEvents="none"
       direction="column"
       justify="flex-end"
-      px={{ base: 3, md: 6 }}
-      py={{ base: 3, md: 5 }}
-      gap={3}
+      px={compact ? 2 : { base: 3, md: 6 }}
+      py={compact ? 2 : { base: 3, md: 5 }}
+      gap={compact ? 2 : 3}
       maxH="100dvh"
       overflowY="auto"
     >
@@ -637,7 +647,7 @@ export function NpcInteractionOverlay({
                   color="#ffef69"
                   fontFamily="mono"
                   fontWeight="800"
-                  fontSize={{ base: "sm", md: "md" }}
+                  fontSize={compact ? "xs" : { base: "sm", md: "md" }}
                   textTransform="uppercase"
                 >
                   {npcTitle}
@@ -646,7 +656,7 @@ export function NpcInteractionOverlay({
               <Text
                 fontFamily="mono"
                 fontWeight="800"
-                fontSize={{ base: "lg", md: "xl" }}
+                fontSize={compact ? "sm" : { base: "lg", md: "xl" }}
                 color="#4a4964"
                 whiteSpace="nowrap"
               >
@@ -760,11 +770,11 @@ export function NpcInteractionOverlay({
       </Flex>
 
       <RetroPanel maxWidth="100%">
-        <VStack align="stretch" spacing={4}>
+        <VStack align="stretch" spacing={compact ? 2 : 4}>
           <Text
             fontFamily="mono"
             fontWeight="800"
-            fontSize={{ base: "lg", md: "2xl" }}
+            fontSize={compact ? "sm" : { base: "lg", md: "2xl" }}
             color="#5a5a5a"
             lineHeight="1.35"
           >
