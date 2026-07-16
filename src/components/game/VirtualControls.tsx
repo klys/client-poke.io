@@ -1,18 +1,24 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { isCapacitor } from '../../platform';
+import {
+  ACTION_KEYS,
+  GamepadAction,
+  KeySpec,
+  REPEAT_MS,
+  VirtualPadButton,
+  dispatchKey,
+  isTextInputFocused,
+  useGamepadSettings,
+} from '../../input/gamepadConfig';
 import './VirtualControls.css';
 
 /**
  * On-screen touch controls for the Capacitor (Android) build only.
  *
  * The game reads physical keyboard input (`event.key` on window). These buttons
- * synthesise the same KeyboardEvents so gameplay needs no other changes:
- *
- *   D-pad  -> ArrowUp / ArrowDown / ArrowLeft / ArrowRight
- *   A      -> Enter
- *   B      -> Escape
- *   X      -> Space
- *   Y      -> "m"  (open menu — wire your menu UI to the 'm' key)
+ * synthesise the same KeyboardEvents so gameplay needs no other changes. The
+ * d-pad is fixed to movement; the A/B/X/Y actions, pad scale, opacity and
+ * visibility are user-configurable in Settings -> Gamepad (gamepadConfig.ts).
  *
  * Movement is hold-to-move: the engine advances one step per keydown and stops
  * on keyup, so the d-pad auto-repeats keydown while held (mimicking OS key
@@ -20,46 +26,10 @@ import './VirtualControls.css';
  *
  * Rendered only under Capacitor (never in the browser or Electron builds), and
  * hidden while a text field is focused so the native keyboard is unobstructed.
- * Also hidden while a physical gamepad is connected — plug one in and the
- * on-screen buttons disappear; unplug it and they come back.
+ * In the default "auto" visibility mode it also hides while a physical
+ * gamepad is connected (GamepadControls.tsx drives the game instead) and comes
+ * back when the last one is unplugged.
  */
-
-type KeySpec = { key: string; code: string; keyCode: number };
-
-type ButtonId = 'up' | 'down' | 'left' | 'right' | 'a' | 'b' | 'x' | 'y';
-
-const KEYS: Record<ButtonId, KeySpec> = {
-  up: { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 },
-  down: { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 },
-  left: { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 },
-  right: { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
-  a: { key: 'Enter', code: 'Enter', keyCode: 13 },
-  b: { key: 'Escape', code: 'Escape', keyCode: 27 },
-  x: { key: ' ', code: 'Space', keyCode: 32 },
-  y: { key: 'm', code: 'KeyM', keyCode: 77 },
-};
-
-// How fast a held d-pad button repeats keydown, in ms. Tune to taste.
-const REPEAT_MS = 100;
-
-const dispatchKey = (type: 'keydown' | 'keyup', spec: KeySpec, repeat: boolean) => {
-  const event = new KeyboardEvent(type, {
-    key: spec.key,
-    code: spec.code,
-    bubbles: true,
-    cancelable: true,
-    repeat,
-  });
-  // Legacy keyCode/which for any handler that still reads them (the constructor
-  // ignores them, so define them explicitly).
-  try {
-    Object.defineProperty(event, 'keyCode', { get: () => spec.keyCode });
-    Object.defineProperty(event, 'which', { get: () => spec.keyCode });
-  } catch {
-    /* ignore */
-  }
-  window.dispatchEvent(event);
-};
 
 type HoldButtonProps = {
   spec: KeySpec;
@@ -72,6 +42,8 @@ type HoldButtonProps = {
 const HoldButton: React.FC<HoldButtonProps> = ({ spec, repeat, className, label, ariaLabel }) => {
   const intervalRef = useRef<number | null>(null);
   const pointerRef = useRef<number | null>(null);
+  const specRef = useRef(spec);
+  specRef.current = spec;
 
   const stopRepeat = () => {
     if (intervalRef.current !== null) {
@@ -84,7 +56,7 @@ const HoldButton: React.FC<HoldButtonProps> = ({ spec, repeat, className, label,
     if (pointerRef.current === null) return;
     pointerRef.current = null;
     stopRepeat();
-    dispatchKey('keyup', spec, false);
+    dispatchKey('keyup', specRef.current, false);
   };
 
   const handleDown = (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -97,10 +69,10 @@ const HoldButton: React.FC<HoldButtonProps> = ({ spec, repeat, className, label,
     } catch {
       /* ignore */
     }
-    dispatchKey('keydown', spec, false);
+    dispatchKey('keydown', specRef.current, false);
     if (repeat) {
       stopRepeat();
-      intervalRef.current = window.setInterval(() => dispatchKey('keydown', spec, true), REPEAT_MS);
+      intervalRef.current = window.setInterval(() => dispatchKey('keydown', specRef.current, true), REPEAT_MS);
     }
   };
 
@@ -130,20 +102,6 @@ const HoldButton: React.FC<HoldButtonProps> = ({ spec, repeat, className, label,
   );
 };
 
-const isTextInputFocused = () => {
-  const el = document.activeElement as HTMLElement | null;
-  if (!el) return false;
-  if (el.isContentEditable) return true;
-  const tag = el.tagName;
-  if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
-  if (tag === 'INPUT') {
-    const type = (el as HTMLInputElement).type;
-    const nonText = ['button', 'checkbox', 'radio', 'submit', 'reset', 'range', 'color', 'file', 'image'];
-    return !nonText.includes(type);
-  }
-  return false;
-};
-
 const anyGamepadConnected = () => {
   const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
   for (const pad of pads) {
@@ -152,10 +110,25 @@ const anyGamepadConnected = () => {
   return false;
 };
 
+const MOVE_SPECS = {
+  up: ACTION_KEYS.moveUp.spec,
+  down: ACTION_KEYS.moveDown.spec,
+  left: ACTION_KEYS.moveLeft.spec,
+  right: ACTION_KEYS.moveRight.spec,
+};
+
+/** A face button bound to "Unassigned" falls back to a no-op key nothing listens to. */
+const NOOP_SPEC: KeySpec = { key: 'Unidentified', code: '', keyCode: 0 };
+
+const actionSpec = (action: GamepadAction) => (action === 'none' ? NOOP_SPEC : ACTION_KEYS[action].spec);
+const actionRepeats = (action: GamepadAction) => action !== 'none' && ACTION_KEYS[action].repeat;
+const actionLabel = (action: GamepadAction) => (action === 'none' ? 'Unassigned' : ACTION_KEYS[action].label);
+
 const VirtualControls: React.FC = () => {
   const [enabled] = useState(isCapacitor);
   const [typing, setTyping] = useState(false);
   const [gamepad, setGamepad] = useState(false);
+  const [settings] = useGamepadSettings();
 
   useEffect(() => {
     if (!enabled) return;
@@ -169,8 +142,7 @@ const VirtualControls: React.FC = () => {
     };
   }, [enabled]);
 
-  // Hide the on-screen pad when a physical controller is present, and bring it
-  // back when the last one is unplugged.
+  // Track physical-controller presence for the "auto" visibility mode.
   useEffect(() => {
     if (!enabled) return;
     const onConnect = () => setGamepad(true);
@@ -184,22 +156,46 @@ const VirtualControls: React.FC = () => {
     };
   }, [enabled]);
 
-  if (!enabled || typing || gamepad) return null;
+  const { visibility, scale, opacity, buttonActions } = settings.virtual;
+
+  if (!enabled || typing) return null;
+  if (visibility === 'hidden') return null;
+  // Auto-hide only when the physical pad can actually drive the game;
+  // if gamepad controls are disabled in Settings, keep the touch pad up.
+  if (visibility === 'auto' && gamepad && settings.enabled) return null;
+
+  const faceButton = (id: VirtualPadButton, className: string) => {
+    const action = buttonActions[id];
+    return (
+      <HoldButton
+        spec={actionSpec(action)}
+        repeat={actionRepeats(action)}
+        className={className}
+        ariaLabel={actionLabel(action)}
+        label={id.toUpperCase()}
+      />
+    );
+  };
+
+  const style = {
+    '--vc-scale': scale,
+    '--vc-opacity': opacity,
+  } as React.CSSProperties;
 
   return (
-    <div className="vc-root" aria-hidden={false}>
+    <div className="vc-root" style={style} aria-hidden={false}>
       <div className="vc-dpad">
-        <HoldButton spec={KEYS.up} repeat className="vc-dbtn vc-up" ariaLabel="Move up" label="▲" />
-        <HoldButton spec={KEYS.left} repeat className="vc-dbtn vc-left" ariaLabel="Move left" label="◀" />
-        <HoldButton spec={KEYS.right} repeat className="vc-dbtn vc-right" ariaLabel="Move right" label="▶" />
-        <HoldButton spec={KEYS.down} repeat className="vc-dbtn vc-down" ariaLabel="Move down" label="▼" />
+        <HoldButton spec={MOVE_SPECS.up} repeat className="vc-dbtn vc-up" ariaLabel="Move up" label="▲" />
+        <HoldButton spec={MOVE_SPECS.left} repeat className="vc-dbtn vc-left" ariaLabel="Move left" label="◀" />
+        <HoldButton spec={MOVE_SPECS.right} repeat className="vc-dbtn vc-right" ariaLabel="Move right" label="▶" />
+        <HoldButton spec={MOVE_SPECS.down} repeat className="vc-dbtn vc-down" ariaLabel="Move down" label="▼" />
       </div>
 
       <div className="vc-actions">
-        <HoldButton spec={KEYS.y} className="vc-abtn vc-y" ariaLabel="Open menu" label="Y" />
-        <HoldButton spec={KEYS.x} className="vc-abtn vc-x" ariaLabel="Space" label="X" />
-        <HoldButton spec={KEYS.b} className="vc-abtn vc-b" ariaLabel="Cancel" label="B" />
-        <HoldButton spec={KEYS.a} className="vc-abtn vc-a" ariaLabel="Confirm" label="A" />
+        {faceButton('y', 'vc-abtn vc-y')}
+        {faceButton('x', 'vc-abtn vc-x')}
+        {faceButton('b', 'vc-abtn vc-b')}
+        {faceButton('a', 'vc-abtn vc-a')}
       </div>
     </div>
   );

@@ -46,6 +46,7 @@ import {
 } from '../../designer/designerCache';
 import type { DesignerItemSeed, DesignerPokemonProfile } from '../../designer/designerSections';
 import { getPokemonDisplayName, validatePokemonNickname } from '../game/pokemonName';
+import GamepadSettings from './GamepadSettings';
 import { useCompactUx } from '../useCompactUx';
 import { resolveServerAssetUrl } from '../../tilemap/serverAssets';
 
@@ -427,6 +428,7 @@ function SettingsWindow({
       <Button variant="outline" color="white" borderColor="whiteAlpha.400" onClick={resetPositions}>
         Reset screen positions
       </Button>
+      <GamepadSettings />
     </VStack>
   );
 }

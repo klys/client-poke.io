@@ -6,6 +6,7 @@ import PortalRuntime from "./PortalRuntime";
 import PlayerBoundaryGuard from "./PlayerBoundaryGuard";
 import UserControl from "./UserControl"
 import VirtualControls from "./VirtualControls"
+import GamepadControls from "./GamepadControls"
 import Map from "./Map"
 import MapNameBanner from "./MapNameBanner"
 import AccountMenu from "../ux/auth/AccountMenu";
@@ -55,6 +56,7 @@ const Game = ({ socketUrl }:{ socketUrl:string }) => {
             <BattleScene />
             <EventDialog />
             <VirtualControls />
+            <GamepadControls />
 
         </Provider>
         </div>
