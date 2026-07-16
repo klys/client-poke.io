@@ -1,5 +1,5 @@
 import { Box, Button, Flex, Input, Text, VStack } from "@chakra-ui/react";
-import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { AppContext } from "../../../context/appContext";
 import { useAuth } from "../../../context/authContext";
@@ -8,6 +8,7 @@ import { assetUrl, resolveServerAssetUrl } from "../../tilemap/serverAssets";
 import { cleanRmxpText } from "./NpcInteractions";
 import { gameAudio } from "./gameAudio";
 import { useCompactUx } from "../useCompactUx";
+import { useGameSettings } from "../../../settings/gameSettings";
 
 type EventStep =
   | { type: "text"; npcName: string; text: string; portraitSrc?: string; portraitPokemonId?: string }
@@ -88,6 +89,8 @@ export default function EventDialog() {
   // width-based breakpoints alone would pick the desktop sizes on a landscape
   // phone, where the full-size dialog covers most of the playfield.
   const compact = useCompactUx();
+  const [gameSettings] = useGameSettings();
+  const dialogScale = gameSettings.uiScale.dialogs;
 
   const playerName = user?.name || user?.username || "Player";
   const bodyFontSize = compact ? "sm" : { base: "lg", md: "2xl" };
@@ -343,6 +346,9 @@ export default function EventDialog() {
           py={compact ? 2 : { base: 3, md: 5 }}
           gap={compact ? 2 : 3}
           maxH="100dvh"
+          // Settings -> Display -> NPC dialog size. zoom keeps the overlay
+          // anchored to the viewport while scaling the dialog chrome.
+          style={{ zoom: dialogScale } as CSSProperties}
         >
           {/* Portrait (left) and the choice menu (top-right) float above the text box
               so a Yes/No question keeps its text on screen while you answer. */}

@@ -8,7 +8,7 @@ import {
 } from "@chakra-ui/react";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import type { ReactNode, SyntheticEvent } from "react";
+import type { CSSProperties, ReactNode, SyntheticEvent } from "react";
 import {
   DESIGNER_CACHE_UPDATED_EVENT,
   readStoredDesignerSectionPayload,
@@ -19,6 +19,7 @@ import type { DesignerItemSeed, DesignerNpcType } from "../../designer/designerS
 import { useAuth, type InventoryItem } from "../../../context/authContext";
 import { AppContext } from "../../../context/appContext";
 import { useCompactUx } from "../useCompactUx";
+import { useGameSettings } from "../../../settings/gameSettings";
 
 type RuntimeNpcStoreItem = {
   itemId: string;
@@ -346,6 +347,7 @@ export function NpcInteractionOverlay({
   } = useAuth();
   const { socket: gameSocket } = useContext(AppContext);
   const compact = useCompactUx();
+  const [gameSettings] = useGameSettings();
   const [npcCatalogById, setNpcCatalogById] = useState<Map<string, RuntimeNpcDefinition>>(
     () => loadNpcCatalogById()
   );
@@ -633,6 +635,8 @@ export function NpcInteractionOverlay({
       gap={compact ? 2 : 3}
       maxH="100dvh"
       overflowY="auto"
+      // Settings -> Display -> NPC dialog size.
+      style={{ zoom: gameSettings.uiScale.dialogs } as CSSProperties}
     >
       <Flex justify="space-between" align="flex-start" gap={3} wrap="wrap">
         <VStack align="stretch" spacing={3} pointerEvents="auto">

@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useContext, useEffect, useRef, useState } from 'react';
+import { AppContext } from '../../context/appContext';
 import { isCapacitor } from '../../platform';
 import {
   ACTION_KEYS,
@@ -29,6 +30,10 @@ import './VirtualControls.css';
  * In the default "auto" visibility mode it also hides while a physical
  * gamepad is connected (GamepadControls.tsx drives the game instead) and comes
  * back when the last one is unplugged.
+ *
+ * Also hidden for the whole battle scene: the battle UI is its own tappable
+ * surface (and controller-navigable — see useBattlePadNavigation), so the
+ * overworld pad would only cover the command buttons.
  */
 
 type HoldButtonProps = {
@@ -129,6 +134,7 @@ const VirtualControls: React.FC = () => {
   const [typing, setTyping] = useState(false);
   const [gamepad, setGamepad] = useState(false);
   const [settings] = useGamepadSettings();
+  const { battle } = useContext(AppContext);
 
   useEffect(() => {
     if (!enabled) return;
@@ -159,6 +165,9 @@ const VirtualControls: React.FC = () => {
   const { visibility, scale, opacity, buttonActions } = settings.virtual;
 
   if (!enabled || typing) return null;
+  // The battle scene replaces the overworld controls entirely (its buttons
+  // are tapped directly); the pad returns once the battle is dismissed.
+  if (battle) return null;
   if (visibility === 'hidden') return null;
   // Auto-hide only when the physical pad can actually drive the game;
   // if gamepad controls are disabled in Settings, keep the touch pad up.

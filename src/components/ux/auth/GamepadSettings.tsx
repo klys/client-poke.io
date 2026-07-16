@@ -27,6 +27,7 @@ import {
   VirtualPadVisibility,
   useGamepadSettings,
 } from '../../../input/gamepadConfig';
+import { useT, type Translator } from '../../../i18n';
 
 /**
  * "Gamepad" section of the Settings window (AccountMenu.tsx).
@@ -81,9 +82,11 @@ function usePadStatus() {
 function ActionSelect({
   value,
   onChange,
+  t,
 }: {
   value: GamepadAction;
   onChange: (action: GamepadAction) => void;
+  t: Translator;
 }) {
   return (
     <Select
@@ -96,14 +99,14 @@ function ActionSelect({
     >
       {GAMEPAD_ACTION_OPTIONS.map((option) => (
         <option key={option.id} value={option.id} style={{ color: '#1a202c' }}>
-          {option.label}
+          {t(`action.${option.id}`)}
         </option>
       ))}
     </Select>
   );
 }
 
-function SettingSlider({
+export function SettingSlider({
   label,
   value,
   min,
@@ -136,16 +139,17 @@ function SettingSlider({
   );
 }
 
-const VIRTUAL_BUTTON_LABELS: Record<VirtualPadButton, string> = {
-  a: 'A button (green)',
-  b: 'B button (red)',
-  x: 'X button (blue)',
-  y: 'Y button (yellow)',
+const VIRTUAL_BUTTON_LABEL_KEYS: Record<VirtualPadButton, string> = {
+  a: 'gamepad.virtual.a',
+  b: 'gamepad.virtual.b',
+  x: 'gamepad.virtual.x',
+  y: 'gamepad.virtual.y',
 };
 
 const GamepadSettings = () => {
   const [settings, update] = useGamepadSettings();
   const pad = usePadStatus();
+  const t = useT();
   const onMobile = isCapacitor();
   const onElectron = isElectron();
 
@@ -161,31 +165,31 @@ const GamepadSettings = () => {
     <VStack align="stretch" spacing={4}>
       <Divider borderColor="whiteAlpha.300" />
       <Box>
-        <Text fontWeight="700" fontSize="lg">Gamepad</Text>
+        <Text fontWeight="700" fontSize="lg">{t('gamepad.title')}</Text>
         <HStack mt={2} spacing={2} flexWrap="wrap">
           {pad ? (
             <>
-              <Badge colorScheme="green">Connected</Badge>
+              <Badge colorScheme="green">{t('gamepad.connected')}</Badge>
               <Text fontSize="sm" color="gray.300" noOfLines={1}>{pad.id}</Text>
             </>
           ) : (
             <>
-              <Badge colorScheme="yellow">No controller detected</Badge>
+              <Badge colorScheme="yellow">{t('gamepad.none')}</Badge>
               <Text fontSize="xs" color="gray.400">
-                Connect a controller and press any button on it to wake it up.
+                {t('gamepad.wakeHint')}
               </Text>
             </>
           )}
         </HStack>
         {onElectron ? (
           <Text mt={2} fontSize="xs" color="yellow.200">
-            The desktop app maps the controller natively; these bindings apply to the web and mobile builds.
+            {t('gamepad.electronNote')}
           </Text>
         ) : null}
       </Box>
 
       <FormControl display="flex" alignItems="center" justifyContent="space-between">
-        <FormLabel mb={0}>Enable gamepad controls</FormLabel>
+        <FormLabel mb={0}>{t('gamepad.enable')}</FormLabel>
         <Switch
           colorScheme="teal"
           isChecked={settings.enabled}
@@ -194,7 +198,7 @@ const GamepadSettings = () => {
       </FormControl>
 
       <FormControl display="flex" alignItems="center" justifyContent="space-between">
-        <FormLabel mb={0}>Left stick moves the player</FormLabel>
+        <FormLabel mb={0}>{t('gamepad.leftStick')}</FormLabel>
         <Switch
           colorScheme="teal"
           isChecked={settings.leftStickMovement}
@@ -203,7 +207,7 @@ const GamepadSettings = () => {
       </FormControl>
 
       <SettingSlider
-        label="Stick dead zone"
+        label={t('gamepad.deadZone')}
         value={settings.deadZone}
         min={0.1}
         max={0.9}
@@ -213,9 +217,9 @@ const GamepadSettings = () => {
       />
 
       <Box>
-        <Text fontWeight="700">Button mapping</Text>
+        <Text fontWeight="700">{t('gamepad.mapping')}</Text>
         <Text fontSize="xs" color="gray.400" mb={2}>
-          Press a button on your controller to highlight its row, then pick the action it should trigger.
+          {t('gamepad.mappingHint')}
         </Text>
         <VStack align="stretch" spacing={1}>
           {STANDARD_BUTTONS.map(({ index, label }) => {
@@ -236,6 +240,7 @@ const GamepadSettings = () => {
                 <ActionSelect
                   value={settings.buttonActions[String(index)] ?? 'none'}
                   onChange={(action) => setButtonAction(index, action)}
+                  t={t}
                 />
               </HStack>
             );
@@ -253,21 +258,21 @@ const GamepadSettings = () => {
             leftStickMovement: DEFAULT_GAMEPAD_SETTINGS.leftStickMovement,
           })}
         >
-          Reset controller mapping
+          {t('gamepad.resetMapping')}
         </Button>
       </Box>
 
       <Divider borderColor="whiteAlpha.300" />
       <Box>
-        <Text fontWeight="700" fontSize="lg">On-screen pad</Text>
+        <Text fontWeight="700" fontSize="lg">{t('gamepad.virtual.title')}</Text>
         <Text fontSize="xs" color="gray.400">
-          The touch d-pad and A/B/X/Y buttons shown in the mobile app.
-          {onMobile ? '' : ' (You are not on the mobile app; these apply when you play there.)'}
+          {t('gamepad.virtual.hint')}
+          {onMobile ? '' : ` ${t('gamepad.virtual.notMobile')}`}
         </Text>
       </Box>
 
       <FormControl>
-        <FormLabel>Visibility</FormLabel>
+        <FormLabel>{t('gamepad.virtual.visibility')}</FormLabel>
         <Select
           size="sm"
           bg="whiteAlpha.100"
@@ -275,17 +280,17 @@ const GamepadSettings = () => {
           value={settings.virtual.visibility}
           onChange={(event) => setVirtual({ visibility: event.target.value as VirtualPadVisibility })}
         >
-          <option value="auto" style={{ color: '#1a202c' }}>Auto — hide while a controller is connected</option>
-          <option value="always" style={{ color: '#1a202c' }}>Always visible</option>
-          <option value="hidden" style={{ color: '#1a202c' }}>Hidden</option>
+          <option value="auto" style={{ color: '#1a202c' }}>{t('gamepad.virtual.visAuto')}</option>
+          <option value="always" style={{ color: '#1a202c' }}>{t('gamepad.virtual.visAlways')}</option>
+          <option value="hidden" style={{ color: '#1a202c' }}>{t('gamepad.virtual.visHidden')}</option>
         </Select>
         <FormHelperText color="gray.500">
-          The pad always hides while you are typing in a text field.
+          {t('gamepad.virtual.typingNote')}
         </FormHelperText>
       </FormControl>
 
       <SettingSlider
-        label="Size"
+        label={t('gamepad.virtual.size')}
         value={settings.virtual.scale}
         min={0.6}
         max={1.6}
@@ -295,7 +300,7 @@ const GamepadSettings = () => {
       />
 
       <SettingSlider
-        label="Opacity"
+        label={t('gamepad.virtual.opacity')}
         value={settings.virtual.opacity}
         min={0.2}
         max={1}
@@ -305,9 +310,9 @@ const GamepadSettings = () => {
       />
 
       <Box>
-        <Text fontWeight="700" mb={2}>On-screen button actions</Text>
+        <Text fontWeight="700" mb={2}>{t('gamepad.virtual.actions')}</Text>
         <VStack align="stretch" spacing={1}>
-          {(Object.keys(VIRTUAL_BUTTON_LABELS) as VirtualPadButton[]).map((buttonId) => (
+          {(Object.keys(VIRTUAL_BUTTON_LABEL_KEYS) as VirtualPadButton[]).map((buttonId) => (
             <HStack
               key={buttonId}
               justify="space-between"
@@ -318,12 +323,13 @@ const GamepadSettings = () => {
               border="1px solid"
               borderColor="whiteAlpha.200"
             >
-              <Text fontSize="sm">{VIRTUAL_BUTTON_LABELS[buttonId]}</Text>
+              <Text fontSize="sm">{t(VIRTUAL_BUTTON_LABEL_KEYS[buttonId])}</Text>
               <ActionSelect
                 value={settings.virtual.buttonActions[buttonId]}
                 onChange={(action) => setVirtual({
                   buttonActions: { ...settings.virtual.buttonActions, [buttonId]: action },
                 })}
+                t={t}
               />
             </HStack>
           ))}
@@ -336,7 +342,7 @@ const GamepadSettings = () => {
           borderColor="whiteAlpha.400"
           onClick={() => setVirtual({ ...DEFAULT_GAMEPAD_SETTINGS.virtual })}
         >
-          Reset on-screen pad
+          {t('gamepad.virtual.reset')}
         </Button>
       </Box>
     </VStack>

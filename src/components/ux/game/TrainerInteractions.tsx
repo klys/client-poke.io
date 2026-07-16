@@ -7,8 +7,9 @@ import {
   VStack
 } from "@chakra-ui/react";
 import { useContext } from "react";
-import type { SyntheticEvent } from "react";
+import type { CSSProperties, SyntheticEvent } from "react";
 import { AppContext } from "../../../context/appContext";
+import { useGameSettings } from "../../../settings/gameSettings";
 
 function stopUxEvent(event: SyntheticEvent) {
   event.stopPropagation();
@@ -16,6 +17,7 @@ function stopUxEvent(event: SyntheticEvent) {
 
 export function TrainerInteractionCard() {
   const { socket, selectedTrainer, setSelectedTrainer } = useContext(AppContext);
+  const [gameSettings] = useGameSettings();
 
   if (!selectedTrainer) {
     return null;
@@ -25,6 +27,8 @@ export function TrainerInteractionCard() {
 
   return (
     <Box
+      // Settings -> Display -> NPC dialog size.
+      style={{ zoom: gameSettings.uiScale.dialogs } as CSSProperties}
       position="fixed"
       right={{ base: 3, md: 6 }}
       top={{ base: 20, md: 24 }}
@@ -86,6 +90,7 @@ export function TrainerInteractionCard() {
 
 export function BattlePrompts() {
   const { socket, battlePrompts, removeBattlePrompt } = useContext(AppContext);
+  const [gameSettings] = useGameSettings();
 
   if (battlePrompts.length === 0) {
     return null;
@@ -96,6 +101,8 @@ export function BattlePrompts() {
 
   return (
     <Box
+      // Settings -> Display -> NPC dialog size.
+      style={{ zoom: gameSettings.uiScale.dialogs } as CSSProperties}
       position="fixed"
       left="50%"
       top="18px"

@@ -11,7 +11,9 @@ import {
   keyframes
 } from "@chakra-ui/react";
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode, SyntheticEvent } from "react";
+import type { CSSProperties, MutableRefObject, ReactNode, RefObject, SyntheticEvent } from "react";
+import { useGameSettings } from "../../../../settings/gameSettings";
+import { useT } from "../../../../i18n";
 import { AppContext } from "../../../../context/appContext";
 import { resolveServerAssetUrl } from "../../../tilemap/serverAssets";
 import type {
@@ -35,6 +37,115 @@ type BattleView = "menu" | "fight" | "bag" | "bagTarget" | "pokemon";
 
 function stopUxEvent(event: SyntheticEvent) {
   event.stopPropagation();
+}
+
+/**
+ * D-pad / keyboard navigation across the battle UI.
+ *
+ * The battle scene is pointer-driven; controllers reach it through the same
+ * synthesized KeyboardEvents the gamepad bridges emit (GamepadControls.tsx,
+ * the Electron preload): arrows walk the visible enabled buttons, Confirm
+ * (Enter) presses the highlighted one, Cancel (Escape) backs out of a
+ * sub-menu via `backRef`. Works for the physical keyboard too.
+ *
+ * Selection is DOM-driven on purpose — buttons come and go per view (moves,
+ * bag, party), so we walk what is actually on screen instead of mirroring
+ * every view's layout in state. Native Enter on a focused button already
+ * clicks (trusted events), so only synthetic presses click manually.
+ */
+function useBattlePadNavigation(
+  rootRef: RefObject<HTMLDivElement>,
+  active: boolean,
+  backRef: MutableRefObject<() => boolean>
+) {
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+
+    let highlighted: HTMLButtonElement | null = null;
+
+    const clearHighlight = () => {
+      if (highlighted) {
+        highlighted.style.outline = "";
+        highlighted.style.outlineOffset = "";
+        highlighted = null;
+      }
+    };
+
+    const visibleButtons = () => {
+      const root = rootRef.current;
+      if (!root) return [] as HTMLButtonElement[];
+      return (Array.from(root.querySelectorAll("button")) as HTMLButtonElement[]).filter(
+        (button) => !button.disabled && button.offsetParent !== null
+      );
+    };
+
+    const highlight = (button: HTMLButtonElement) => {
+      clearHighlight();
+      highlighted = button;
+      button.style.outline = "3px solid rgba(255,255,255,0.95)";
+      button.style.outlineOffset = "1px";
+      button.focus({ preventScroll: true });
+      button.scrollIntoView({ block: "nearest", inline: "nearest" });
+    };
+
+    const currentIndex = (list: HTMLButtonElement[]) => {
+      const activeEl = document.activeElement as HTMLButtonElement | null;
+      if (activeEl && list.includes(activeEl)) return list.indexOf(activeEl);
+      if (highlighted && list.includes(highlighted)) return list.indexOf(highlighted);
+      return -1;
+    };
+
+    // First arrow press lands on the command area (FIGHT/BAG/...), not the
+    // LOG toggle that happens to come first in DOM order.
+    const preferredIndex = (list: HTMLButtonElement[]) => {
+      const commands = rootRef.current?.querySelector('[data-battle-commands="true"]');
+      if (commands) {
+        const first = list.findIndex((button) => commands.contains(button));
+        if (first >= 0) return first;
+      }
+      return 0;
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const key = event.key;
+
+      if (key === "ArrowRight" || key === "ArrowDown" || key === "ArrowLeft" || key === "ArrowUp") {
+        const list = visibleButtons();
+        if (list.length === 0) return;
+        event.preventDefault();
+        const forward = key === "ArrowRight" || key === "ArrowDown";
+        const index = currentIndex(list);
+        const next =
+          index === -1 ? preferredIndex(list) : (index + (forward ? 1 : -1) + list.length) % list.length;
+        highlight(list[next]);
+        return;
+      }
+
+      if (key === "Enter") {
+        // Trusted Enter on a focused button clicks natively; synthetic
+        // (gamepad-bridge) events need the click dispatched by hand.
+        if (event.isTrusted) return;
+        const list = visibleButtons();
+        const index = currentIndex(list);
+        if (index >= 0) list[index].click();
+        return;
+      }
+
+      if (key === "Escape") {
+        if (backRef.current()) {
+          event.preventDefault();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      clearHighlight();
+    };
+  }, [active, rootRef, backRef]);
 }
 
 const attackLungePlayer = keyframes`
@@ -248,6 +359,8 @@ export default function BattleScene() {
   const battle = rawBattle as BattlePublicState | null;
   const events = (battleEvents ?? []) as BattleSequencedEvent[];
   const config = useBattleInterfaceConfig();
+  const [gameSettings] = useGameSettings();
+  const t = useT();
   const [view, setView] = useState<BattleView>("menu");
   const [selectedItem, setSelectedItem] = useState<BattlePublicItem | null>(null);
   const [logOpen, setLogOpen] = useState(false);
@@ -268,6 +381,25 @@ export default function BattleScene() {
 
   const mustReplace = Boolean(battle?.mustSelectReplacement) && battle?.status === "active";
   const queueBusy = playback.queueBusy;
+
+  // Controller navigation (see useBattlePadNavigation). The back handler
+  // mirrors the on-screen Back buttons: bag-target returns to the bag, other
+  // sub-views return to the command menu, and a forced replacement pick
+  // cannot be escaped.
+  const navRootRef = useRef<HTMLDivElement>(null);
+  const navBackRef = useRef<() => boolean>(() => false);
+  navBackRef.current = () => {
+    if (view === "bagTarget") {
+      setView("bag");
+      return true;
+    }
+    if (view === "fight" || view === "bag" || (view === "pokemon" && !mustReplace)) {
+      setView("menu");
+      return true;
+    }
+    return false;
+  };
+  useBattlePadNavigation(navRootRef, Boolean(battle), navBackRef);
 
   // A fainted active mon forces the switch panel open until a replacement is picked.
   useEffect(() => {
@@ -381,6 +513,10 @@ export default function BattleScene() {
 
   return (
     <Box
+      ref={navRootRef}
+      // Settings -> Display -> Battle interface size. zoom scales the px-sized
+      // UI (databoxes, message window, menus) while %/vw layout stays fluid.
+      style={{ zoom: gameSettings.uiScale.battle } as CSSProperties}
       position="fixed"
       inset={0}
       zIndex={4200}
@@ -526,7 +662,7 @@ export default function BattleScene() {
         ) : null}
         {config.showBattleLog ? (
           <Button size="sm" variant="solid" colorScheme="blackAlpha" onClick={() => setLogOpen((open) => !open)}>
-            LOG
+            {t('battle.log')}
           </Button>
         ) : null}
       </HStack>
@@ -537,6 +673,7 @@ export default function BattleScene() {
 
       {/* Message window + command menus */}
       <Grid
+        data-battle-commands="true"
         position="absolute"
         left={0}
         right={0}
@@ -570,7 +707,7 @@ export default function BattleScene() {
                 border="2px solid rgba(0,0,0,0.35)"
                 onClick={() => clearBattle()}
               >
-                OK
+                {t('battle.ok')}
               </Button>
             </Flex>
           ) : null}
@@ -578,14 +715,14 @@ export default function BattleScene() {
 
         {showCommandMenu && view === "menu" ? (
           <SimpleGrid columns={2} spacing={1.5}>
-            <MenuButton colorScheme="red" onClick={() => setView("fight")}>FIGHT</MenuButton>
-            <MenuButton colorScheme="yellow" onClick={() => setView("bag")}>BAG</MenuButton>
-            <MenuButton colorScheme="green" onClick={() => setView("pokemon")}>VENOMONS</MenuButton>
+            <MenuButton colorScheme="red" onClick={() => setView("fight")}>{t('battle.fight')}</MenuButton>
+            <MenuButton colorScheme="yellow" onClick={() => setView("bag")}>{t('battle.bag')}</MenuButton>
+            <MenuButton colorScheme="green" onClick={() => setView("pokemon")}>{t('battle.pokemon')}</MenuButton>
             <MenuButton
               colorScheme="blue"
               onClick={() => sendAction({ type: battle.kind === "trainer" ? "surrender" : "run" })}
             >
-              {battle.kind === "trainer" ? "GIVE UP" : "RUN"}
+              {battle.kind === "trainer" ? t('battle.giveUp') : t('battle.run')}
             </MenuButton>
           </SimpleGrid>
         ) : null}
@@ -614,13 +751,13 @@ export default function BattleScene() {
               ))}
               {selfPokemon.moves.length === 0 ? (
                 <Text color={config.messageBoxTextColor} fontWeight="800">
-                  No battle moves available.
+                  {t('battle.noMoves')}
                 </Text>
               ) : null}
             </SimpleGrid>
             <VStack justify="center" spacing={1}>
               <Button size="sm" variant="outline" color={config.messageBoxTextColor} onClick={() => setView("menu")}>
-                Back
+                {t('battle.back')}
               </Button>
             </VStack>
           </Grid>
@@ -636,7 +773,7 @@ export default function BattleScene() {
                   justifyContent="space-between"
                   colorScheme="teal"
                   variant="solid"
-                  title={item.canUse ? item.description : "This item can't be used right now."}
+                  title={item.canUse ? item.description : t('battle.itemLocked')}
                   isDisabled={!item.canUse || actionDisabled}
                   onClick={() => {
                     if (item.category === "usable" || item.category === "berries") {
@@ -652,11 +789,11 @@ export default function BattleScene() {
                 </Button>
               ))}
               {battle.availableItems.length === 0 ? (
-                <Text color={config.messageBoxTextColor} fontWeight="800">No usable items.</Text>
+                <Text color={config.messageBoxTextColor} fontWeight="800">{t('battle.noItems')}</Text>
               ) : null}
             </SimpleGrid>
             <Button mt={2} size="sm" variant="outline" color={config.messageBoxTextColor} onClick={() => setView("menu")}>
-              Back
+              {t('battle.back')}
             </Button>
           </Box>
         ) : null}
@@ -664,7 +801,7 @@ export default function BattleScene() {
         {view === "bagTarget" ? (
           <Box overflowY="auto" overscrollBehavior="contain">
             <Text color={config.messageBoxTextColor} fontWeight="900" mb={1.5}>
-              Use {selectedItem?.name ?? "item"} on:
+              {t('battle.useOn', { name: selectedItem?.name ?? 'item' })}
             </Text>
             <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={1.5}>
               {battle.self.party.map((pokemon) => (
@@ -688,7 +825,7 @@ export default function BattleScene() {
               ))}
             </SimpleGrid>
             <Button mt={2} size="sm" variant="outline" color={config.messageBoxTextColor} onClick={() => setView("bag")}>
-              Back
+              {t('battle.back')}
             </Button>
           </Box>
         ) : null}
@@ -697,7 +834,7 @@ export default function BattleScene() {
           <Box overflowY="auto" overscrollBehavior="contain">
             {mustReplace ? (
               <Text color={config.messageBoxTextColor} fontWeight="900" mb={1.5}>
-                Choose your next Venomon:
+                {t('battle.chooseNext')}
               </Text>
             ) : null}
             <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={1.5}>
@@ -719,7 +856,7 @@ export default function BattleScene() {
             </SimpleGrid>
             {!mustReplace ? (
               <Button mt={2} size="sm" variant="outline" color={config.messageBoxTextColor} onClick={() => setView("menu")}>
-                Back
+                {t('battle.back')}
               </Button>
             ) : null}
           </Box>
@@ -756,15 +893,15 @@ export default function BattleScene() {
           p={5}
           color="white"
         >
-          <Text fontSize="xs" color="teal.200" fontWeight="900">BATTLE RESULT</Text>
+          <Text fontSize="xs" color="teal.200" fontWeight="900">{t('battle.result')}</Text>
           <Text mt={2} fontSize="xl" fontWeight="900">{battle.summary.result}</Text>
           <SimpleGrid mt={3} columns={2} spacing={3}>
             <Box bg="whiteAlpha.100" borderRadius="8px" p={3}>
-              <Text fontSize="xs" color="gray.300">Winner</Text>
+              <Text fontSize="xs" color="gray.300">{t('battle.winner')}</Text>
               <Text fontWeight="800">{battle.summary.winnerName ?? "—"}</Text>
             </Box>
             <Box bg="whiteAlpha.100" borderRadius="8px" p={3}>
-              <Text fontSize="xs" color="gray.300">Loser</Text>
+              <Text fontSize="xs" color="gray.300">{t('battle.loser')}</Text>
               <Text fontWeight="800">{battle.summary.loserName ?? "—"}</Text>
             </Box>
           </SimpleGrid>

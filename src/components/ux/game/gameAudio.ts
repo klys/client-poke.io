@@ -1,6 +1,7 @@
 import { readStoredDesignerSectionPayload } from "../../designer/designerCache";
 import { resolveServerAssetUrl } from "../../tilemap/serverAssets";
 import { readBattleInterfaceConfig } from "./battle/battleInterfaceConfig";
+import { loadGameSettings, subscribeGameSettings } from "../../../settings/gameSettings";
 
 /**
  * World audio: map background music, RPG Maker event sounds (Play SE/ME/BGM)
@@ -8,6 +9,11 @@ import { readBattleInterfaceConfig } from "./battle/battleInterfaceConfig";
  * `audio` section (Venova imports live under /migration_exports/audio). MIDI
  * originals are pre-converted to .ogg; records still marked unplayable are
  * skipped silently.
+ *
+ * Volumes combine two layers: the designer battleInterface config (game-wide
+ * baseline) and the player's Settings -> Audio preferences (gameSettings.ts).
+ * Effective volume = designer x player; muted when either side mutes. Player
+ * settings apply live to the current BGM element.
  */
 
 type AudioKind = "BGM" | "ME" | "SE";
@@ -60,16 +66,51 @@ export function resolveGameAudioSrc(name: string, kind: AudioKind): string {
   return "";
 }
 
+function userAudio() {
+  return loadGameSettings().audio;
+}
+
 class GameAudioManager {
   private bgmElement: HTMLAudioElement | null = null;
   private bgmKey = "";
+  private lastBgmName = "";
   private seElements = new Map<string, HTMLAudioElement>();
   private suspended = false;
+
+  constructor() {
+    // Apply Settings -> Audio changes to the playing track immediately:
+    // volume moves live, muting pauses, unmuting resumes (or restarts the
+    // last requested track if muting had prevented it from starting).
+    if (typeof window !== "undefined") {
+      subscribeGameSettings((settings) => {
+        const config = readBattleInterfaceConfig();
+        const muted = settings.audio.musicMuted || config.muteBgm;
+        if (this.bgmElement) {
+          this.bgmElement.volume = Math.max(0, Math.min(1, config.bgmVolume * settings.audio.musicVolume));
+          if (muted) {
+            this.bgmElement.pause();
+          } else if (!this.suspended && this.bgmElement.paused) {
+            void this.bgmElement.play().catch(() => undefined);
+          }
+        } else if (!muted && this.lastBgmName) {
+          this.playBgm(this.lastBgmName);
+        }
+      });
+    }
+  }
 
   /** Starts (or keeps) looping background music identified by RMXP name. */
   playBgm(name: string) {
     const config = readBattleInterfaceConfig();
-    if (!name || config.muteBgm || config.bgmVolume <= 0) {
+    const audio = userAudio();
+    if (name) {
+      this.lastBgmName = name;
+    }
+    if (!name || config.muteBgm || audio.musicMuted) {
+      return;
+    }
+    const volume = config.bgmVolume * audio.musicVolume;
+    if (volume <= 0) {
       return;
     }
     const key = normalizeAudioName(name);
@@ -81,10 +122,11 @@ class GameAudioManager {
       return;
     }
     this.stopBgm();
+    this.lastBgmName = name; // stopBgm() clears it; this track is still wanted
     try {
       const element = new Audio(src);
       element.loop = true;
-      element.volume = config.bgmVolume;
+      element.volume = Math.min(1, volume);
       this.bgmElement = element;
       this.bgmKey = key;
       if (!this.suspended) {
@@ -102,6 +144,7 @@ class GameAudioManager {
       this.bgmElement = null;
     }
     this.bgmKey = "";
+    this.lastBgmName = "";
   }
 
   /** Battles take over audio; map music resumes on resume(). */
@@ -126,7 +169,9 @@ class GameAudioManager {
   /** One-shot sound effect / musical effect by RMXP name. */
   playEffect(name: string, kind: "SE" | "ME" = "SE", volume?: number) {
     const config = readBattleInterfaceConfig();
-    if (!name || config.muteSe || config.seVolume <= 0) {
+    const audio = userAudio();
+    const sfxVolume = config.seVolume * audio.sfxVolume;
+    if (!name || config.muteSe || audio.sfxMuted || sfxVolume <= 0) {
       return;
     }
     const src = resolveGameAudioSrc(name, kind);
@@ -139,7 +184,7 @@ class GameAudioManager {
         element = new Audio(src);
         this.seElements.set(src, element);
       }
-      element.volume = Math.max(0, Math.min(1, (volume ?? 100) / 100)) * config.seVolume;
+      element.volume = Math.max(0, Math.min(1, (volume ?? 100) / 100)) * Math.min(1, sfxVolume);
       element.currentTime = 0;
       void element.play().catch(() => undefined);
     } catch {

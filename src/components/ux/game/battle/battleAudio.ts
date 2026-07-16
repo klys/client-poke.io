@@ -1,12 +1,17 @@
 import { readStoredDesignerSectionPayload } from "../../../designer/designerCache";
 import { resolveServerAssetUrl } from "../../../tilemap/serverAssets";
 import type { BattleInterfaceConfig } from "./battleInterfaceConfig";
+import { loadGameSettings, subscribeGameSettings } from "../../../../settings/gameSettings";
 
 /**
  * Battle sound cues. Named cues resolve, in order:
  * 1. an explicit src from the battleInterface designer config,
  * 2. a designer `audio` section record whose name matches the cue,
  * 3. a synthesized WebAudio fallback so battles are never silent.
+ *
+ * The player's Settings -> Audio preferences layer over the designer config:
+ * effective volume = designer x player, muted when either side mutes, and
+ * changes apply live to the battle BGM.
  */
 export type BattleSoundCue =
   | "battle-intro-wild"
@@ -109,10 +114,35 @@ function resolveAudioRecordSrc(cue: BattleSoundCue): string {
   return "";
 }
 
+function userAudio() {
+  return loadGameSettings().audio;
+}
+
 class BattleAudioManager {
   private audioContext: AudioContext | null = null;
   private bgmElement: HTMLAudioElement | null = null;
+  private bgmDesignerVolume = 0;
   private cueElements = new Map<string, HTMLAudioElement>();
+
+  constructor() {
+    // Live-apply Settings -> Audio changes to the battle BGM.
+    if (typeof window !== "undefined") {
+      subscribeGameSettings((settings) => {
+        if (!this.bgmElement) {
+          return;
+        }
+        this.bgmElement.volume = Math.max(
+          0,
+          Math.min(1, this.bgmDesignerVolume * settings.audio.musicVolume)
+        );
+        if (settings.audio.musicMuted) {
+          this.bgmElement.pause();
+        } else if (this.bgmElement.paused) {
+          void this.bgmElement.play().catch(() => undefined);
+        }
+      });
+    }
+  }
 
   private getAudioContext(): AudioContext | null {
     if (typeof window === "undefined") {
@@ -158,7 +188,9 @@ class BattleAudioManager {
   }
 
   playCue(cue: BattleSoundCue, config: Pick<BattleInterfaceConfig, "seVolume" | "muteSe">, explicitSrc = "") {
-    if (config.muteSe || config.seVolume <= 0) {
+    const audio = userAudio();
+    const volume = Math.min(1, config.seVolume * audio.sfxVolume);
+    if (config.muteSe || audio.sfxMuted || volume <= 0) {
       return;
     }
 
@@ -170,28 +202,31 @@ class BattleAudioManager {
           element = new Audio(src);
           this.cueElements.set(src, element);
         }
-        element.volume = config.seVolume;
+        element.volume = volume;
         element.currentTime = 0;
-        void element.play().catch(() => this.playSynthCue(cue, config.seVolume));
+        void element.play().catch(() => this.playSynthCue(cue, volume));
         return;
       } catch {
         // fall through to synth
       }
     }
 
-    this.playSynthCue(cue, config.seVolume);
+    this.playSynthCue(cue, volume);
   }
 
   playBgm(src: string, config: Pick<BattleInterfaceConfig, "bgmVolume" | "muteBgm">, loop = true) {
     this.stopBgm();
-    if (!src || config.muteBgm || config.bgmVolume <= 0) {
+    const audio = userAudio();
+    const volume = Math.min(1, config.bgmVolume * audio.musicVolume);
+    if (!src || config.muteBgm || audio.musicMuted || volume <= 0) {
       return;
     }
 
     try {
       const element = new Audio(resolveServerAssetUrl(src));
       element.loop = loop;
-      element.volume = config.bgmVolume;
+      element.volume = volume;
+      this.bgmDesignerVolume = config.bgmVolume;
       this.bgmElement = element;
       void element.play().catch(() => undefined);
     } catch {

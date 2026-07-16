@@ -47,6 +47,9 @@ import {
 import type { DesignerItemSeed, DesignerPokemonProfile } from '../../designer/designerSections';
 import { getPokemonDisplayName, validatePokemonNickname } from '../game/pokemonName';
 import GamepadSettings from './GamepadSettings';
+import GameSettingsSections from './GameSettingsSections';
+import { useGameSettings } from '../../../settings/gameSettings';
+import { useT } from '../../../i18n';
 import { useCompactUx } from '../useCompactUx';
 import { resolveServerAssetUrl } from '../../tilemap/serverAssets';
 
@@ -72,13 +75,14 @@ type DraggableWindowProps = {
   children: ReactNode;
 };
 
-const WINDOW_TITLES: Record<WindowKey, string> = {
-  account: 'Account',
-  settings: 'Settings',
-  bag: 'Bag',
-  pokemons: 'Venomons',
-  trainerCard: 'Trainer Card',
-  battleHistory: 'Battle History'
+// i18n keys — resolved with t() at render time so titles follow the language.
+const WINDOW_TITLE_KEYS: Record<WindowKey, string> = {
+  account: 'menu.account',
+  settings: 'menu.settings',
+  bag: 'menu.bag',
+  pokemons: 'menu.pokemons',
+  trainerCard: 'menu.trainerCard',
+  battleHistory: 'menu.battleHistory'
 };
 
 const DEFAULT_POSITIONS: Record<WindowKey, WindowPosition> = {
@@ -225,6 +229,7 @@ function DraggableWindow({
   // landscape phones are wider than the md breakpoint.
   const compact = useCompactUx();
   const canDrag = dragEnabled && !compact;
+  const [gameSettings] = useGameSettings();
   const dragStartRef = useRef<{
     pointerId: number;
     startX: number;
@@ -279,6 +284,8 @@ function DraggableWindow({
 
   return (
     <Box
+      // Settings -> Display -> Interface windows size.
+      style={{ zoom: gameSettings.uiScale.interface } as React.CSSProperties}
       position="fixed"
       left={compact ? 2 : { base: 3, md: `${position.x}px` }}
       top={compact ? 2 : { base: 20, md: `${position.y}px` }}
@@ -333,6 +340,7 @@ function DraggableWindow({
 
 function AccountWindow() {
   const { user, changePassword, updateProfile } = useAuth();
+  const t = useT();
   const [profileImage, setProfileImage] = useState(user?.profileImage ?? '');
   const [description, setDescription] = useState(user?.description ?? '');
   const [currentPassword, setCurrentPassword] = useState('');
@@ -355,23 +363,23 @@ function AccountWindow() {
       </HStack>
       <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
         <Box bg="whiteAlpha.100" p={3} borderRadius="8px">
-          <Text fontSize="xs" color="gray.400">Email status</Text>
+          <Text fontSize="xs" color="gray.400">{t('account.emailStatus')}</Text>
           <Badge colorScheme={user?.emailVerified ? 'green' : 'yellow'}>
-            {user?.emailVerified ? 'Verified' : 'Pending'}
+            {user?.emailVerified ? t('account.verified') : t('account.pending')}
           </Badge>
         </Box>
         <Box bg="whiteAlpha.100" p={3} borderRadius="8px">
-          <Text fontSize="xs" color="gray.400">User ID</Text>
+          <Text fontSize="xs" color="gray.400">{t('account.userId')}</Text>
           <Text>{user?.id}</Text>
         </Box>
       </SimpleGrid>
       <Divider borderColor="whiteAlpha.300" />
       <FormControl>
-        <FormLabel>Profile image URL</FormLabel>
+        <FormLabel>{t('account.profileImage')}</FormLabel>
         <Input value={profileImage} onChange={(event) => setProfileImage(event.target.value)} />
       </FormControl>
       <FormControl>
-        <FormLabel>Short description</FormLabel>
+        <FormLabel>{t('account.description')}</FormLabel>
         <Textarea
           resize="none"
           maxLength={50}
@@ -381,15 +389,15 @@ function AccountWindow() {
         <FormHelperText color="gray.400">{description.length}/50</FormHelperText>
       </FormControl>
       <Button colorScheme="teal" onClick={() => updateProfile({ profileImage, description })}>
-        Save profile
+        {t('account.saveProfile')}
       </Button>
       <Divider borderColor="whiteAlpha.300" />
       <FormControl>
-        <FormLabel>Current password</FormLabel>
+        <FormLabel>{t('account.currentPassword')}</FormLabel>
         <PasswordInput value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
       </FormControl>
       <FormControl>
-        <FormLabel>New password</FormLabel>
+        <FormLabel>{t('account.newPassword')}</FormLabel>
         <PasswordInput value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
       </FormControl>
       <Button
@@ -399,10 +407,10 @@ function AccountWindow() {
           setNewPassword('');
         }}
       >
-        Change password
+        {t('account.changePassword')}
       </Button>
       <Link href={BUG_REPORT_URL} isExternal color="teal.200" fontWeight="700">
-        Report bug
+        {t('account.reportBug')}
       </Link>
     </VStack>
   );
@@ -417,17 +425,20 @@ function SettingsWindow({
   setDragEnabled: (value: boolean) => void;
   resetPositions: () => void;
 }) {
+  const t = useT();
+
   return (
     <VStack align="stretch" spacing={4}>
       <Button
         colorScheme={dragEnabled ? 'teal' : 'gray'}
         onClick={() => setDragEnabled(!dragEnabled)}
       >
-        {dragEnabled ? 'Disable draggable screen' : 'Enable draggable screen'}
+        {dragEnabled ? t('settings.disableDrag') : t('settings.enableDrag')}
       </Button>
       <Button variant="outline" color="white" borderColor="whiteAlpha.400" onClick={resetPositions}>
-        Reset screen positions
+        {t('settings.resetPositions')}
       </Button>
+      <GameSettingsSections />
       <GamepadSettings />
     </VStack>
   );
@@ -440,14 +451,15 @@ function BagWindow() {
     teachInventoryMove,
     throwAwayInventoryItem
   } = useAuth();
+  const t = useT();
   const items = user?.inventory ?? [];
   const party = user?.pokemonParty ?? [];
   const categories: Array<{ key: InventoryItem['category'] | 'all'; label: string }> = [
-    { key: 'all', label: 'All' },
-    { key: 'usable', label: 'Usable' },
-    { key: 'berries', label: 'Berries' },
-    { key: 'moves', label: 'Moves' },
-    { key: 'quest', label: 'Quest Items' }
+    { key: 'all', label: t('bag.all') },
+    { key: 'usable', label: t('bag.usable') },
+    { key: 'berries', label: t('bag.berries') },
+    { key: 'moves', label: t('bag.moves') },
+    { key: 'quest', label: t('bag.quest') }
   ];
   const selectPokemonTarget = (item: InventoryItem) => {
     if (party.length === 0) {
@@ -525,12 +537,12 @@ function BagWindow() {
                     <HStack mt={3} spacing={2} flexWrap="wrap">
                       {item.category === 'usable' || item.category === 'berries' ? (
                         <Button size="xs" colorScheme="teal" onClick={() => handleUse(item)}>
-                          Use
+                          {t('bag.use')}
                         </Button>
                       ) : null}
                       {item.category === 'moves' ? (
                         <Button size="xs" colorScheme="purple" onClick={() => handleTeach(item)}>
-                          Teach
+                          {t('bag.teach')}
                         </Button>
                       ) : null}
                       <Button
@@ -540,12 +552,12 @@ function BagWindow() {
                         borderColor="whiteAlpha.400"
                         onClick={() => handleThrowAway(item)}
                       >
-                        Throw Away
+                        {t('bag.throwAway')}
                       </Button>
                     </HStack>
                   </Box>
                 ))}
-                {filteredItems.length === 0 ? <Text color="gray.400">No items in this pocket.</Text> : null}
+                {filteredItems.length === 0 ? <Text color="gray.400">{t('bag.empty')}</Text> : null}
               </SimpleGrid>
             </TabPanel>
           );
@@ -557,6 +569,7 @@ function BagWindow() {
 
 function TrainerCardWindow({ openBattleHistory }: { openBattleHistory: () => void }) {
   const { user } = useAuth();
+  const t = useT();
 
   return (
     <Box bg="linear-gradient(135deg, #0f766e 0%, #1f2937 100%)" p={5} borderRadius="8px">
@@ -570,9 +583,9 @@ function TrainerCardWindow({ openBattleHistory }: { openBattleHistory: () => voi
       </HStack>
       <Divider my={4} borderColor="whiteAlpha.400" />
       <Text fontWeight="800" color="yellow.100">${user?.money ?? 0}</Text>
-      <Text minH="24px">{user?.description || 'No description set.'}</Text>
+      <Text minH="24px">{user?.description || t('trainer.noDescription')}</Text>
       <Button mt={4} width="100%" colorScheme="teal" onClick={openBattleHistory}>
-        Battle History
+        {t('trainer.battleHistory')}
       </Button>
     </Box>
   );
@@ -616,12 +629,13 @@ function BattleHistoryCard({ entry }: { entry: BattleHistoryEntry }) {
 
 function BattleHistoryWindow() {
   const { user } = useAuth();
+  const t = useT();
   const history = user?.battleHistory ?? [];
 
   return (
     <VStack align="stretch" spacing={3}>
       {history.map((entry) => <BattleHistoryCard key={entry.id} entry={entry} />)}
-      {history.length === 0 ? <Text color="gray.400">No battles recorded yet.</Text> : null}
+      {history.length === 0 ? <Text color="gray.400">{t('history.empty')}</Text> : null}
     </VStack>
   );
 }
@@ -757,6 +771,7 @@ function PokemonCard({
   onMoveInParty: (partyIndex: number, direction: -1 | 1) => void;
 }) {
   const { user, namePokemon, holdInventoryItem, takeHeldItem } = useAuth();
+  const t = useT();
 
   const handleGiveHeldItem = () => {
     const berries = (user?.inventory ?? []).filter(
@@ -820,7 +835,7 @@ function PokemonCard({
           </Box>
         </HStack>
         <HStack spacing={2} align="start">
-          {partyIndex === 0 ? <Badge colorScheme="orange">Lead</Badge> : null}
+          {partyIndex === 0 ? <Badge colorScheme="orange">{t('party.lead')}</Badge> : null}
           <Badge colorScheme="teal">Lv {pokemon.level}</Badge>
           <Menu placement="bottom-end">
             <MenuButton
@@ -868,11 +883,11 @@ function PokemonCard({
         size="sm"
         borderRadius="8px"
       />
-      <Text mt={3} fontSize="xs" color="gray.400">Moves</Text>
+      <Text mt={3} fontSize="xs" color="gray.400">{t('party.moves')}</Text>
       <Text fontSize="sm">
         {pokemon.moves
           .map((move) => typeof pokemon.movePp?.[move] === 'number' ? `${move} (${pokemon.movePp[move]} PP)` : move)
-          .join(', ') || 'No moves learned.'}
+          .join(', ') || t('party.noMoves')}
       </Text>
     </Box>
   );
@@ -888,6 +903,7 @@ function PokemonsWindow({
   onOpenStats: (pokemonId: string) => void;
 }) {
   const { reorderPokemonParty } = useAuth();
+  const t = useT();
 
   const handleMoveInParty = (partyIndex: number, direction: -1 | 1) => {
     const targetIndex = partyIndex + direction;
@@ -902,9 +918,9 @@ function PokemonsWindow({
 
   return (
     <VStack align="stretch" spacing={3}>
-      <Text color="gray.300">Venomons on hand: {party.length}/6</Text>
+      <Text color="gray.300">{t('party.onHand')} {party.length}/6</Text>
       <Text color="gray.500" fontSize="xs">
-        The first Venomon in the list battles first. Use Move Up / Move Down to change the order.
+        {t('party.orderHint')}
       </Text>
       <Grid templateColumns={{ base: '1fr', sm: '1fr 1fr' }} gap={3}>
         {party.map((pokemon, index) => (
@@ -919,7 +935,7 @@ function PokemonsWindow({
           />
         ))}
       </Grid>
-      {party.length === 0 ? <Text color="gray.400">No Venomons in your party yet.</Text> : null}
+      {party.length === 0 ? <Text color="gray.400">{t('party.empty')}</Text> : null}
     </VStack>
   );
 }
@@ -939,6 +955,7 @@ function PokemonStatsFallback({ pokemonId }: { pokemonId: string }) {
 
 const AccountMenu = () => {
   const toast = useToast();
+  const t = useT();
   const { hasPermission, logout, user } = useAuth();
   const pokemonCatalog = usePokemonCatalog();
   const party = (user?.pokemonParty ?? []).slice(0, 6);
@@ -1022,7 +1039,7 @@ const AccountMenu = () => {
   const resetPositions = () => {
     setPositions(DEFAULT_POSITIONS);
     window.localStorage.setItem(WINDOW_POSITIONS_KEY, JSON.stringify(DEFAULT_POSITIONS));
-    toast({ title: 'Window positions reset.', status: 'success', duration: 2000, position: 'top' });
+    toast({ title: t('settings.positionsReset'), status: 'success', duration: 2000, position: 'top' });
   };
 
   useEffect(() => {
@@ -1039,11 +1056,11 @@ const AccountMenu = () => {
 
   const getWindowTitle = (windowKey: OpenWindowId) => {
     if (!isPokemonStatsWindowId(windowKey)) {
-      return WINDOW_TITLES[windowKey];
+      return t(WINDOW_TITLE_KEYS[windowKey]);
     }
 
     const pokemon = party.find((entry) => entry.id === getPokemonIdFromStatsWindow(windowKey));
-    return pokemon ? `${getPokemonDisplayName(pokemon)} Stats` : 'Venomon Stats';
+    return pokemon ? `${getPokemonDisplayName(pokemon)} ${t('menu.statsSuffix')}` : t('menu.pokemonStats');
   };
 
   const getWindowDesktopWidth = (windowKey: OpenWindowId) => (
@@ -1119,27 +1136,27 @@ const AccountMenu = () => {
             {user?.username ?? 'Account'}
           </Text>
           <Text as="span" display={{ base: 'inline', sm: 'none' }}>
-            Menu
+            {t('menu.menu')}
           </Text>
           <Text as="span" ml={2}>v</Text>
         </MenuButton>
         <MenuList color="gray.900">
-          <MenuItem onClick={() => openWindow('account')}>Account</MenuItem>
-          <MenuItem onClick={() => openWindow('settings')}>Settings</MenuItem>
-          <MenuItem onClick={() => openWindow('bag')}>Bag</MenuItem>
-          <MenuItem onClick={() => openWindow('pokemons')}>Venomons</MenuItem>
-          <MenuItem onClick={() => openWindow('trainerCard')}>Trainer Card</MenuItem>
-          <MenuItem onClick={() => openWindow('battleHistory')}>Battle History</MenuItem>
+          <MenuItem onClick={() => openWindow('account')}>{t('menu.account')}</MenuItem>
+          <MenuItem onClick={() => openWindow('settings')}>{t('menu.settings')}</MenuItem>
+          <MenuItem onClick={() => openWindow('bag')}>{t('menu.bag')}</MenuItem>
+          <MenuItem onClick={() => openWindow('pokemons')}>{t('menu.pokemons')}</MenuItem>
+          <MenuItem onClick={() => openWindow('trainerCard')}>{t('menu.trainerCard')}</MenuItem>
+          <MenuItem onClick={() => openWindow('battleHistory')}>{t('menu.battleHistory')}</MenuItem>
           {hasPermission('designer.access') ? (
-            <MenuItem as={RouterLink} to="/designer">Designer</MenuItem>
+            <MenuItem as={RouterLink} to="/designer">{t('menu.designer')}</MenuItem>
           ) : null}
           {hasPermission('moderator.access') ? (
-            <MenuItem as={RouterLink} to="/moderator">Moderator</MenuItem>
+            <MenuItem as={RouterLink} to="/moderator">{t('menu.moderator')}</MenuItem>
           ) : null}
           {hasPermission('admin.access') ? (
-            <MenuItem as={RouterLink} to="/admin">Admin</MenuItem>
+            <MenuItem as={RouterLink} to="/admin">{t('menu.admin')}</MenuItem>
           ) : null}
-          <MenuItem color="red.500" onClick={logout}>Log out</MenuItem>
+          <MenuItem color="red.500" onClick={logout}>{t('menu.logout')}</MenuItem>
         </MenuList>
       </Menu>
       {orderedWindows.map((windowKey) => (
