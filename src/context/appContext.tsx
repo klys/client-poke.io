@@ -97,8 +97,6 @@ const reducer = (state:any, action:any) => {
                 ...state
             }
         case actions.ADD_PLAYER:
-            console.log("action.playerData:", action.playerData);
-            //console.log("state.playersIds[action.playerData.playerId]: ", state.playersIds[action.playerData.playerId])
 
             state.players[action.playerData.id] = ({
                 ...state.players[action.playerData.id],
@@ -117,9 +115,7 @@ const reducer = (state:any, action:any) => {
                 // playersIds: state.playersIds
             }
         case actions.REMOVE_PLAYER:
-            console.log("action on REMOVE_PLAYER: ", action)
             if (typeof state.players[action.playerData.id] === "undefined") return state;
-            console.log("action->REMOVE_PLAYER passed verification.")
                 //state.players.splice(action.playerData.id,1)
                 delete state.players[action.playerData.id]
             // if (state.playersIds[action.playerId] !== undefined) {
@@ -145,7 +141,6 @@ const reducer = (state:any, action:any) => {
                     }
                 }
             */
-           console.log("appContext->action.playerData",action.playerData)
             if (typeof state.players[action.playerData.id] !== "undefined") {
                 state.players[action.playerData.id] = {
                                     ...state.players[action.playerData.id],
@@ -157,11 +152,8 @@ const reducer = (state:any, action:any) => {
                 players: state.players
             }
         case actions.ADD_PROJECTIL:
-            console.log("ADD_PROJECTIL")
-            if (state.projectiles[action.projectilData.id] !== undefined) return state; 
-            console.log("beforeSplice",state.projectiles)
+            if (state.projectiles[action.projectilData.id] !== undefined) return state;
             state.projectiles[action.projectilData.id] = action.projectilData;
-            console.log("afterSplice", state.projectiles)
             // if(state.projectiles.find((projectil: { id: any }) => projectil.id == action.projectilData.id) == undefined) {
             //     // not projectil with such id found
             //     // so we proceed to add it
@@ -182,10 +174,8 @@ const reducer = (state:any, action:any) => {
             }
         case actions.REMOVE_PROJECTIL:
             if (state.projectiles[action.projectilData.id] === undefined) return state;
-            console.log("beforeSplice",state.projectiles)
             //state.projectiles.splice(action.projectilData.id,1);
             delete state.projectiles[action.projectilData.id]
-            console.log("afterSplice",state.projectiles)
             // const delIndex = state.projectiles.findIndex((projectil: { id: any }) => projectil.id == action.projectilData.id);
             // if(delIndex != -1) {
             //     state.projectiles.splice(delIndex,1);

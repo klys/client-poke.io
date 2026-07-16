@@ -16,6 +16,7 @@ import { Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../../context/authContext';
 import ApiKeysManager from './ApiKeysManager';
 import MapsOverview from './MapsOverview';
+import OnlinePlayersOverview from './OnlinePlayersOverview';
 import UsersSection from './users/UsersSection';
 import type {
   AdminRoleDefinition,
@@ -24,7 +25,7 @@ import type {
   OnlineMapOverview
 } from './types';
 
-type AdminSection = 'users' | 'maps' | 'roles' | 'apikeys';
+type AdminSection = 'users' | 'online' | 'maps' | 'roles' | 'apikeys';
 
 type AdminPageProps = {
   section: AdminSection
@@ -39,6 +40,7 @@ const PERMISSION_OPTIONS: Array<{ value: AdminRolePermission; label: string }> =
 
 const SECTION_LABELS: Record<AdminSection, string> = {
   users: 'Users',
+  online: 'Online Players',
   maps: 'Maps',
   roles: 'Roles Manager',
   apikeys: 'API Keys'
@@ -46,6 +48,7 @@ const SECTION_LABELS: Record<AdminSection, string> = {
 
 const SECTION_ROUTES: Record<AdminSection, string> = {
   users: '/admin/users',
+  online: '/admin/online',
   maps: '/admin/maps',
   roles: '/admin/roles',
   apikeys: '/admin/api-keys'
@@ -120,7 +123,7 @@ export default function AdminPage({ section }: AdminPageProps) {
     // Re-request the active section's data after a reconnect — any response
     // that was in flight when the socket dropped is gone for good.
     const handleReconnect = () => {
-      if (section === 'maps') {
+      if (section === 'maps' || section === 'online') {
         loadMaps();
       } else if (section === 'roles') {
         loadRoles();
@@ -149,7 +152,7 @@ export default function AdminPage({ section }: AdminPageProps) {
   }, [socket, toast, section, loadMaps, loadRoles]);
 
   useEffect(() => {
-    if (section === 'maps') {
+    if (section === 'maps' || section === 'online') {
       loadMaps();
       return;
     }
@@ -196,7 +199,7 @@ export default function AdminPage({ section }: AdminPageProps) {
               </Box>
 
               <HStack spacing={3} flexWrap="wrap">
-                {(['users', 'maps', 'roles', 'apikeys'] as AdminSection[]).map((item) => (
+                {(['users', 'online', 'maps', 'roles', 'apikeys'] as AdminSection[]).map((item) => (
                   <Button
                     key={item}
                     as={RouterLink}
@@ -216,6 +219,26 @@ export default function AdminPage({ section }: AdminPageProps) {
           </Box>
 
           {section === 'users' ? <UsersSection socket={socket} /> : null}
+
+          {section === 'online' ? (
+            <Box borderRadius="28px" bg="white" p={{ base: 5, lg: 6 }} boxShadow="0 20px 48px rgba(47, 69, 52, 0.10)">
+              <Stack spacing={4}>
+                <HStack justify="space-between" flexWrap="wrap" spacing={4}>
+                  <Box>
+                    <Text fontSize="2xl" fontWeight="800" color="#1f2d22">All Online Players</Text>
+                    <Text color="#68776b">Every connected player across all maps, in one place.</Text>
+                  </Box>
+                  <Button colorScheme="green" variant="outline" onClick={loadMaps}>Refresh</Button>
+                </HStack>
+                <OnlinePlayersOverview
+                  maps={maps}
+                  totalOnlinePlayers={totalOnlinePlayers}
+                  fetchedAt={mapsFetchedAt}
+                  emptyMessage="No active players are connected right now."
+                />
+              </Stack>
+            </Box>
+          ) : null}
 
           {section === 'maps' ? (
             <Box borderRadius="28px" bg="white" p={{ base: 5, lg: 6 }} boxShadow="0 20px 48px rgba(47, 69, 52, 0.10)">

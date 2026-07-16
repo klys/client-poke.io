@@ -83,7 +83,6 @@ const UserControl = () => {
         if (event.key === "q" || isMovementKey(event.key)) {
             event.preventDefault()
         }
-        console.log("players", players)
         // const keys = Object.keys(players)
         /* let myId = undefined
         for(let i = 0; i < keys.length; i++) {
@@ -94,8 +93,6 @@ const UserControl = () => {
         } */
         //const myId = players.findIndex((player:any) => player.playerId == socket.id)[0];
         if ((event.key === "q")) {
-            
-            console.log("Pressing Q")
             //const myId = playersIds[socket.id];
             //console.log("pos player: x"+players[myId].x+", y:"+players[myId].y)
 
@@ -150,7 +147,6 @@ const UserControl = () => {
 
         if (!isMovementKey(event.key)) return;
         event.preventDefault()
-        console.log("players", players)
         const keys = Object.keys(players)
         let myId = undefined
         for(let i = 0; i < keys.length; i++) {
@@ -160,7 +156,6 @@ const UserControl = () => {
             }
         }
         if (typeof myId === 'undefined') return;
-        console.log("my_player",players[myId])
         const moveSlot = 16;
         if ((event.key === "ArrowUp")) {
             socket.emit("move", { x: players[myId].x , y: players[myId].y-moveSlot })

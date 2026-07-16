@@ -173,6 +173,10 @@ export const createEndpoints = (config: RuntimeConfig): RouteObject[] => [
     element: withAuth(createElement(AdminPage, { section: 'users' }), 'admin.access')
   },
   {
+    path: '/admin/online',
+    element: withAuth(createElement(AdminPage, { section: 'online' }), 'admin.access')
+  },
+  {
     path: '/admin/maps',
     element: withAuth(createElement(AdminPage, { section: 'maps' }), 'admin.access')
   },
