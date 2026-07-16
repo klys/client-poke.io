@@ -9,6 +9,7 @@ import VirtualControls from "./VirtualControls"
 import GamepadControls from "./GamepadControls"
 import Map from "./Map"
 import MapNameBanner from "./MapNameBanner"
+import MapLoadingOverlay from "./MapLoadingOverlay"
 import AccountMenu from "../ux/auth/AccountMenu";
 import BattleScene from "../ux/game/battle/BattleScene";
 import EventDialog from "../ux/game/EventDialog";
@@ -50,6 +51,7 @@ const Game = ({ socketUrl }:{ socketUrl:string }) => {
                 </Map>
             </div>
             <MapNameBanner />
+            <MapLoadingOverlay />
             <MapMusic />
             <TrainerInteractionCard />
             <BattlePrompts />

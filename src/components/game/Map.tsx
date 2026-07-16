@@ -1,10 +1,11 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AppContext } from "../../context/appContext";
 import { useEventListener } from "usehooks-ts";
 import Cursor from "./Cursor";
 import GameObject from "./Object";
 import MapNeighbors from "./MapNeighbors";
-import TileMapSurface from "./TileMapSurface";
+import TileMapSurface, { tileMapChunkKey } from "./TileMapSurface";
+import { setMapLoadWaiting, startMapLoad } from "./mapLoadProgress";
 import NpcInteractionOverlay from "../ux/game/NpcInteractions";
 import NpcSprite from "./NpcSprite";
 import { assetUrl, resolveServerAssetUrl } from "../tilemap/serverAssets";
@@ -128,6 +129,75 @@ const Map = ({children}:{children:any}) => {
     const mapPixelWidth = activeMapConfig ? activeMapConfig.width * activeMapConfig.cellSize : 3200;
     const mapPixelHeight = activeMapConfig ? activeMapConfig.height * activeMapConfig.cellSize : 3200;
     const activeTileMap = activeMapEditorData?.tileMap?.baked ? activeMapEditorData.tileMap : null;
+    const activeMapId = activeMap?.item.id ?? null;
+
+    // Track the player position without re-triggering the load effect on
+    // every step; the priority set only cares where the player spawned in.
+    const playerPositionRef = useRef({ x: 0, y: 0 });
+    if (currentPlayer && typeof currentPlayer.x === "number" && typeof currentPlayer.y === "number") {
+        playerPositionRef.current = { x: currentPlayer.x, y: currentPlayer.y };
+    }
+
+    // The chunks the loading overlay waits for: everything intersecting one
+    // screen around the spawn point. The rest of the map keeps lazy-loading
+    // as the camera moves, so huge maps don't stall the bar.
+    const priorityChunkKeys = useMemo(() => {
+        const keys = new Set<string>();
+        const baked = activeTileMap?.baked;
+
+        if (!baked) {
+            return keys;
+        }
+
+        const chunkPixels = baked.chunkCells * activeTileMap.tileSize;
+        const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1280;
+        const viewportHeight = typeof window !== "undefined" ? window.innerHeight : 720;
+        const pad = 64;
+        const centerX = playerPositionRef.current.x + 16;
+        const centerY = playerPositionRef.current.y + 16;
+        const minX = centerX - viewportWidth / 2 - pad;
+        const maxX = centerX + viewportWidth / 2 + pad;
+        const minY = centerY - viewportHeight / 2 - pad;
+        const maxY = centerY + viewportHeight / 2 + pad;
+
+        (["background", "foreground"] as const).forEach((plane) => {
+            baked[plane].forEach((chunk) => {
+                const left = chunk.col * chunkPixels;
+                const top = chunk.row * chunkPixels;
+
+                if (
+                    left <= maxX &&
+                    left + chunk.width >= minX &&
+                    top <= maxY &&
+                    top + chunk.height >= minY
+                ) {
+                    keys.add(tileMapChunkKey(plane, chunk.col, chunk.row));
+                }
+            });
+        });
+
+        return keys;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeMapId, activeTileMap]);
+
+    const hasPlayer = Boolean(currentPlayer);
+    const activeMapName = activeMap?.item.name ?? "";
+
+    // Drive the map-loading overlay: connecting → waiting for the maps
+    // payload → waiting for the spawn-viewport chunks → ready.
+    useEffect(() => {
+        if (!hasPlayer) {
+            setMapLoadWaiting("connecting");
+            return;
+        }
+
+        if (!activeMapId) {
+            setMapLoadWaiting("mapData");
+            return;
+        }
+
+        startMapLoad(activeMapId, activeMapName, Array.from(priorityChunkKeys));
+    }, [hasPlayer, activeMapId, activeMapName, priorityChunkKeys]);
     const backgroundStyle = activeTileMap
         ? { backgroundColor: activeMapConfig?.backgroundColor ?? "#000000" }
         : activeMapConfig
@@ -274,8 +344,20 @@ const Map = ({children}:{children:any}) => {
         >
             {activeTileMap ? (
                 <>
-                    <TileMapSurface tileMap={activeTileMap} plane="background" zIndex={0} />
-                    <TileMapSurface tileMap={activeTileMap} plane="foreground" zIndex={1200} />
+                    <TileMapSurface
+                        tileMap={activeTileMap}
+                        plane="background"
+                        zIndex={0}
+                        mapId={activeMapId ?? undefined}
+                        priorityKeys={priorityChunkKeys}
+                    />
+                    <TileMapSurface
+                        tileMap={activeTileMap}
+                        plane="foreground"
+                        zIndex={1200}
+                        mapId={activeMapId ?? undefined}
+                        priorityKeys={priorityChunkKeys}
+                    />
                 </>
             ) : null}
             {activeMap && currentPlayer ? (

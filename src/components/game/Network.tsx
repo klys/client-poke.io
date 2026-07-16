@@ -97,12 +97,16 @@ const Network = () => {
         removeBattlePrompt,
     ]);
 
+    const mapsFetchTimerRef = useRef<number | null>(null);
+    const mapsFetchAttemptRef = useRef(0);
+
     useEffect(() => {
         // The maps payload is far too large for the websocket (streaming it
         // there queues heartbeats behind the transfer and drops the
-        // connection) and for localStorage. Fetch it over plain HTTP where
-        // the browser cache + ETag make repeat loads cheap; the socket sync
-        // below stays as a fallback when the endpoint is unavailable.
+        // connection) and for localStorage. It ONLY travels over plain HTTP,
+        // where the browser cache + ETag make repeat loads cheap; the server
+        // answers the socket sync with a tiny version stub and we keep
+        // retrying this endpoint (with backoff) until it delivers.
         const fetchPlayableMapsOverHttp = async () => {
             try {
                 const response = await fetch(`${getBackendBaseUrl()}/playable-maps.json`);
@@ -146,8 +150,9 @@ const Network = () => {
                 setPlayableMapsStateRef.current(cachedPayload.state);
             }
 
-            // With a warm cache the server answers with a tiny version
-            // payload; the full-state socket stream only happens as fallback.
+            // The server always answers with a tiny version payload; when it
+            // announces a newer version the handler below refetches the HTTP
+            // endpoint until it succeeds.
             socket.emit("playableMaps:sync", {
                 version: getPlayableMapsCacheVersion()
             });
@@ -208,20 +213,29 @@ const Network = () => {
             }
 
             if (data.version === getPlayableMapsCacheVersion()) {
+                mapsFetchAttemptRef.current = 0;
                 return;
             }
 
-            // Prefer the HTTP endpoint for the bulk transfer; only fall back
-            // to the socket stream when it can't provide the announced version.
+            // The server never streams the full state over the socket
+            // anymore; keep hitting the HTTP endpoint (exponential backoff,
+            // capped at 30s) until it hands us a payload. Holding a stale
+            // cached version in the meantime is fine — the map stays playable.
             if (await fetchPlayableMapsOverHttp()) {
-                if (getPlayableMapsCacheVersion() === data.version) {
-                    return;
-                }
+                mapsFetchAttemptRef.current = 0;
+                return;
             }
 
-            socket.emit("playableMaps:sync", {
-                version: getPlayableMapsCacheVersion()
-            });
+            if (mapsFetchTimerRef.current !== null) {
+                return; // a retry is already scheduled
+            }
+
+            const delay = Math.min(1000 * 2 ** mapsFetchAttemptRef.current, 30000);
+            mapsFetchAttemptRef.current += 1;
+            mapsFetchTimerRef.current = window.setTimeout(() => {
+                mapsFetchTimerRef.current = null;
+                void handlePlayableMapsVersion(data);
+            }, delay);
         };
 
         // All deferred battle clears go through the single tracked timer and
@@ -401,6 +415,10 @@ const Network = () => {
             if (battleClearTimerRef.current !== null) {
                 window.clearTimeout(battleClearTimerRef.current);
                 battleClearTimerRef.current = null;
+            }
+            if (mapsFetchTimerRef.current !== null) {
+                window.clearTimeout(mapsFetchTimerRef.current);
+                mapsFetchTimerRef.current = null;
             }
         }
     }, [socket, toast])
