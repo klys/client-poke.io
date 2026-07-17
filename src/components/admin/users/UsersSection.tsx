@@ -1,4 +1,12 @@
-import { Box, Center, Grid, Spinner, Stack, Text } from '@chakra-ui/react';
+import {
+  Center,
+  Modal,
+  ModalBody,
+  ModalCloseButton,
+  ModalContent,
+  ModalOverlay,
+  Spinner
+} from '@chakra-ui/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import type {
@@ -237,8 +245,14 @@ export default function UsersSection({ socket }: UsersSectionProps) {
     socket.emit('admin:user:delete', { userId: selectedUser.id });
   }, [socket, selectedUser]);
 
+  const closeEditor = useCallback(() => {
+    setSelectedUser(null);
+    setDetailLoading(false);
+  }, []);
+
   const onlineCount = onlineUserIds.size;
   const selectedOnline = selectedUser ? onlineUserIds.has(selectedUser.id) : false;
+  const isEditorOpen = detailLoading || selectedUser !== null;
 
   const editorPanel = useMemo(() => {
     if (detailLoading) {
@@ -250,14 +264,7 @@ export default function UsersSection({ socket }: UsersSectionProps) {
     }
 
     if (!selectedUser) {
-      return (
-        <Stack spacing={3}>
-          <Text fontSize="xl" fontWeight="800" color="#1f2d22">User editor</Text>
-          <Text color="#657367">
-            Choose a user from the list to edit roles, inventory, party, saved map position, and account security.
-          </Text>
-        </Stack>
-      );
+      return null;
     }
 
     return (
@@ -293,7 +300,7 @@ export default function UsersSection({ socket }: UsersSectionProps) {
   ]);
 
   return (
-    <Grid templateColumns={{ base: '1fr', xl: '1.15fr 0.85fr' }} gap={6} alignItems="start">
+    <>
       <UserList
         users={users}
         loading={listLoading}
@@ -311,18 +318,15 @@ export default function UsersSection({ socket }: UsersSectionProps) {
         onNext={() => goToPage(page + 1)}
       />
 
-      <Box
-        borderRadius="28px"
-        bg="white"
-        p={{ base: 5, lg: 6 }}
-        boxShadow="0 20px 48px rgba(47, 69, 52, 0.10)"
-        position={{ xl: 'sticky' }}
-        top={{ xl: 4 }}
-        maxH={{ xl: 'calc(100vh - 32px)' }}
-        overflowY={{ xl: 'auto' }}
-      >
-        {editorPanel}
-      </Box>
-    </Grid>
+      <Modal isOpen={isEditorOpen} onClose={closeEditor} size="4xl" scrollBehavior="inside">
+        <ModalOverlay />
+        <ModalContent borderRadius="28px" my={{ base: 4, lg: 10 }}>
+          <ModalCloseButton top={4} right={4} />
+          <ModalBody p={{ base: 5, lg: 6 }}>
+            {editorPanel}
+          </ModalBody>
+        </ModalContent>
+      </Modal>
+    </>
   );
 }

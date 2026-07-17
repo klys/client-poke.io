@@ -16,6 +16,11 @@ import {
   Select,
   SimpleGrid,
   Stack,
+  Tab,
+  TabList,
+  TabPanel,
+  TabPanels,
+  Tabs,
   Text,
   Textarea,
   useDisclosure,
@@ -34,7 +39,9 @@ import MapLocationEditor from './MapLocationEditor';
 import PokemonEditor from './PokemonEditor';
 import SecurityPanel from './SecurityPanel';
 
-export type UserUpdatePayload = {
+// Partial on purpose: each tab applies only its own fields and the server
+// updates just what is present in the payload.
+export type UserUpdatePayload = Partial<{
   name: string
   role: AdminUserRole
   profileImage: string
@@ -42,10 +49,10 @@ export type UserUpdatePayload = {
   trainerGender: string
   money: number
   emailVerified: boolean
-  savedLocation?: { mapId: string; x: number; y: number }
+  savedLocation: { mapId: string; x: number; y: number }
   inventory: AdminInventoryItem[]
   pokemonParty: AdminPokemonSummary[]
-}
+}>
 
 type UserEditorProps = {
   user: AdminUserDetails
@@ -77,6 +84,15 @@ type EditorState = {
   pokemonParty: AdminPokemonSummary[]
 }
 
+type EditableTab = 'profile' | 'location' | 'inventory' | 'party'
+
+const TAB_FIELDS: Record<EditableTab, Array<keyof EditorState>> = {
+  profile: ['name', 'role', 'profileImage', 'description', 'trainerGender', 'money', 'emailVerified'],
+  location: ['mapId', 'mapX', 'mapY'],
+  inventory: ['inventory'],
+  party: ['pokemonParty']
+};
+
 function buildEditorState(user: AdminUserDetails): EditorState {
   return {
     name: user.name,
@@ -104,6 +120,10 @@ function stripParty(party: AdminPokemonSummary[]) {
   return party.map(({ iconImageSrc, frontImageSrc, ...rest }) => rest);
 }
 
+function DirtyDot() {
+  return <Box as="span" ml={2} w="7px" h="7px" borderRadius="full" bg="#e0a13c" display="inline-block" />;
+}
+
 export default function UserEditor(props: UserEditorProps) {
   const {
     user,
@@ -121,42 +141,107 @@ export default function UserEditor(props: UserEditorProps) {
   } = props;
   const toast = useToast();
   const [editor, setEditor] = useState<EditorState>(() => buildEditorState(user));
+  const [dirtyTabs, setDirtyTabs] = useState<Set<EditableTab>>(() => new Set());
+  const [savingTab, setSavingTab] = useState<EditableTab | null>(null);
+  const dirtyTabsRef = useRef(dirtyTabs);
+  dirtyTabsRef.current = dirtyTabs;
 
-  // Re-seed the form whenever a different user is opened or the server returns
-  // a fresh copy after a save/reset.
+  // Re-seed whenever a different user is opened or the server returns a fresh
+  // copy after an apply — but keep the local edits of tabs that still have
+  // unapplied changes, so applying one tab never clobbers another.
   useEffect(() => {
-    setEditor(buildEditorState(user));
+    setEditor((current) => {
+      const fresh = buildEditorState(user);
+      dirtyTabsRef.current.forEach((tab) => {
+        TAB_FIELDS[tab].forEach((field) => {
+          (fresh as any)[field] = current[field];
+        });
+      });
+      return fresh;
+    });
   }, [user]);
 
-  const patch = (next: Partial<EditorState>) => setEditor((current) => ({ ...current, ...next }));
+  useEffect(() => {
+    if (!isSaving) {
+      setSavingTab(null);
+    }
+  }, [isSaving]);
 
-  const save = () => {
+  const patchTab = (tab: EditableTab) => (next: Partial<EditorState>) => {
+    setEditor((current) => ({ ...current, ...next }));
+    setDirtyTabs((current) => {
+      if (current.has(tab)) {
+        return current;
+      }
+      const nextSet = new Set(current);
+      nextSet.add(tab);
+      return nextSet;
+    });
+  };
+
+  const patchProfile = patchTab('profile');
+  const patchLocation = patchTab('location');
+  const patchInventory = patchTab('inventory');
+  const patchParty = patchTab('party');
+
+  const markClean = (tab: EditableTab) => {
+    setDirtyTabs((current) => {
+      if (!current.has(tab)) {
+        return current;
+      }
+      const nextSet = new Set(current);
+      nextSet.delete(tab);
+      return nextSet;
+    });
+  };
+
+  const apply = (tab: EditableTab, updates: UserUpdatePayload) => {
+    setSavingTab(tab);
+    markClean(tab);
+    onSave(updates);
+  };
+
+  const applyProfile = () => {
     const money = Number(editor.money);
     if (!Number.isFinite(money)) {
       toast({ title: 'Money must be a valid number.', status: 'error', duration: 3500, position: 'top' });
       return;
     }
 
-    const trimmedMapId = editor.mapId.trim();
-    const mapX = Number(editor.mapX);
-    const mapY = Number(editor.mapY);
-    if (trimmedMapId && (!Number.isFinite(mapX) || !Number.isFinite(mapY))) {
-      toast({ title: 'Map coordinates must be numbers.', status: 'error', duration: 3500, position: 'top' });
-      return;
-    }
-
-    onSave({
+    apply('profile', {
       name: editor.name,
       role: editor.role,
       profileImage: editor.profileImage,
       description: editor.description,
       trainerGender: editor.trainerGender,
       money,
-      emailVerified: editor.emailVerified,
-      savedLocation: trimmedMapId ? { mapId: trimmedMapId, x: mapX, y: mapY } : undefined,
-      inventory: stripInventory(editor.inventory),
-      pokemonParty: stripParty(editor.pokemonParty)
+      emailVerified: editor.emailVerified
     });
+  };
+
+  const applyLocation = () => {
+    const trimmedMapId = editor.mapId.trim();
+    if (!trimmedMapId) {
+      toast({ title: 'Choose a map before applying the location.', status: 'error', duration: 3500, position: 'top' });
+      return;
+    }
+
+    const mapX = Number(editor.mapX);
+    const mapY = Number(editor.mapY);
+    if (!Number.isFinite(mapX) || !Number.isFinite(mapY)) {
+      toast({ title: 'Map coordinates must be numbers.', status: 'error', duration: 3500, position: 'top' });
+      return;
+    }
+
+    apply('location', { savedLocation: { mapId: trimmedMapId, x: mapX, y: mapY } });
+  };
+
+  const applyInventory = () => {
+    apply('inventory', { inventory: stripInventory(editor.inventory) });
+  };
+
+  const applyParty = () => {
+    apply('party', { pokemonParty: stripParty(editor.pokemonParty) });
   };
 
   const resetProgress = () => {
@@ -167,6 +252,19 @@ export default function UserEditor(props: UserEditorProps) {
       onResetProgress();
     }
   };
+
+  const applyButton = (tab: EditableTab, onApply: () => void) => (
+    <HStack justify="flex-end" pt={2}>
+      <Button
+        colorScheme="green"
+        onClick={onApply}
+        isLoading={isSaving && savingTab === tab}
+        isDisabled={isSaving && savingTab !== tab}
+      >
+        Apply
+      </Button>
+    </HStack>
+  );
 
   return (
     <Stack spacing={5}>
@@ -183,111 +281,137 @@ export default function UserEditor(props: UserEditorProps) {
         <Badge colorScheme="purple">User #{user.id}</Badge>
       </HStack>
 
-      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-        <FormControl>
-          <FormLabel>Name</FormLabel>
-          <Input value={editor.name} onChange={(event) => patch({ name: event.target.value })} />
-        </FormControl>
-        <FormControl>
-          <FormLabel>Role</FormLabel>
-          <Select value={editor.role} onChange={(event) => patch({ role: event.target.value as AdminUserRole })}>
-            <option value="admin">admin</option>
-            <option value="designer">designer</option>
-            <option value="moderator">moderator</option>
-            <option value="user">user</option>
-          </Select>
-        </FormControl>
-        <FormControl>
-          <FormLabel>Trainer Gender</FormLabel>
-          <Input value={editor.trainerGender} onChange={(event) => patch({ trainerGender: event.target.value })} />
-        </FormControl>
-        <FormControl>
-          <FormLabel>Money</FormLabel>
-          <Input value={editor.money} onChange={(event) => patch({ money: event.target.value })} />
-        </FormControl>
-        <FormControl>
-          <FormLabel>Email Verified</FormLabel>
-          <Select
-            value={editor.emailVerified ? 'yes' : 'no'}
-            onChange={(event) => patch({ emailVerified: event.target.value === 'yes' })}
-          >
-            <option value="yes">Yes</option>
-            <option value="no">No</option>
-          </Select>
-        </FormControl>
-        <FormControl>
-          <FormLabel>Profile Image</FormLabel>
-          <Input value={editor.profileImage} onChange={(event) => patch({ profileImage: event.target.value })} />
-        </FormControl>
-      </SimpleGrid>
+      <Tabs colorScheme="green" variant="soft-rounded" size="sm" isLazy>
+        <TabList flexWrap="wrap" gap={1}>
+          <Tab>Profile{dirtyTabs.has('profile') ? <DirtyDot /> : null}</Tab>
+          <Tab>Location{dirtyTabs.has('location') ? <DirtyDot /> : null}</Tab>
+          <Tab>Inventory{dirtyTabs.has('inventory') ? <DirtyDot /> : null}</Tab>
+          <Tab>Party{dirtyTabs.has('party') ? <DirtyDot /> : null}</Tab>
+          <Tab>Security</Tab>
+          <Tab color="#a13636">Danger Zone</Tab>
+        </TabList>
 
-      <FormControl>
-        <FormLabel>Description</FormLabel>
-        <Textarea value={editor.description} onChange={(event) => patch({ description: event.target.value })} rows={2} />
-      </FormControl>
+        <TabPanels>
+          <TabPanel px={0}>
+            <Stack spacing={4}>
+              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                <FormControl>
+                  <FormLabel>Name</FormLabel>
+                  <Input value={editor.name} onChange={(event) => patchProfile({ name: event.target.value })} />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Role</FormLabel>
+                  <Select value={editor.role} onChange={(event) => patchProfile({ role: event.target.value as AdminUserRole })}>
+                    <option value="admin">admin</option>
+                    <option value="designer">designer</option>
+                    <option value="moderator">moderator</option>
+                    <option value="user">user</option>
+                  </Select>
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Trainer Gender</FormLabel>
+                  <Input value={editor.trainerGender} onChange={(event) => patchProfile({ trainerGender: event.target.value })} />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Money</FormLabel>
+                  <Input value={editor.money} onChange={(event) => patchProfile({ money: event.target.value })} />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Email Verified</FormLabel>
+                  <Select
+                    value={editor.emailVerified ? 'yes' : 'no'}
+                    onChange={(event) => patchProfile({ emailVerified: event.target.value === 'yes' })}
+                  >
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </Select>
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Profile Image</FormLabel>
+                  <Input value={editor.profileImage} onChange={(event) => patchProfile({ profileImage: event.target.value })} />
+                </FormControl>
+              </SimpleGrid>
 
-      <MapLocationEditor
-        mapId={editor.mapId}
-        x={editor.mapX}
-        y={editor.mapY}
-        maps={catalog.maps}
-        onChange={(next) => patch({
-          ...(next.mapId !== undefined ? { mapId: next.mapId } : {}),
-          ...(next.x !== undefined ? { mapX: next.x } : {}),
-          ...(next.y !== undefined ? { mapY: next.y } : {})
-        })}
-      />
+              <FormControl>
+                <FormLabel>Description</FormLabel>
+                <Textarea value={editor.description} onChange={(event) => patchProfile({ description: event.target.value })} rows={2} />
+              </FormControl>
 
-      <Divider />
+              {applyButton('profile', applyProfile)}
+            </Stack>
+          </TabPanel>
 
-      <InventoryEditor
-        items={editor.inventory}
-        catalog={catalog.items}
-        onChange={(inventory) => patch({ inventory })}
-      />
+          <TabPanel px={0}>
+            <Stack spacing={4}>
+              <MapLocationEditor
+                mapId={editor.mapId}
+                x={editor.mapX}
+                y={editor.mapY}
+                maps={catalog.maps}
+                onChange={(next) => patchLocation({
+                  ...(next.mapId !== undefined ? { mapId: next.mapId } : {}),
+                  ...(next.x !== undefined ? { mapX: next.x } : {}),
+                  ...(next.y !== undefined ? { mapY: next.y } : {})
+                })}
+              />
+              {applyButton('location', applyLocation)}
+            </Stack>
+          </TabPanel>
 
-      <Divider />
+          <TabPanel px={0}>
+            <Stack spacing={4}>
+              <InventoryEditor
+                items={editor.inventory}
+                catalog={catalog.items}
+                onChange={(inventory) => patchInventory({ inventory })}
+              />
+              {applyButton('inventory', applyInventory)}
+            </Stack>
+          </TabPanel>
 
-      <PokemonEditor
-        party={editor.pokemonParty}
-        catalog={catalog.pokemons}
-        onChange={(pokemonParty) => patch({ pokemonParty })}
-      />
+          <TabPanel px={0}>
+            <Stack spacing={4}>
+              <PokemonEditor
+                party={editor.pokemonParty}
+                catalog={catalog.pokemons}
+                onChange={(pokemonParty) => patchParty({ pokemonParty })}
+              />
+              {applyButton('party', applyParty)}
+            </Stack>
+          </TabPanel>
 
-      <Divider />
+          <TabPanel px={0}>
+            <SecurityPanel
+              username={user.username}
+              onSetPassword={onSetPassword}
+              onSendRecovery={onSendRecovery}
+              isSettingPassword={isSettingPassword}
+              isSendingRecovery={isSendingRecovery}
+            />
+          </TabPanel>
 
-      <SecurityPanel
-        username={user.username}
-        onSetPassword={onSetPassword}
-        onSendRecovery={onSendRecovery}
-        isSettingPassword={isSettingPassword}
-        isSendingRecovery={isSendingRecovery}
-      />
-
-      <HStack spacing={3} flexWrap="wrap" position="sticky" bottom={0} bg="white" py={2}>
-        <Button colorScheme="green" onClick={save} isLoading={isSaving} size="lg">
-          Save changes
-        </Button>
-      </HStack>
-
-      <Box borderRadius="20px" border="1px solid #f0c4c4" bg="#fdf3f3" p={4}>
-        <Text fontWeight="800" color="#a13636" mb={2}>Danger zone</Text>
-        <HStack justify="space-between" flexWrap="wrap" spacing={3}>
-          <Box>
-            <Text fontWeight="600" fontSize="sm">Reset adventure</Text>
-            <Text fontSize="xs" color="#9a6b6b">Wipes party, inventory, money, battles, and location — the account stays.</Text>
-          </Box>
-          <Button colorScheme="red" variant="outline" onClick={resetProgress}>Reset adventure</Button>
-        </HStack>
-        <Divider my={3} borderColor="#f0c4c4" />
-        <HStack justify="space-between" flexWrap="wrap" spacing={3}>
-          <Box>
-            <Text fontWeight="600" fontSize="sm">Delete user</Text>
-            <Text fontSize="xs" color="#9a6b6b">Permanently removes the account and all of its data. Cannot be undone.</Text>
-          </Box>
-          <DeleteUserButton username={user.username} isDeleting={isDeleting} onConfirm={onDeleteUser} />
-        </HStack>
-      </Box>
+          <TabPanel px={0}>
+            <Box borderRadius="20px" border="1px solid #f0c4c4" bg="#fdf3f3" p={4}>
+              <Text fontWeight="800" color="#a13636" mb={2}>Danger zone</Text>
+              <HStack justify="space-between" flexWrap="wrap" spacing={3}>
+                <Box>
+                  <Text fontWeight="600" fontSize="sm">Reset adventure</Text>
+                  <Text fontSize="xs" color="#9a6b6b">Wipes party, inventory, money, battles, and location — the account stays.</Text>
+                </Box>
+                <Button colorScheme="red" variant="outline" onClick={resetProgress}>Reset adventure</Button>
+              </HStack>
+              <Divider my={3} borderColor="#f0c4c4" />
+              <HStack justify="space-between" flexWrap="wrap" spacing={3}>
+                <Box>
+                  <Text fontWeight="600" fontSize="sm">Delete user</Text>
+                  <Text fontSize="xs" color="#9a6b6b">Permanently removes the account and all of its data. Cannot be undone.</Text>
+                </Box>
+                <DeleteUserButton username={user.username} isDeleting={isDeleting} onConfirm={onDeleteUser} />
+              </HStack>
+            </Box>
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
     </Stack>
   );
 }
