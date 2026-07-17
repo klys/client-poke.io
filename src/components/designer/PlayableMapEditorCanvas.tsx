@@ -19,6 +19,7 @@ import {
   type DesignerNpcType,
 } from "./designerSections";
 import { sanitizeTileMapProfile } from "../tilemap/tileMapProfile";
+import { resolveServerAssetUrl } from "../tilemap/serverAssets";
 import { type PlayableMapTileMapProfile } from "../tilemap/tileMapTypes";
 
 export interface MapEditorObjectCatalogItem {
@@ -1288,8 +1289,8 @@ export default function PlayableMapEditorCanvas({
       <Box
         flex="0 0 320px"
         borderRadius="20px"
-        border="1px solid rgba(35, 49, 39, 0.12)"
-        bg="#ffffff"
+        border="1px solid" borderColor="editor.borderMuted"
+        bg="editor.page"
         p={4}
       >
         <Stack spacing={4}>
@@ -1299,7 +1300,7 @@ export default function PlayableMapEditorCanvas({
               fontWeight="700"
               textTransform="uppercase"
               letterSpacing="0.14em"
-              color="#5e7a61"
+              color="editor.accentMuted"
               mb={2}
             >
               Tools
@@ -1346,7 +1347,7 @@ export default function PlayableMapEditorCanvas({
                 NPCs
               </Button>
             </SimpleGrid>
-            <Text mt={3} fontSize="sm" color="#55645a">
+            <Text mt={3} fontSize="sm" color="editor.textSubtle">
               {toolLabel}
             </Text>
           </Box>
@@ -1359,7 +1360,7 @@ export default function PlayableMapEditorCanvas({
               fontWeight="700"
               textTransform="uppercase"
               letterSpacing="0.14em"
-              color="#5e7a61"
+              color="editor.accentMuted"
               mb={2}
             >
               Selection
@@ -1422,7 +1423,7 @@ export default function PlayableMapEditorCanvas({
                 Clear
               </Button>
             </SimpleGrid>
-            <Text mt={3} fontSize="sm" color="#55645a">
+            <Text mt={3} fontSize="sm" color="editor.textSubtle">
               {activeSelectionBounds
                 ? `${getBoundsSize(activeSelectionBounds).width} x ${getBoundsSize(activeSelectionBounds).height} cells selected • ${selectedContents?.objects.length ?? 0} objects • ${selectedContents?.portals.length ?? 0} portals • ${selectedContents?.grass.length ?? 0} grass • ${selectedContents?.npcs.length ?? 0} NPCs`
                 : "No selection yet."}
@@ -1438,7 +1439,7 @@ export default function PlayableMapEditorCanvas({
                   fontWeight="700"
                   textTransform="uppercase"
                   letterSpacing="0.14em"
-                  color="#5e7a61"
+                  color="editor.accentMuted"
                   mb={2}
                 >
                   Object Tool
@@ -1467,13 +1468,13 @@ export default function PlayableMapEditorCanvas({
                       borderWidth="1px"
                       borderColor={
                         item.id === activeObjectId
-                          ? "rgba(46, 91, 55, 0.44)"
-                          : "rgba(35, 49, 39, 0.12)"
+                          ? "editor.cardSelectedBorder"
+                          : "editor.borderMuted"
                       }
                       bg={
                         item.id === activeObjectId
-                          ? "rgba(232, 244, 228, 0.96)"
-                          : "rgba(255,255,255,0.78)"
+                          ? "editor.cardSelected"
+                          : "editor.card"
                       }
                       cursor="pointer"
                       onClick={() => setActiveObjectId(item.id)}
@@ -1484,14 +1485,14 @@ export default function PlayableMapEditorCanvas({
                         w="56px"
                         h="56px"
                         borderRadius="12px"
-                        bg="rgba(35, 49, 39, 0.06)"
+                        bg="editor.wellSoft"
                         overflow="hidden"
                         flexShrink={0}
                       >
                         {item.imageSrc ? (
                           <Box
                             as="img"
-                            src={item.imageSrc}
+                            src={resolveServerAssetUrl(item.imageSrc)}
                             alt={`${item.name} preview`}
                             maxW="56px"
                             maxH="56px"
@@ -1499,16 +1500,16 @@ export default function PlayableMapEditorCanvas({
                             style={{ imageRendering: "pixelated" }}
                           />
                         ) : (
-                          <Text fontSize="xs" textAlign="center" color="#55645a" px={2}>
+                          <Text fontSize="xs" textAlign="center" color="editor.textSubtle" px={2}>
                             No Image
                           </Text>
                         )}
                       </Flex>
                       <Box minW={0}>
-                        <Text fontWeight="700" color="#233127" noOfLines={1}>
+                        <Text fontWeight="700" color="editor.heading" noOfLines={1}>
                           {item.name}
                         </Text>
-                        <Text fontSize="sm" color="#55645a">
+                        <Text fontSize="sm" color="editor.textSubtle">
                           {item.width} x {item.height} px • {item.objectType}
                         </Text>
                       </Box>
@@ -1528,7 +1529,7 @@ export default function PlayableMapEditorCanvas({
                   fontWeight="700"
                   textTransform="uppercase"
                   letterSpacing="0.14em"
-                  color="#5e7a61"
+                  color="editor.accentMuted"
                   mb={2}
                 >
                   NPC Tool
@@ -1559,13 +1560,13 @@ export default function PlayableMapEditorCanvas({
                           borderWidth="1px"
                           borderColor={
                             npc.id === activeNpcId
-                              ? "rgba(46, 91, 55, 0.44)"
-                              : "rgba(35, 49, 39, 0.12)"
+                              ? "editor.cardSelectedBorder"
+                              : "editor.borderMuted"
                           }
                           bg={
                             npc.id === activeNpcId
-                              ? "rgba(232, 244, 228, 0.96)"
-                              : "rgba(255,255,255,0.78)"
+                              ? "editor.cardSelected"
+                              : "editor.card"
                           }
                           cursor="pointer"
                           onClick={() => setActiveNpcId(npc.id)}
@@ -1576,14 +1577,14 @@ export default function PlayableMapEditorCanvas({
                             w="56px"
                             h="56px"
                             borderRadius="12px"
-                            bg="rgba(35, 49, 39, 0.06)"
+                            bg="editor.wellSoft"
                             overflow="hidden"
                             flexShrink={0}
                           >
                             {npc.previewImageSrc ? (
                               <Box
                                 as="img"
-                                src={npc.previewImageSrc}
+                                src={resolveServerAssetUrl(npc.previewImageSrc)}
                                 alt={`${npc.name} preview`}
                                 maxW="56px"
                                 maxH="56px"
@@ -1591,16 +1592,16 @@ export default function PlayableMapEditorCanvas({
                                 style={{ imageRendering: "pixelated" }}
                               />
                             ) : (
-                              <Text fontSize="xs" textAlign="center" color="#55645a" px={2}>
+                              <Text fontSize="xs" textAlign="center" color="editor.textSubtle" px={2}>
                                 No Image
                               </Text>
                             )}
                           </Flex>
                           <Box minW={0}>
-                            <Text fontWeight="700" color="#233127" noOfLines={1}>
+                            <Text fontWeight="700" color="editor.heading" noOfLines={1}>
                               {npc.name}
                             </Text>
-                            <Text fontSize="sm" color="#55645a">
+                            <Text fontSize="sm" color="editor.textSubtle">
                               {npc.npcType} • {npc.aiType}
                             </Text>
                           </Box>
@@ -1609,7 +1610,7 @@ export default function PlayableMapEditorCanvas({
                     </Stack>
                   </>
                 ) : (
-                  <Text fontSize="sm" color="#55645a">
+                  <Text fontSize="sm" color="editor.textSubtle">
                     Create NPCs in the designer section first, then place them on this map.
                   </Text>
                 )}
@@ -1626,12 +1627,12 @@ export default function PlayableMapEditorCanvas({
                   fontWeight="700"
                   textTransform="uppercase"
                   letterSpacing="0.14em"
-                  color="#5e7a61"
+                  color="editor.accentMuted"
                   mb={2}
                 >
                   Grass Tool
                 </Text>
-                <Text fontSize="sm" color="#55645a" mb={3}>
+                <Text fontSize="sm" color="editor.textSubtle" mb={3}>
                   Drag to paint multiple grass cells using this encounter setup.
                 </Text>
                 <Stack spacing={3}>
@@ -1662,7 +1663,7 @@ export default function PlayableMapEditorCanvas({
                     </FormControl>
                   </SimpleGrid>
                   <Box>
-                    <Text fontSize="sm" fontWeight="700" color="#233127" mb={2}>
+                    <Text fontSize="sm" fontWeight="700" color="editor.heading" mb={2}>
                       Pokemon Encounters
                     </Text>
                     <Stack spacing={2} maxH="220px" overflowY="auto">
@@ -1680,13 +1681,13 @@ export default function PlayableMapEditorCanvas({
                             borderWidth="1px"
                             borderColor={
                               isSelected
-                                ? "rgba(46, 91, 55, 0.44)"
-                                : "rgba(35, 49, 39, 0.12)"
+                                ? "editor.cardSelectedBorder"
+                                : "editor.borderMuted"
                             }
                             bg={
                               isSelected
-                                ? "rgba(232, 244, 228, 0.96)"
-                                : "rgba(255,255,255,0.78)"
+                                ? "editor.cardSelected"
+                                : "editor.card"
                             }
                             cursor="pointer"
                             onClick={() =>
@@ -1702,21 +1703,21 @@ export default function PlayableMapEditorCanvas({
                             }
                           >
                             <Box minW={0}>
-                              <Text fontWeight="700" color="#233127" noOfLines={1}>
+                              <Text fontWeight="700" color="editor.heading" noOfLines={1}>
                                 {pokemon.name}
                               </Text>
-                              <Text fontSize="sm" color="#55645a">
+                              <Text fontSize="sm" color="editor.textSubtle">
                                 {pokemon.category}
                               </Text>
                             </Box>
-                            <Text fontSize="xs" fontWeight="700" color="#2e5b37">
+                            <Text fontSize="xs" fontWeight="700" color="editor.accent">
                               {isSelected ? "On" : "Off"}
                             </Text>
                           </Flex>
                         );
                       })}
                       {filteredPokemonCatalog.length === 0 ? (
-                        <Text fontSize="sm" color="#55645a">
+                        <Text fontSize="sm" color="editor.textSubtle">
                           No Pokemon match this category/search.
                         </Text>
                       ) : null}
@@ -1745,7 +1746,7 @@ export default function PlayableMapEditorCanvas({
                       onChange={(event) => setActiveGrassEncounterRate(event.target.value)}
                     />
                   </FormControl>
-                  <Text fontSize="sm" color="#55645a">
+                  <Text fontSize="sm" color="editor.textSubtle">
                     Selected Pokemon: {getPokemonNames(activeGrassPokemonIds, pokemonCatalog).join(", ") || "None"}
                   </Text>
                 </Stack>
@@ -1762,12 +1763,12 @@ export default function PlayableMapEditorCanvas({
                   fontWeight="700"
                   textTransform="uppercase"
                   letterSpacing="0.14em"
-                  color="#5e7a61"
+                  color="editor.accentMuted"
                   mb={2}
                 >
                   Portal Cell
                 </Text>
-                <Text fontSize="sm" color="#55645a" mb={3}>
+                <Text fontSize="sm" color="editor.textSubtle" mb={3}>
                   Cell X {selectedPortal.x}, Y {selectedPortal.y}
                 </Text>
                 <Stack spacing={3}>
@@ -1902,12 +1903,12 @@ export default function PlayableMapEditorCanvas({
                   fontWeight="700"
                   textTransform="uppercase"
                   letterSpacing="0.14em"
-                  color="#5e7a61"
+                  color="editor.accentMuted"
                   mb={2}
                 >
                   Grass Cell
                 </Text>
-                <Text fontSize="sm" color="#55645a" mb={3}>
+                <Text fontSize="sm" color="editor.textSubtle" mb={3}>
                   Cell X {selectedGrass.x}, Y {selectedGrass.y}
                 </Text>
                 <Stack spacing={3}>
@@ -1938,7 +1939,7 @@ export default function PlayableMapEditorCanvas({
                     </FormControl>
                   </SimpleGrid>
                   <Box>
-                    <Text fontSize="sm" fontWeight="700" color="#233127" mb={2}>
+                    <Text fontSize="sm" fontWeight="700" color="editor.heading" mb={2}>
                       Pokemon Encounters
                     </Text>
                     <Stack spacing={2} maxH="220px" overflowY="auto">
@@ -1956,13 +1957,13 @@ export default function PlayableMapEditorCanvas({
                             borderWidth="1px"
                             borderColor={
                               isSelected
-                                ? "rgba(46, 91, 55, 0.44)"
-                                : "rgba(35, 49, 39, 0.12)"
+                                ? "editor.cardSelectedBorder"
+                                : "editor.borderMuted"
                             }
                             bg={
                               isSelected
-                                ? "rgba(232, 244, 228, 0.96)"
-                                : "rgba(255,255,255,0.78)"
+                                ? "editor.cardSelected"
+                                : "editor.card"
                             }
                             cursor="pointer"
                             onClick={() =>
@@ -1977,21 +1978,21 @@ export default function PlayableMapEditorCanvas({
                             }
                           >
                             <Box minW={0}>
-                              <Text fontWeight="700" color="#233127" noOfLines={1}>
+                              <Text fontWeight="700" color="editor.heading" noOfLines={1}>
                                 {pokemon.name}
                               </Text>
-                              <Text fontSize="sm" color="#55645a">
+                              <Text fontSize="sm" color="editor.textSubtle">
                                 {pokemon.category}
                               </Text>
                             </Box>
-                            <Text fontSize="xs" fontWeight="700" color="#2e5b37">
+                            <Text fontSize="xs" fontWeight="700" color="editor.accent">
                               {isSelected ? "On" : "Off"}
                             </Text>
                           </Flex>
                         );
                       })}
                       {filteredPokemonCatalog.length === 0 ? (
-                        <Text fontSize="sm" color="#55645a">
+                        <Text fontSize="sm" color="editor.textSubtle">
                           No Pokemon match this category/search.
                         </Text>
                       ) : null}
@@ -2044,7 +2045,7 @@ export default function PlayableMapEditorCanvas({
                       }
                     />
                   </FormControl>
-                  <Text fontSize="sm" color="#55645a">
+                  <Text fontSize="sm" color="editor.textSubtle">
                     Pokemon: {getPokemonNames(selectedGrass.pokemonIds, pokemonCatalog).join(", ") || "None"}
                   </Text>
                   <Button colorScheme="red" variant="outline" onClick={removeSelectedGrass}>
@@ -2064,12 +2065,12 @@ export default function PlayableMapEditorCanvas({
                   fontWeight="700"
                   textTransform="uppercase"
                   letterSpacing="0.14em"
-                  color="#5e7a61"
+                  color="editor.accentMuted"
                   mb={2}
                 >
                   NPC Cell
                 </Text>
-                <Text fontSize="sm" color="#55645a" mb={3}>
+                <Text fontSize="sm" color="editor.textSubtle" mb={3}>
                   Cell X {selectedNpc.x}, Y {selectedNpc.y}
                 </Text>
                 <Stack spacing={3}>
@@ -2102,10 +2103,10 @@ export default function PlayableMapEditorCanvas({
                       ))}
                     </Select>
                   </FormControl>
-                  <Text fontSize="sm" color="#55645a">
+                  <Text fontSize="sm" color="editor.textSubtle">
                     Type: {selectedNpc.npcType}
                   </Text>
-                  <Text fontSize="sm" color="#55645a">
+                  <Text fontSize="sm" color="editor.textSubtle">
                     AI: {selectedNpc.aiType}
                   </Text>
                   <FormControl>
@@ -2126,7 +2127,7 @@ export default function PlayableMapEditorCanvas({
                       }
                     />
                   </FormControl>
-                  <Text fontSize="sm" color="#55645a">
+                  <Text fontSize="sm" color="editor.textSubtle">
                     Players must be this many map squares away or less to interact. Default is{" "}
                     {DEFAULT_NPC_INTERACTION_DISTANCE_SQUARES}.
                   </Text>
@@ -2146,24 +2147,24 @@ export default function PlayableMapEditorCanvas({
               fontWeight="700"
               textTransform="uppercase"
               letterSpacing="0.14em"
-              color="#5e7a61"
+              color="editor.accentMuted"
               mb={2}
             >
               Map Data
             </Text>
-            <Text fontSize="sm" color="#55645a">
+            <Text fontSize="sm" color="editor.textSubtle">
               Objects: {value.objects.length}
             </Text>
-            <Text fontSize="sm" color="#55645a">
+            <Text fontSize="sm" color="editor.textSubtle">
               Portals: {value.portals.length}
             </Text>
-            <Text fontSize="sm" color="#55645a">
+            <Text fontSize="sm" color="editor.textSubtle">
               Grass cells: {value.grass.length}
             </Text>
-            <Text fontSize="sm" color="#55645a">
+            <Text fontSize="sm" color="editor.textSubtle">
               NPCs: {value.npcs.length}
             </Text>
-            <Text fontSize="sm" color={isDirty ? "#8b5a20" : "#55645a"}>
+            <Text fontSize="sm" color={isDirty ? "editor.warning" : "editor.textSubtle"}>
               {isDirty ? "Unsaved changes" : "All changes saved"}
             </Text>
           </Box>
@@ -2173,8 +2174,8 @@ export default function PlayableMapEditorCanvas({
       <Box flex="1" minW={0}>
         <Box
           borderRadius="20px"
-          border="1px solid rgba(35, 49, 39, 0.12)"
-          bg="#eef3ec"
+          border="1px solid" borderColor="editor.borderMuted"
+          bg="editor.well"
           p={3}
           overflow="auto"
           maxH="calc(100vh - 240px)"
@@ -2214,7 +2215,7 @@ export default function PlayableMapEditorCanvas({
                 {item.imageSrc ? (
                   <Box
                     as="img"
-                    src={item.imageSrc}
+                    src={resolveServerAssetUrl(item.imageSrc)}
                     alt={`${item.name} object`}
                     width={`${item.width}px`}
                     height={`${item.height}px`}
@@ -2328,7 +2329,7 @@ export default function PlayableMapEditorCanvas({
                 {getNpcPreviewImageSrc(npc) ? (
                   <Box
                     as="img"
-                    src={getNpcPreviewImageSrc(npc)}
+                    src={resolveServerAssetUrl(getNpcPreviewImageSrc(npc))}
                     alt={`${npc.name} npc`}
                     width={`${cellSize}px`}
                     height={`${cellSize}px`}

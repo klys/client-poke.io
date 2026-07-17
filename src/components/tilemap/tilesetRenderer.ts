@@ -21,7 +21,16 @@ export function loadImageElement(src: string): Promise<HTMLImageElement | null> 
     image.onerror = () => resolve(null);
     // Tileset/autotile sources may be data URIs or root-relative asset-storage
     // paths; resolve so remote images load off the asset-storage origin.
-    image.src = resolveServerAssetUrl(src);
+    const resolved = resolveServerAssetUrl(src);
+
+    // Baking reads these images back out of a canvas (toDataURL), which
+    // throws on a tainted canvas. asset-storage serves ACAO:*, so request
+    // CORS-cleared pixels for anything that isn't an inline data URI.
+    if (!resolved.startsWith("data:")) {
+      image.crossOrigin = "anonymous";
+    }
+
+    image.src = resolved;
   });
 }
 

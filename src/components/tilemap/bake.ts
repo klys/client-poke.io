@@ -54,6 +54,10 @@ export async function bakeTileMapChunks(
   const chunkRows = Math.ceil(height / chunkCells);
 
   for (let chunkRow = 0; chunkRow < chunkRows; chunkRow += 1) {
+    // Baking a large map is seconds of canvas work; yield between chunk rows
+    // so the save spinner keeps animating and input isn't frozen.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
     for (let chunkColumn = 0; chunkColumn < chunkColumns; chunkColumn += 1) {
       const cellLeft = chunkColumn * chunkCells;
       const cellTop = chunkRow * chunkCells;

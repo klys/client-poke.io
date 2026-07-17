@@ -8,6 +8,7 @@ import {
   Select,
   Stack,
   Text,
+  useColorMode,
   useToast,
 } from "@chakra-ui/react";
 import {
@@ -25,7 +26,7 @@ import {
   decodeTileMapLayers,
   resizeTileLayers,
 } from "../tilemap/tileMapProfile";
-import { TilesetRenderer } from "../tilemap/tilesetRenderer";
+import { TilesetRenderer, loadImageElement } from "../tilemap/tilesetRenderer";
 import {
   AUTOTILE_ID_UNIT,
   AUTOTILE_SLOTS,
@@ -61,6 +62,29 @@ const ZOOM_OPTIONS = [0.25, 0.5, 1, 2];
 const MAX_UNDO_ENTRIES = 60;
 const LAYER_LABELS = ["Layer 1", "Layer 2", "Layer 3"];
 
+// Colors painted straight into the 2D contexts, where Chakra semantic tokens
+// can't reach — keep these in step with the editor.* tokens in theme.ts.
+const CANVAS_THEME = {
+  light: {
+    surface: "#dfe8dc",
+    placeholderText: "#5f6d61",
+    grid: "rgba(35, 49, 39, 0.18)",
+    eraserGlyph: "rgba(35, 49, 39, 0.4)",
+    paletteSurface: "#f2f5f0",
+    rectStroke: "#2e5b37",
+    hoverStroke: "rgba(46, 91, 55, 0.9)",
+  },
+  dark: {
+    surface: "#161c17",
+    placeholderText: "#a0b0a2",
+    grid: "rgba(226, 235, 227, 0.16)",
+    eraserGlyph: "rgba(226, 235, 227, 0.45)",
+    paletteSurface: "#121713",
+    rectStroke: "#86c290",
+    hoverStroke: "rgba(134, 194, 144, 0.9)",
+  },
+} as const;
+
 function positiveModulo(value: number, modulo: number) {
   return ((value % modulo) + modulo) % modulo;
 }
@@ -85,6 +109,8 @@ export default function TileMapEditor({
   onChange,
 }: TileMapEditorProps) {
   const toast = useToast();
+  const { colorMode } = useColorMode();
+  const canvasTheme = CANVAS_THEME[colorMode === "dark" ? "dark" : "light"];
   const [tilesetItems, setTilesetItems] = useState<DesignerItemSeed[]>(() => loadTilesetItems());
   const [selectedTilesetItemId, setSelectedTilesetItemId] = useState(
     value.tileMap?.tilesetItemId ?? ""
@@ -121,6 +147,17 @@ export default function TileMapEditor({
   const paletteDragRef = useRef<{ start: { col: number; row: number } } | null>(null);
   const hoverCellRef = useRef<{ x: number; y: number } | null>(null);
   const redrawRequestRef = useRef(0);
+  // deriveCollisionGrid is O(width*height*layers); caching it keyed on an
+  // edit revision keeps the passability overlay from re-deriving the whole
+  // map on every scroll/zoom/hover redraw.
+  const layersRevisionRef = useRef(0);
+  const collisionCacheRef = useRef<{
+    revision: number;
+    width: number;
+    height: number;
+    profile: DesignerTilesetProfile;
+    grid: Uint8Array;
+  } | null>(null);
 
   const tileMap = value.tileMap ?? null;
   const tileMapWidth = tileMap?.width ?? mapWidth;
@@ -186,6 +223,7 @@ export default function TileMapEditor({
 
     layersRef.current = decodeTileMapLayers(tileMap);
     layersKeyRef.current = externalKey;
+    layersRevisionRef.current += 1;
     undoStackRef.current = [];
     redoStackRef.current = [];
     setUndoDepth(0);
@@ -248,6 +286,7 @@ export default function TileMapEditor({
       entry.cells.forEach((cell) => {
         layer[cell.index] = direction === "undo" ? cell.previous : cell.next;
       });
+      layersRevisionRef.current += 1;
 
       targetStack.push(entry);
       setUndoDepth(undoStackRef.current.length);
@@ -293,6 +332,7 @@ export default function TileMapEditor({
       }
 
       layer[index] = tileId;
+      layersRevisionRef.current += 1;
     },
     [tileMapHeight, tileMapWidth]
   );
@@ -389,6 +429,8 @@ export default function TileMapEditor({
         return;
       }
 
+      // reshapeAutotileRegion mutated the layer directly above.
+      layersRevisionRef.current += 1;
       pushUndoEntry({ layer: activeLayer, cells });
       emitChange();
     },
@@ -519,11 +561,11 @@ export default function TileMapEditor({
 
     context.setTransform(1, 0, 0, 1, 0, 0);
     context.imageSmoothingEnabled = false;
-    context.fillStyle = "#dfe8dc";
+    context.fillStyle = canvasTheme.surface;
     context.fillRect(0, 0, viewWidth, viewHeight);
 
     if (!layers || !renderer || !tilesetProfile) {
-      context.fillStyle = "#5f6d61";
+      context.fillStyle = canvasTheme.placeholderText;
       context.font = "14px sans-serif";
       context.fillText(
         !tilesetProfile
@@ -573,7 +615,27 @@ export default function TileMapEditor({
     context.globalAlpha = 1;
 
     if (showPassability) {
-      const collision = deriveCollisionGrid(layers, tileMapWidth, tileMapHeight, tilesetProfile);
+      const cache = collisionCacheRef.current;
+      let collision: Uint8Array;
+
+      if (
+        cache &&
+        cache.revision === layersRevisionRef.current &&
+        cache.width === tileMapWidth &&
+        cache.height === tileMapHeight &&
+        cache.profile === tilesetProfile
+      ) {
+        collision = cache.grid;
+      } else {
+        collision = deriveCollisionGrid(layers, tileMapWidth, tileMapHeight, tilesetProfile);
+        collisionCacheRef.current = {
+          revision: layersRevisionRef.current,
+          width: tileMapWidth,
+          height: tileMapHeight,
+          profile: tilesetProfile,
+          grid: collision,
+        };
+      }
 
       context.fillStyle = "rgba(220, 40, 40, 0.35)";
 
@@ -587,7 +649,7 @@ export default function TileMapEditor({
     }
 
     if (showGrid && zoom >= 0.5) {
-      context.strokeStyle = "rgba(35, 49, 39, 0.18)";
+      context.strokeStyle = canvasTheme.grid;
       context.lineWidth = 1 / zoom;
       context.beginPath();
 
@@ -622,7 +684,7 @@ export default function TileMapEditor({
       }
 
       context.globalAlpha = 1;
-      context.strokeStyle = "#2e5b37";
+      context.strokeStyle = canvasTheme.rectStroke;
       context.lineWidth = 2 / zoom;
       context.strokeRect(
         left * TILE_SIZE,
@@ -633,7 +695,7 @@ export default function TileMapEditor({
     } else if (hoverCell && !strokeRef.current) {
       drawStampPreview(context, hoverCell.x, hoverCell.y, hoverCell);
       context.globalAlpha = 1;
-      context.strokeStyle = "rgba(46, 91, 55, 0.9)";
+      context.strokeStyle = canvasTheme.hoverStroke;
       context.lineWidth = 2 / zoom;
 
       const previewWidth = paletteSelection.kind === "tiles" ? paletteSelection.width : 1;
@@ -650,6 +712,7 @@ export default function TileMapEditor({
     context.globalAlpha = 1;
   }, [
     activeLayer,
+    canvasTheme,
     dimOtherLayers,
     drawStampPreview,
     paletteSelection,
@@ -877,11 +940,11 @@ export default function TileMapEditor({
     }
 
     context.imageSmoothingEnabled = false;
-    context.fillStyle = "#f2f5f0";
+    context.fillStyle = canvasTheme.paletteSurface;
     context.fillRect(0, 0, canvas.width, canvas.height);
 
     // Row 0: eraser cell + the 7 autotile previews.
-    context.strokeStyle = "rgba(35, 49, 39, 0.4)";
+    context.strokeStyle = canvasTheme.eraserGlyph;
     context.strokeRect(0.5, 0.5, TILE_SIZE - 1, TILE_SIZE - 1);
     context.beginPath();
     context.moveTo(6, 6);
@@ -902,13 +965,21 @@ export default function TileMapEditor({
     }
 
     // The tileset image is already laid out as the 8-column palette grid.
-    const image = new Image();
+    // Load through loadImageElement so root-relative asset-storage paths
+    // resolve against assetStorageBaseUrl (a bare Image().src here would
+    // fetch from the frontend origin and leave the palette blank).
+    let cancelled = false;
 
-    image.onload = () => {
-      context.drawImage(image, 0, TILE_SIZE);
+    loadImageElement(tilesetProfile.tilesetImageSrc).then((image) => {
+      if (!cancelled && image) {
+        context.drawImage(image, 0, TILE_SIZE);
+      }
+    });
+
+    return () => {
+      cancelled = true;
     };
-    image.src = tilesetProfile.tilesetImageSrc;
-  }, [paletteHeight, renderer, tilesetProfile]);
+  }, [canvasTheme, paletteHeight, renderer, tilesetProfile]);
 
   const getPaletteCell = (event: React.PointerEvent) => {
     const canvas = paletteCanvasRef.current;
@@ -1030,12 +1101,14 @@ export default function TileMapEditor({
 
     layersRef.current = layers;
     layersKeyRef.current = profile.layers.join("|");
+    layersRevisionRef.current += 1;
     onChange({ ...value, tileMap: profile });
   };
 
   const handleRemoveTileMap = () => {
     layersRef.current = null;
     layersKeyRef.current = "";
+    layersRevisionRef.current += 1;
     onChange({ ...value, tileMap: undefined });
   };
 
@@ -1058,6 +1131,7 @@ export default function TileMapEditor({
 
     layersRef.current = resized;
     layersKeyRef.current = profile.layers.join("|");
+    layersRevisionRef.current += 1;
     undoStackRef.current = [];
     redoStackRef.current = [];
     setUndoDepth(0);
@@ -1077,12 +1151,12 @@ export default function TileMapEditor({
       <Box
         w={{ base: "100%", xl: "300px" }}
         flexShrink={0}
-        border="1px solid rgba(35, 49, 39, 0.12)"
+        border="1px solid" borderColor="editor.borderMuted"
         borderRadius="16px"
-        bg="#ffffff"
+        bg="editor.page"
         p={3}
       >
-        <Text fontSize="xs" fontWeight="700" textTransform="uppercase" letterSpacing="0.14em" color="#5e7a61" mb={2}>
+        <Text fontSize="xs" fontWeight="700" textTransform="uppercase" letterSpacing="0.14em" color="editor.accentMuted" mb={2}>
           Tileset Palette
         </Text>
         <Select
@@ -1119,7 +1193,7 @@ export default function TileMapEditor({
           ref={paletteScrollRef}
           overflowY="auto"
           maxH="560px"
-          border="1px solid rgba(35, 49, 39, 0.12)"
+          border="1px solid" borderColor="editor.borderMuted"
           borderRadius="8px"
           position="relative"
           style={{ touchAction: "none" }}
@@ -1137,7 +1211,7 @@ export default function TileMapEditor({
               <Box
                 position="absolute"
                 pointerEvents="none"
-                border="2px solid #2e5b37"
+                border="2px solid" borderColor="editor.accent"
                 boxShadow="0 0 0 1px rgba(255,255,255,0.8)"
                 style={{
                   left: `${paletteSelectionStyle.left}px`,
@@ -1148,7 +1222,7 @@ export default function TileMapEditor({
               />
             </Box>
           ) : (
-            <Text p={3} fontSize="sm" color="#5f6d61">
+            <Text p={3} fontSize="sm" color="editor.textMuted">
               No tileset selected. Import tilesets with the migration tool or create profiles in
               the Tilesets designer section.
             </Text>
@@ -1169,7 +1243,7 @@ export default function TileMapEditor({
               {label}
             </Button>
           ))}
-          <Box w="1px" h="24px" bg="rgba(35, 49, 39, 0.16)" />
+          <Box w="1px" h="24px" bg="editor.border" />
           {(["pencil", "rectangle", "fill", "eraser"] as TileTool[]).map((toolOption) => (
             <Button
               key={toolOption}
@@ -1182,7 +1256,7 @@ export default function TileMapEditor({
               {toolOption}
             </Button>
           ))}
-          <Box w="1px" h="24px" bg="rgba(35, 49, 39, 0.16)" />
+          <Box w="1px" h="24px" bg="editor.border" />
           <Button size="sm" variant="outline" onClick={() => applyUndoRedo("undo")} isDisabled={undoDepth === 0}>
             Undo
           </Button>
@@ -1232,9 +1306,9 @@ export default function TileMapEditor({
           overflow="auto"
           position="relative"
           h="70vh"
-          border="1px solid rgba(35, 49, 39, 0.16)"
+          border="1px solid" borderColor="editor.border"
           borderRadius="12px"
-          bg="#e8ede5"
+          bg="editor.well"
           style={{ touchAction: "none" }}
           onContextMenu={(event) => event.preventDefault()}
         >
@@ -1254,7 +1328,7 @@ export default function TileMapEditor({
             }}
           />
         </Box>
-        <Text mt={2} fontSize="xs" color="#5f6d61">
+        <Text mt={2} fontSize="xs" color="editor.textMuted">
           Left click paints with the selected stamp. Right click picks the tile under the cursor.
           Ctrl+Z / Ctrl+Y undo and redo. Foreground tiles (priority above 0 in the tileset) render
           above players in game; passability comes from the tileset's RMXP passage flags.

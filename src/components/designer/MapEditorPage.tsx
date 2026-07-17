@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   Button,
@@ -19,6 +19,7 @@ import {
   Stack,
   Switch,
   Text,
+  useColorMode,
   useToast,
 } from "@chakra-ui/react";
 import { Link as RouterLink, useParams } from "react-router-dom";
@@ -59,6 +60,7 @@ import {
 } from "../ux/game/characterSkinCatalog";
 import TileMapEditor from "./TileMapEditor";
 import { bakeTileMapForSave } from "./tileMapBakeUpload";
+import { resolveServerAssetUrl } from "../tilemap/serverAssets";
 
 type DesignerSectionState = {
   categories: string[];
@@ -268,10 +270,13 @@ function getMapSurfaceBackgroundStyle(config: DesignerPlayableMapConfig): React.
     };
   }
 
+  // Root-relative asset paths live on the asset-storage origin.
+  const backgroundImageUrl = resolveServerAssetUrl(config.backgroundImageSrc);
+
   if (config.backgroundImageMode === "centered") {
     return {
       backgroundColor,
-      backgroundImage: `url("${config.backgroundImageSrc}")`,
+      backgroundImage: `url("${backgroundImageUrl}")`,
       backgroundPosition: "center",
       backgroundRepeat: "no-repeat",
       backgroundSize: "auto",
@@ -281,7 +286,7 @@ function getMapSurfaceBackgroundStyle(config: DesignerPlayableMapConfig): React.
   if (config.backgroundImageMode === "stretched") {
     return {
       backgroundColor,
-      backgroundImage: `url("${config.backgroundImageSrc}")`,
+      backgroundImage: `url("${backgroundImageUrl}")`,
       backgroundPosition: "center",
       backgroundRepeat: "no-repeat",
       backgroundSize: "100% 100%",
@@ -290,7 +295,7 @@ function getMapSurfaceBackgroundStyle(config: DesignerPlayableMapConfig): React.
 
   return {
     backgroundColor,
-    backgroundImage: `url("${config.backgroundImageSrc}")`,
+    backgroundImage: `url("${backgroundImageUrl}")`,
     backgroundPosition: "top left",
     backgroundRepeat: "repeat",
     backgroundSize: "auto",
@@ -593,6 +598,7 @@ function saveMapsState(nextState: DesignerSectionState) {
 export default function MapEditorPage() {
   const { mapId = "" } = useParams();
   const toast = useToast();
+  const { colorMode, toggleColorMode } = useColorMode();
   const { authReady, authenticated, socket } = useAuth();
   const [regionNames, setRegionNames] = useState<string[]>(() => loadRegionNames());
   const [objectCatalog, setObjectCatalog] = useState<MapEditorObjectCatalogItem[]>(
@@ -709,8 +715,16 @@ export default function MapEditorPage() {
   const mapPixelWidth = previewConfig.width * previewConfig.cellSize;
   const mapPixelHeight = previewConfig.height * previewConfig.cellSize;
   const mapSurfaceBackgroundStyle = getMapSurfaceBackgroundStyle(previewConfig);
-  const isEditorDirty =
-    JSON.stringify(editorData) !== JSON.stringify(savedEditorData);
+  // The payload can be megabytes (base64 layers, baked chunks), so only
+  // re-serialize when one of the references actually changes instead of on
+  // every render. The ref lets long-lived socket/event handlers read the
+  // current dirty state without re-subscribing on each edit.
+  const isEditorDirty = useMemo(
+    () => JSON.stringify(editorData) !== JSON.stringify(savedEditorData),
+    [editorData, savedEditorData]
+  );
+  const isEditorDirtyRef = useRef(isEditorDirty);
+  isEditorDirtyRef.current = isEditorDirty;
 
   const isValidProperties =
     MAP_CELL_SIZE_OPTIONS.includes(Number.parseInt(cellSize, 10) as 8 | 16 | 32 | 64 | 128) &&
@@ -760,7 +774,7 @@ export default function MapEditorPage() {
 
       setMapsState(nextMapsState);
 
-      if (isEditorDirty) {
+      if (isEditorDirtyRef.current) {
         return;
       }
 
@@ -775,7 +789,7 @@ export default function MapEditorPage() {
     return () => {
       window.removeEventListener(DESIGNER_CACHE_UPDATED_EVENT, handleDesignerCacheUpdate);
     };
-  }, [isEditorDirty, mapId]);
+  }, [mapId]);
 
   useEffect(() => {
     if (!authReady || !authenticated || !socket) {
@@ -808,7 +822,7 @@ export default function MapEditorPage() {
 
       const nextEditorData = syncPayload.state.editorDataByMapId[mapId];
 
-      if (nextEditorData && !isEditorDirty) {
+      if (nextEditorData && !isEditorDirtyRef.current) {
         setEditorData(nextEditorData);
         setSavedEditorData(nextEditorData);
       }
@@ -840,7 +854,43 @@ export default function MapEditorPage() {
       socket.off("playableMaps:error", handleMapsError);
       socket.off("connect", joinMapsRoom);
     };
-  }, [authReady, authenticated, isEditorDirty, mapId, socket, toast]);
+  }, [authReady, authenticated, mapId, socket, toast]);
+
+  // The tile editor and the save-time bake read tileset profiles from the
+  // designer cache, but tilesets are a heavy on-demand section that only the
+  // Tilesets page joined — a fresh session opening the map editor directly
+  // got an empty palette and a blank tile canvas. Join the section here too;
+  // DesignerDataBootstrap persists the incoming state and the cache-updated
+  // event refreshes TileMapEditor.
+  useEffect(() => {
+    if (!authReady || !authenticated || !socket) {
+      return;
+    }
+
+    const joinTilesetsRoom = () => {
+      const storedPayload = readStoredDesignerSectionPayload("tilesets");
+
+      socket.emit("designer:section:join", {
+        sectionKey: "tilesets",
+        version: storedPayload.version,
+        seedState:
+          storedPayload.version === null && storedPayload.state.items.length > 0
+            ? storedPayload.state
+            : undefined,
+      });
+    };
+
+    socket.on("connect", joinTilesetsRoom);
+
+    if (socket.connected) {
+      joinTilesetsRoom();
+    }
+
+    return () => {
+      socket.emit("designer:section:leave", { sectionKey: "tilesets" });
+      socket.off("connect", joinTilesetsRoom);
+    };
+  }, [authReady, authenticated, socket]);
 
   const publishMapsState = (nextMapsState: DesignerSectionState) => {
     if (!socket || !authenticated) {
@@ -974,8 +1024,8 @@ export default function MapEditorPage() {
 
   if (!mapItem) {
     return (
-      <Box minH="100vh" bg="#f7f7f7" px={6} py={8}>
-        <Heading size="md" color="#233127" mb={4}>
+      <Box minH="100vh" bg="editor.pageMuted" px={6} py={8}>
+        <Heading size="md" color="editor.heading" mb={4}>
           Map not found
         </Heading>
         <Button as={RouterLink} to="/designer/maps-editor" colorScheme="green" variant="outline">
@@ -986,7 +1036,7 @@ export default function MapEditorPage() {
   }
 
   return (
-    <Box minH="100vh" bg="#ffffff">
+    <Box minH="100vh" bg="editor.page">
       <Flex
         position="sticky"
         top={0}
@@ -996,8 +1046,8 @@ export default function MapEditorPage() {
         gap={4}
         px={{ base: 4, md: 6 }}
         py={4}
-        bg="rgba(255,255,255,0.96)"
-        borderBottom="1px solid rgba(35, 49, 39, 0.12)"
+        bg="editor.overlay"
+        borderBottom="1px solid" borderBottomColor="editor.borderMuted"
         backdropFilter="blur(10px)"
       >
         <Box>
@@ -1006,19 +1056,28 @@ export default function MapEditorPage() {
             fontWeight="700"
             textTransform="uppercase"
             letterSpacing="0.16em"
-            color="#5e7a61"
+            color="editor.accentMuted"
             mb={1}
           >
             Map Editor
           </Text>
-          <Heading size="md" color="#233127">
+          <Heading size="md" color="editor.heading">
             {mapName || mapItem.name}
           </Heading>
-          <Text mt={1} fontSize="sm" color={isEditorDirty ? "#8b5a20" : "#5f6d61"}>
+          <Text mt={1} fontSize="sm" color={isEditorDirty ? "editor.warning" : "editor.textMuted"}>
             {isEditorDirty ? "Unsaved editor changes" : "Editor changes saved"}
           </Text>
         </Box>
         <Flex wrap="wrap" gap={3}>
+          <Button
+            variant="outline"
+            borderColor="editor.borderAccent"
+            color="editor.accent"
+            onClick={toggleColorMode}
+            title="Toggle light/dark theme"
+          >
+            {colorMode === "dark" ? "Light mode" : "Dark mode"}
+          </Button>
           <Button
             onClick={handleToolbarSave}
             colorScheme="green"
@@ -1030,8 +1089,8 @@ export default function MapEditorPage() {
           </Button>
           <Button
             variant="outline"
-            borderColor="rgba(43, 66, 47, 0.24)"
-            color="#2e5b37"
+            borderColor="editor.borderAccent"
+            color="editor.accent"
             onClick={() => setIsPropertiesOpen(true)}
           >
             Edit Map Properties
@@ -1040,8 +1099,8 @@ export default function MapEditorPage() {
             as={RouterLink}
             to="/designer/maps-editor"
             variant="outline"
-            borderColor="rgba(43, 66, 47, 0.24)"
-            color="#2e5b37"
+            borderColor="editor.borderAccent"
+            color="editor.accent"
           >
             Back
           </Button>
@@ -1052,8 +1111,8 @@ export default function MapEditorPage() {
         <Box
           minH="calc(100vh - 120px)"
           borderRadius="24px"
-          border="1px solid rgba(35, 49, 39, 0.08)"
-          bg="#f8faf7"
+          border="1px solid" borderColor="editor.borderFaint"
+          bg="editor.surface"
           overflow="hidden"
         >
           <Flex
@@ -1063,8 +1122,8 @@ export default function MapEditorPage() {
             gap={3}
             px={{ base: 4, md: 5 }}
             py={4}
-            borderBottom="1px solid rgba(35, 49, 39, 0.08)"
-            bg="#ffffff"
+            borderBottom="1px solid" borderBottomColor="editor.borderFaint"
+            bg="editor.page"
           >
             <Box>
               <Text
@@ -1072,12 +1131,12 @@ export default function MapEditorPage() {
                 fontWeight="700"
                 textTransform="uppercase"
                 letterSpacing="0.14em"
-                color="#5e7a61"
+                color="editor.accentMuted"
                 mb={1}
               >
                 Map Surface
               </Text>
-              <Text fontSize="sm" color="#314636">
+              <Text fontSize="sm" color="editor.text">
                 {previewConfig.width} x {previewConfig.height} cells at {previewConfig.cellSize}px
                 each, rendered as {mapPixelWidth} x {mapPixelHeight}px.
               </Text>
@@ -1099,7 +1158,7 @@ export default function MapEditorPage() {
               >
                 Placements
               </Button>
-              <Text fontSize="sm" color="#4d6652">
+              <Text fontSize="sm" color="editor.textFaint">
                 {editorMode === "tiles"
                   ? "RPG Maker XP style tile layers with autotiles, passability, and baked surfaces."
                   : "Selector, grass, object placement, portal tools, and NPC placement all edit the saved map editor data."}
@@ -1148,16 +1207,16 @@ export default function MapEditorPage() {
         <ModalOverlay bg="blackAlpha.400" />
         <ModalContent
           borderRadius="24px"
-          bg="#fffdf8"
+          bg="editor.raised"
           overflow="hidden"
           maxH="calc(100vh - 2rem)"
           boxShadow="0 28px 70px rgba(24, 34, 20, 0.24)"
         >
-          <ModalHeader bg="#fffdf8" borderBottom="1px solid rgba(43, 66, 47, 0.08)">
+          <ModalHeader bg="editor.raised" borderBottom="1px solid" borderBottomColor="editor.borderAccentFaint">
             Edit Map Properties
           </ModalHeader>
           <ModalCloseButton />
-          <ModalBody bg="#fffdf8" overflowY="auto">
+          <ModalBody bg="editor.raised" overflowY="auto">
             <Stack spacing={4}>
               <FormControl isRequired>
                 <FormLabel>Name</FormLabel>
@@ -1222,7 +1281,7 @@ export default function MapEditorPage() {
                 <FormControl display="flex" alignItems="center" justifyContent="space-between">
                   <Box>
                     <FormLabel mb={1}>Initial Game Map</FormLabel>
-                    <Text fontSize="sm" color="#55645a">
+                    <Text fontSize="sm" color="editor.textSubtle">
                       New players start on this map unless the server restores a saved location.
                     </Text>
                   </Box>
@@ -1358,7 +1417,7 @@ export default function MapEditorPage() {
                 </FormControl>
               ) : null}
               <Flex justify="space-between" align={{ base: "flex-start", md: "center" }} gap={3} wrap="wrap">
-                <Text fontSize="sm" color="#55645a">
+                <Text fontSize="sm" color="editor.textSubtle">
                   The saved background fills the map editor surface automatically.
                 </Text>
                 {backgroundImageSrc ? (
@@ -1374,7 +1433,7 @@ export default function MapEditorPage() {
               <Box
                 minH="140px"
                 borderRadius="18px"
-                border="1px solid rgba(43, 66, 47, 0.12)"
+                border="1px solid" borderColor="editor.borderAccentMuted"
                 sx={getMapSurfaceBackgroundStyle({
                   ...initialConfig,
                   backgroundColor,
@@ -1382,10 +1441,10 @@ export default function MapEditorPage() {
                   backgroundImageMode,
                 })}
               />
-              <Text fontSize="sm" color="#55645a">
+              <Text fontSize="sm" color="editor.textSubtle">
                 Initial game map: {isInitialMap ? "Yes" : "No"}
               </Text>
-              <Text fontSize="sm" color="#55645a">
+              <Text fontSize="sm" color="editor.textSubtle">
                 Initial position:{" "}
                 {parseOptionalMapCoordinate(initialPositionX) !== null &&
                 parseOptionalMapCoordinate(initialPositionY) !== null
@@ -1393,7 +1452,7 @@ export default function MapEditorPage() {
                   : "Center"}
               </Text>
               {!hasValidOptionalCoordinatePair(initialPositionX, initialPositionY) ? (
-                <Text fontSize="sm" color="#914335">
+                <Text fontSize="sm" color="editor.danger">
                   Enter both initial position coordinates or leave both empty to use the map center.
                 </Text>
               ) : null}
@@ -1401,8 +1460,8 @@ export default function MapEditorPage() {
           </ModalBody>
           <ModalFooter
             gap={3}
-            bg="#fffdf8"
-            borderTop="1px solid rgba(43, 66, 47, 0.08)"
+            bg="editor.raised"
+            borderTop="1px solid" borderTopColor="editor.borderAccentFaint"
           >
             <Button variant="ghost" onClick={() => setIsPropertiesOpen(false)}>
               Cancel
