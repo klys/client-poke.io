@@ -128,6 +128,9 @@ export interface MapEditorNpcPlacement {
     parameters: unknown[];
     indent?: number;
   }>;
+  /** Inline stock for event-driven marts (pbPokemonMart); designer store NPCs
+   * keep their stock in the npcs catalog instead. */
+  storeItems?: Array<{ itemId: string; itemName: string; quantity: number; price: number }>;
 }
 
 export const DEFAULT_NPC_INTERACTION_DISTANCE_SQUARES = 2;

@@ -384,7 +384,12 @@ export function NpcInteractionOverlay({
     [npcCatalogById, npcPlacement]
   );
   const effectiveNpcType = npcDefinition?.npcType ?? npcPlacement?.npcType ?? "healer";
-  const storeItems = useMemo(() => npcDefinition?.storeItems ?? [], [npcDefinition]);
+  // Designer store NPCs stock from the npcs catalog; event marts
+  // (pbPokemonMart) carry their stock inline on the synthetic placement.
+  const storeItems = useMemo(
+    () => npcDefinition?.storeItems ?? sanitizeStoreItems(npcPlacement?.storeItems),
+    [npcDefinition, npcPlacement]
+  );
 
   const sellableItems = useMemo<SellableStoreItem[]>(() => {
     if (effectiveNpcType !== "store") {

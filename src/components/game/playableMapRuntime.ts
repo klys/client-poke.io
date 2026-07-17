@@ -531,6 +531,31 @@ function resolvePlayableMapsSnapshot(snapshot?: PlayableMapsStateSnapshot) {
   return snapshot ?? loadPlayableMapsSnapshot();
 }
 
+/**
+ * Patch one map's editorData into the in-memory payload cache. The map editor
+ * MUST call this when it saves: loadPlayableMapEditorData reads the memory
+ * cache before localStorage, so without this patch the snapshot published to
+ * the server (buildPlayableMapsSnapshot -> loadPlayableMapEditorData) is
+ * rebuilt from PRE-EDIT data — the save silently reverts portal/NPC edits and
+ * the server echo then snaps the editor back to the stale content.
+ */
+export function updateMemoryPlayableMapEditorData(mapId: string, editorData: unknown) {
+  if (!mapId || !memoryPlayableMapsPayload) {
+    return;
+  }
+
+  memoryPlayableMapsPayload = {
+    ...memoryPlayableMapsPayload,
+    state: {
+      ...memoryPlayableMapsPayload.state,
+      editorDataByMapId: {
+        ...memoryPlayableMapsPayload.state.editorDataByMapId,
+        [mapId]: sanitizePlayableMapEditorData(editorData),
+      },
+    },
+  };
+}
+
 export function loadPlayableMapEditorData(mapId: string) {
   if (!mapId) {
     return sanitizePlayableMapEditorData(undefined);

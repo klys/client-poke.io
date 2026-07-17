@@ -18,6 +18,15 @@ type EventStep =
   | { type: "picture"; op: "show" | "move" | "erase"; slot: number; name?: string; origin?: number; x?: number; y?: number; opacity?: number; durationMs?: number }
   | { type: "sound"; kind: "SE" | "ME" | "BGM" | "BGS" | "BGMStop" | "BGSStop"; name?: string; volume?: number }
   | { type: "screen"; effect: "fadeout" | "fadein" | "tone"; durationMs?: number; darken?: number }
+  | {
+      type: "store";
+      npcName: string;
+      placementId: string;
+      x: number;
+      y: number;
+      interactionDistanceSquares: number;
+      items: Array<{ itemId: string; itemName: string; quantity: number; price: number }>;
+    }
   | { type: "end" };
 
 type BlockingStep = Extract<EventStep, { type: "text" | "choices" | "info" | "nameInput" }>;
@@ -76,7 +85,7 @@ function resolvePokemonPortrait(pokemonId?: string): string | null {
  * server owns all logic; this component displays steps and relays replies.
  */
 export default function EventDialog() {
-  const { socket } = useContext(AppContext);
+  const { socket, setActiveNpcInteraction } = useContext(AppContext);
   const { user } = useAuth();
   const [step, setStep] = useState<BlockingStep | null>(null);
   const [choiceIndex, setChoiceIndex] = useState(0);
@@ -170,6 +179,27 @@ export default function EventDialog() {
         case "nameInput":
           setNameValue(payload.defaultName ?? "");
           setStep(payload);
+          return;
+        case "store":
+          // pbPokemonMart: hand off to the regular store overlay (the same UI
+          // designer store NPCs use). The event keeps running to its end; the
+          // overlay outlives it and buys/sells through npc:store-buy/sell,
+          // which the server validates against its mart session.
+          setActiveNpcInteraction({
+            id: payload.placementId,
+            npcId: "",
+            name: payload.npcName,
+            category: "",
+            previewImageSrc: "",
+            npcType: "store",
+            aiType: "standing",
+            // Real clerk cell + range: Map.tsx closes the overlay when the
+            // player walks out of interaction range of this spot.
+            interactionDistanceSquares: payload.interactionDistanceSquares,
+            x: payload.x,
+            y: payload.y,
+            storeItems: payload.items,
+          });
           return;
         default:
           setChoiceIndex(0);

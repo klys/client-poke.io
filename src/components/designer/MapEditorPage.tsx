@@ -30,6 +30,7 @@ import {
   loadPlayableMapsState,
   persistPlayableMapsSyncPayload,
   sanitizePlayableMapsSyncPayload,
+  updateMemoryPlayableMapEditorData,
 } from "../game/playableMapRuntime";
 import PlayableMapEditorCanvas, {
   type MapEditorMapSummary,
@@ -495,6 +496,11 @@ function loadMapEditorData(mapId: string) {
 }
 
 function saveMapEditorData(mapId: string, data: PlayableMapEditorData) {
+  // Keep the runtime memory cache in step BEFORE anything rebuilds a snapshot
+  // from it: publishMapsState -> buildPlayableMapsSnapshot reads editor data
+  // memory-first, so a stale memory entry would revert this very save.
+  updateMemoryPlayableMapEditorData(mapId, data);
+
   if (typeof window === "undefined" || !mapId) {
     return;
   }

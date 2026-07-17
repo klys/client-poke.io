@@ -7,7 +7,6 @@ import {
   getInitialPlayableMap,
   getPlayableMapById,
   resolvePlayableMapCellPosition,
-  resolvePortalDestination,
 } from "./playableMapRuntime";
 
 const PLAYER_SIZE = 32;
@@ -224,28 +223,24 @@ const PortalRuntime = () => {
 
     if (overlappingPortal.destinationType === "event-script") {
       runPortalScript(overlappingPortal);
-      return;
     }
-
-    const destination = resolvePortalDestination(
-      activeMap,
-      overlappingPortal,
-      playableMapsState
-    );
-
-    if (!destination) {
-      toast({
-        title: "Portal destination is invalid.",
-        status: "warning",
-        duration: 3000,
-        isClosable: true,
-        position: "top",
-      });
-      return;
-    }
-
-    requestTeleport(destination.mapId, destination.x, destination.y);
+    // Destination portals ("same-map"/"other-map") are SERVER-triggered now —
+    // the world detects standing/bumping on the portal cell and teleports.
+    // Only sandboxed event-script portals still run in the browser.
   }, [activeMap, currentPlayer, playableMapsState, requestTeleport, runPortalScript, toast]);
+
+  // Door/exit chime when the server sends us through a portal.
+  useEffect(() => {
+    const handlePortalUsed = () => {
+      gameAudio.playEffect("Exit Door", "SE");
+    };
+
+    socket.on("portal:used", handlePortalUsed);
+
+    return () => {
+      socket.off("portal:used", handlePortalUsed);
+    };
+  }, [socket]);
 
   return null;
 };
