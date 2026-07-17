@@ -104,6 +104,21 @@ const GameSettingsSections = () => {
       />
 
       <Divider borderColor="whiteAlpha.300" />
+      <Text fontWeight="700" fontSize="lg">{t('settings.controls.title')}</Text>
+
+      <FormControl display="flex" alignItems="center" justifyContent="space-between">
+        <FormLabel mb={0}>{t('settings.controls.touchMove')}</FormLabel>
+        <Switch
+          colorScheme="teal"
+          isChecked={settings.controls.touchMoveEnabled}
+          onChange={(event) => update({ controls: { touchMoveEnabled: event.target.checked } })}
+        />
+      </FormControl>
+      <Text mt={-2} fontSize="sm" color="gray.500">
+        {t('settings.controls.touchMoveHelp')}
+      </Text>
+
+      <Divider borderColor="whiteAlpha.300" />
       <Text fontWeight="700" fontSize="lg">{t('settings.language.title')}</Text>
 
       <FormControl>

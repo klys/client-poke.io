@@ -94,21 +94,7 @@ export function getCharacterSkinSprite(
     return "";
   }
 
-  const pick = (): string => {
-    if (isWalking) {
-      switch (direction) {
-        case "up":
-          return profile.walkingUpSrc;
-        case "left":
-          return profile.walkingLeftSrc;
-        case "right":
-          return profile.walkingRightSrc;
-        case "down":
-        default:
-          return profile.walkingDownSrc;
-      }
-    }
-
+  const standingFor = (): string => {
     switch (direction) {
       case "up":
         return profile.standingUpSrc;
@@ -122,5 +108,29 @@ export function getCharacterSkinSprite(
     }
   };
 
-  return resolveServerAssetUrl(pick());
+  const walkingFor = (): string => {
+    switch (direction) {
+      case "up":
+        return profile.walkingUpSrc;
+      case "left":
+        return profile.walkingLeftSrc;
+      case "right":
+        return profile.walkingRightSrc;
+      case "down":
+      default:
+        return profile.walkingDownSrc;
+    }
+  };
+
+  // A skin with no walking sprite for a direction keeps its own standing
+  // sprite while moving instead of morphing into the default character:
+  // resolveServerAssetUrl("") is a non-empty URL, so without these guards a
+  // blank src used to win over the caller's fallback and render broken.
+  const picked = isWalking ? walkingFor() || standingFor() : standingFor();
+
+  if (!picked.trim()) {
+    return "";
+  }
+
+  return resolveServerAssetUrl(picked);
 }

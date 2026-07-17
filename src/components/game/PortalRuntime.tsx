@@ -28,24 +28,19 @@ function isOverlappingPortal(
     return false;
   }
 
-  const portalBounds = {
-    x: portal.x * cellSize,
-    y: portal.y * cellSize,
-    width: cellSize,
-    height: cellSize,
-  };
-  const playerBounds = {
-    x: player.x,
-    y: player.y,
-    width: PLAYER_SIZE,
-    height: PLAYER_SIZE,
-  };
+  // The portal fires only when the player's CENTER is inside the portal cell
+  // (the same 50% rule the server uses for standing-touch events). Any-edge
+  // AABB overlap used to warp players who merely grazed a portal's corner.
+  const centerX = player.x + PLAYER_SIZE / 2;
+  const centerY = player.y + PLAYER_SIZE / 2;
+  const portalX = portal.x * cellSize;
+  const portalY = portal.y * cellSize;
 
   return (
-    playerBounds.x < portalBounds.x + portalBounds.width &&
-    playerBounds.x + playerBounds.width > portalBounds.x &&
-    playerBounds.y < portalBounds.y + portalBounds.height &&
-    playerBounds.y + playerBounds.height > portalBounds.y
+    centerX >= portalX &&
+    centerX < portalX + cellSize &&
+    centerY >= portalY &&
+    centerY < portalY + cellSize
   );
 }
 

@@ -72,6 +72,12 @@ const STRINGS: Record<string, Entry> = {
   'settings.display.battle': { en: 'Battle interface size', es: 'Tamaño de la interfaz de batalla' },
 
   // --- Settings window: language ---
+  'settings.controls.title': { en: 'Controls', es: 'Controles' },
+  'settings.controls.touchMove': { en: 'Tap / click to move', es: 'Tocar / clic para moverse' },
+  'settings.controls.touchMoveHelp': {
+    en: 'When off, tapping or clicking the map no longer moves your character.',
+    es: 'Si está desactivado, tocar o hacer clic en el mapa ya no mueve a tu personaje.',
+  },
   'settings.language.title': { en: 'Language', es: 'Idioma' },
   'settings.language.auto': { en: 'Auto (system language)', es: 'Automático (idioma del sistema)' },
   'settings.language.en': { en: 'English', es: 'English' },

@@ -34,6 +34,10 @@ export interface GameSettings {
     battle: number;
   };
   language: LanguageSetting;
+  controls: {
+    /** Tap/click on the map walks the player there. Off = keyboard/pad only. */
+    touchMoveEnabled: boolean;
+  };
 }
 
 export const DEFAULT_GAME_SETTINGS: GameSettings = {
@@ -49,6 +53,9 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
     battle: 1,
   },
   language: 'auto',
+  controls: {
+    touchMoveEnabled: true,
+  },
 };
 
 export const UI_SCALE_MIN = 0.75;
@@ -74,6 +81,7 @@ function normalizeSettings(raw: unknown): GameSettings {
     audio?: Partial<GameSettings['audio']>;
     uiScale?: Partial<GameSettings['uiScale']>;
     language?: unknown;
+    controls?: Partial<GameSettings['controls']>;
   };
 
   return {
@@ -92,6 +100,9 @@ function normalizeSettings(raw: unknown): GameSettings {
       input.language === 'en' || input.language === 'es' || input.language === 'auto'
         ? input.language
         : base.language,
+    controls: {
+      touchMoveEnabled: toBool(input.controls?.touchMoveEnabled, base.controls.touchMoveEnabled),
+    },
   };
 }
 
@@ -136,6 +147,7 @@ export function useGameSettings(): [GameSettings, (patch: Partial<GameSettings>)
       ...patch,
       audio: { ...current.audio, ...patch.audio },
       uiScale: { ...current.uiScale, ...patch.uiScale },
+      controls: { ...current.controls, ...patch.controls },
     });
     saveGameSettings(next);
   }, []);

@@ -379,6 +379,8 @@ const Player = (props: any) => {
         position: "absolute",
         top: `${pos.y}px`,
         left: `${pos.x}px`,
+        width: "32px",
+        height: "32px",
         zIndex: 999,
         cursor: isCurrentPlayer ? "default" : "pointer"
       }}
@@ -404,14 +406,20 @@ const Player = (props: any) => {
           {trainerName}
         </div>
       ) : null}
+      {/* Skins are 32x48 (taller than the 32x32 logical cell). Render at
+          natural aspect anchored to the cell's bottom edge so feet stay on
+          the tile — the old fixed 32x32 box squished every skin. */}
       <img
         src={spritePath}
         alt={`Player ${spriteLabel}`}
         width={32}
-        height={32}
-        style={{ 
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          width: "32px",
+          height: "auto",
           imageRendering: "pixelated",
-          objectPosition: "center",
         }}
       />
     </div>
