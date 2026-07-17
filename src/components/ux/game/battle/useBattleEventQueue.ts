@@ -10,6 +10,7 @@ import { battleAudio, type BattleSoundCue } from "./battleAudio";
 import { gameAudio, resolveGameAudioSrc } from "../gameAudio";
 import type { BattleInterfaceConfig } from "./battleInterfaceConfig";
 import { resolveSkillGfx, type ResolvedSkillGfx } from "./skillGfx";
+import { FALLBACK_ANIMATION_MS } from "./FallbackMoveAnimation";
 
 export type BattleSpriteFx = "attack" | "hit" | "faint" | "enter" | "";
 
@@ -18,7 +19,10 @@ export type BattleExpOverride = { experience: number; nextLevelExperience: numbe
 
 export type ActiveMoveAnimation = {
   key: number;
-  gfx: ResolvedSkillGfx;
+  /** null = no migrated graphic; render the type-themed fallback instead */
+  gfx: ResolvedSkillGfx | null;
+  /** move type driving the procedural fallback animation */
+  fallbackMoveType: string;
   /** the battler slot the animation is rendered over */
   targetSideId: "a" | "b";
 };
@@ -205,26 +209,25 @@ export function useBattleEventQueue({
           setSpriteFx(event.sideId, "attack");
           await messagePromise;
 
+          // Every move animates: migrated skillsGfx media when it exists,
+          // otherwise the procedural type-themed fallback burst.
           const gfx = resolveSkillGfx(event);
-          if (gfx) {
-            const targetSideId =
-              gfx.applyTo === "user" ? event.sideId : event.sideId === "a" ? "b" : "a";
-            animationKeyRef.current += 1;
-            const animation: ActiveMoveAnimation = {
-              key: animationKeyRef.current,
-              gfx,
-              targetSideId
-            };
-            update((previous) => ({ ...previous, activeAnimation: animation }));
-            await wait(gfx.durationMs + 120);
-            update((previous) =>
-              previous.activeAnimation?.key === animation.key
-                ? { ...previous, activeAnimation: null }
-                : previous
-            );
-          } else {
-            await wait(420);
-          }
+          const targetSideId =
+            gfx?.applyTo === "user" ? event.sideId : event.sideId === "a" ? "b" : "a";
+          animationKeyRef.current += 1;
+          const animation: ActiveMoveAnimation = {
+            key: animationKeyRef.current,
+            gfx,
+            fallbackMoveType: event.moveType || "NORMAL",
+            targetSideId
+          };
+          update((previous) => ({ ...previous, activeAnimation: animation }));
+          await wait((gfx ? gfx.durationMs : FALLBACK_ANIMATION_MS) + 120);
+          update((previous) =>
+            previous.activeAnimation?.key === animation.key
+              ? { ...previous, activeAnimation: null }
+              : previous
+          );
           setSpriteFx(event.sideId, "");
           break;
         }

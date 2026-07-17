@@ -50,7 +50,9 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   uiScale: {
     dialogs: 1,
     interface: 1,
-    battle: 1,
+    // The battle UI reads best ~15% smaller than the other windows; players
+    // can still push it back up (or lower) in Settings -> Display.
+    battle: 0.85,
   },
   language: 'auto',
   controls: {

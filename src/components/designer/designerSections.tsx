@@ -556,7 +556,15 @@ export interface DesignerBattleInterfaceProfile {
   seVolume?: number;
   muteBgm?: boolean;
   muteSe?: boolean;
-  introTransition?: "flash-wipe" | "fade" | "none";
+  introTransition?:
+    | "random"
+    | "flash-wipe"
+    | "fade"
+    | "iris"
+    | "blinds"
+    | "checker"
+    | "shutter"
+    | "none";
   animationSpeed?: number;
   showBattleLog?: boolean;
   logRows?: number;

@@ -92,6 +92,8 @@ export type BattlePublicState = {
   log: string[];
   result: string | null;
   summary: BattlePublicSummary | null;
+  /** Essentials battleback name resolved from the map the battle started on. */
+  battleBack?: string | null;
 };
 
 export type BattlePrompt = {

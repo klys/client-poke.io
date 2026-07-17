@@ -2,11 +2,12 @@ import { Box } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ResolvedSkillGfx } from "./skillGfx";
 
-// Sheet effects are authored at a fixed cell size (default 192px), so on a
-// large screen they used to look tiny next to viewport-scaled battlers. Scale
-// them to cover this fraction of the battler slot instead, clamped so effects
-// never collapse on tiny slots nor blow up past readable pixel-art sizes.
-const EFFECT_SLOT_COVERAGE = 0.9;
+// Effects are authored at small fixed sizes (192px sheet cells, ~220px GIF
+// records), so on a large screen they used to look tiny next to
+// viewport-scaled battlers. Scale them to cover this fraction of the battler
+// slot instead, clamped so effects never collapse on tiny slots nor blow up
+// past readable pixel-art sizes.
+const EFFECT_SLOT_COVERAGE = 1.1;
 const MIN_EFFECT_SCALE = 0.75;
 const MAX_EFFECT_SCALE = 4;
 
@@ -55,6 +56,7 @@ export default function MoveAnimationPlayer({
 }) {
   const durationMs = Math.max(120, gfx.durationMs / Math.max(0.25, animationSpeed));
   const [frame, setFrame] = useState(0);
+  const [recordNaturalSize, setRecordNaturalSize] = useState<number | null>(null);
   const isSheet = gfx.animationKind === "sheet" && gfx.frameCount > 1;
   const wrapperRef = useRef<HTMLDivElement>(null);
   const slotSize = useSlotSize(wrapperRef);
@@ -77,15 +79,29 @@ export default function MoveAnimationPlayer({
     return () => window.clearInterval(interval);
   }, [isSheet, durationMs, gfx.frameCount]);
 
-  const effectScale = useMemo(() => {
+  const scaleForSourceSize = (sourceSize: number) => {
     if (!slotSize || slotSize.width <= 0) {
       return 1.2;
     }
 
     const targetSize = Math.min(slotSize.width, Math.max(slotSize.height, slotSize.width * 0.6));
-    const scale = (targetSize * EFFECT_SLOT_COVERAGE) / gfx.cellSize;
+    const scale = (targetSize * EFFECT_SLOT_COVERAGE) / sourceSize;
     return Math.min(MAX_EFFECT_SCALE, Math.max(MIN_EFFECT_SCALE, scale));
-  }, [slotSize, gfx.cellSize]);
+  };
+
+  const effectScale = useMemo(
+    () => scaleForSourceSize(gfx.cellSize),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [slotSize, gfx.cellSize]
+  );
+
+  // GIF records render at their natural pixel size (often ~200px), which
+  // looked tiny over a large battler slot — scale them like sheet cells.
+  const recordScale = useMemo(
+    () => (recordNaturalSize ? scaleForSourceSize(recordNaturalSize) : 1),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [slotSize, recordNaturalSize]
+  );
 
   const sheetStyle = useMemo(() => {
     if (!isSheet) {
@@ -123,11 +139,21 @@ export default function MoveAnimationPlayer({
         <img
           src={gfx.mediaSrc}
           alt=""
+          onLoad={(event) => {
+            const image = event.currentTarget;
+            const size = Math.max(image.naturalWidth, image.naturalHeight);
+            if (size > 0) {
+              setRecordNaturalSize(size);
+            }
+          }}
           style={{
-            maxWidth: "80%",
-            maxHeight: "90%",
             imageRendering: "pixelated",
-            objectFit: "contain"
+            objectFit: "contain",
+            // Hidden until the natural size is known so the GIF never flashes
+            // at its unscaled (tiny) size for a frame.
+            opacity: recordNaturalSize ? 1 : 0,
+            transform: `scale(${recordScale})`,
+            transformOrigin: "center"
           }}
         />
       )}

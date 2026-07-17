@@ -57,6 +57,14 @@ export function resolveSkillGfx(options: {
   const frameCount = Math.max(1, Math.round(profile.frameCount ?? 1));
   const fps = Math.max(1, Math.round(profile.fps ?? 12));
 
+  // Migrated profiles store the PER-FRAME delay in durationMs (e.g. 50 for a
+  // 13-frame GIF), not the total play time — treating it as the total cut
+  // every animation off after the 120ms floor. When the stored value is
+  // shorter than what the frames need, derive the total from frameCount/fps.
+  const framesMs = Math.round((frameCount / fps) * 1000);
+  const storedMs = Math.round(profile.durationMs ?? 0);
+  const durationMs = Math.max(120, storedMs >= framesMs * 0.75 ? storedMs : framesMs);
+
   return {
     mediaSrc: resolveServerAssetUrl(profile.mediaSrc),
     animationKind: profile.animationKind ?? "record",
@@ -66,6 +74,6 @@ export function resolveSkillGfx(options: {
     rows: Math.max(1, Math.round(profile.rows ?? 1)),
     frameCount,
     fps,
-    durationMs: Math.max(120, Math.round(profile.durationMs ?? (frameCount / fps) * 1000))
+    durationMs
   };
 }

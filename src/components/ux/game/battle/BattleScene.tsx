@@ -23,14 +23,15 @@ import type {
   BattlePublicState
 } from "../battleTypes";
 import { getPokemonDisplayName } from "../pokemonName";
-import type { BattleSequencedEvent } from "./battleEvents";
+import { STATUS_BADGES, type BattleSequencedEvent } from "./battleEvents";
 import BattleIntro from "./BattleIntro";
 import Databox from "./Databox";
 import EvolutionScreen from "./EvolutionScreen";
 import LevelUpWindow from "./LevelUpWindow";
+import FallbackMoveAnimation from "./FallbackMoveAnimation";
 import MoveAnimationPlayer from "./MoveAnimationPlayer";
 import MoveLearnPrompt from "./MoveLearnPrompt";
-import { readBattleBackgroundImages, useBattleInterfaceConfig } from "./battleInterfaceConfig";
+import { useBattleBackgroundImages, useBattleInterfaceConfig } from "./battleInterfaceConfig";
 import { useBattleEventQueue, type BattleSpriteFx } from "./useBattleEventQueue";
 
 type BattleView = "menu" | "fight" | "bag" | "bagTarget" | "pokemon";
@@ -39,19 +40,35 @@ function stopUxEvent(event: SyntheticEvent) {
   event.stopPropagation();
 }
 
+function hasConnectedGamepad() {
+  try {
+    if (typeof navigator === "undefined" || !navigator.getGamepads) return false;
+    return Array.from(navigator.getGamepads()).some((pad) => pad && pad.connected);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * D-pad / keyboard navigation across the battle UI.
  *
  * The battle scene is pointer-driven; controllers reach it through the same
  * synthesized KeyboardEvents the gamepad bridges emit (GamepadControls.tsx,
- * the Electron preload): arrows walk the visible enabled buttons, Confirm
- * (Enter) presses the highlighted one, Cancel (Escape) backs out of a
- * sub-menu via `backRef`. Works for the physical keyboard too.
+ * the Electron preload): arrows move the highlight SPATIALLY — down goes to
+ * the button geometrically below the current one, and if no button lies in
+ * the pressed direction the highlight stays put. Confirm (Enter) presses the
+ * highlighted button, Cancel (Escape) backs out of a sub-menu via `backRef`.
+ * Works for the physical keyboard too.
  *
- * Selection is DOM-driven on purpose — buttons come and go per view (moves,
- * bag, party), so we walk what is actually on screen instead of mirroring
- * every view's layout in state. Native Enter on a focused button already
- * clicks (trusted events), so only synthetic presses click manually.
+ * While a gamepad is connected, the first available button is preselected
+ * automatically — at battle start, on every view change (moves, bag, party)
+ * and when a lone button appears (the end-of-battle OK), so one Confirm
+ * press always works without hunting for the selection first.
+ *
+ * Selection is DOM-driven on purpose — buttons come and go per view, so we
+ * walk what is actually on screen (via a MutationObserver) instead of
+ * mirroring every view's layout in state. Native Enter on a focused button
+ * already clicks (trusted events), so only synthetic presses click manually.
  */
 function useBattlePadNavigation(
   rootRef: RefObject<HTMLDivElement>,
@@ -90,23 +107,106 @@ function useBattlePadNavigation(
       button.scrollIntoView({ block: "nearest", inline: "nearest" });
     };
 
-    const currentIndex = (list: HTMLButtonElement[]) => {
+    const currentButton = (list: HTMLButtonElement[]) => {
       const activeEl = document.activeElement as HTMLButtonElement | null;
-      if (activeEl && list.includes(activeEl)) return list.indexOf(activeEl);
-      if (highlighted && list.includes(highlighted)) return list.indexOf(highlighted);
-      return -1;
+      if (activeEl && list.includes(activeEl)) return activeEl;
+      if (highlighted && list.includes(highlighted)) return highlighted;
+      return null;
     };
 
-    // First arrow press lands on the command area (FIGHT/BAG/...), not the
-    // LOG toggle that happens to come first in DOM order.
-    const preferredIndex = (list: HTMLButtonElement[]) => {
+    // The default selection lands on the command area (FIGHT/BAG/...), not
+    // the LOG toggle that happens to come first in DOM order.
+    const preferredButton = (list: HTMLButtonElement[]) => {
       const commands = rootRef.current?.querySelector('[data-battle-commands="true"]');
       if (commands) {
-        const first = list.findIndex((button) => commands.contains(button));
-        if (first >= 0) return first;
+        const first = list.find((button) => commands.contains(button));
+        if (first) return first;
       }
-      return 0;
+      return list[0] ?? null;
     };
+
+    // Spatial move: pick the nearest button whose center lies in the pressed
+    // direction, weighting cross-axis drift so "down" prefers the button
+    // straight below over one diagonally across. No candidate = no move.
+    const spatialNext = (
+      from: HTMLButtonElement,
+      list: HTMLButtonElement[],
+      direction: "up" | "down" | "left" | "right"
+    ) => {
+      const origin = from.getBoundingClientRect();
+      const originX = origin.left + origin.width / 2;
+      const originY = origin.top + origin.height / 2;
+
+      let best: HTMLButtonElement | null = null;
+      let bestScore = Infinity;
+
+      for (const candidate of list) {
+        if (candidate === from) continue;
+        const rect = candidate.getBoundingClientRect();
+        const dx = rect.left + rect.width / 2 - originX;
+        const dy = rect.top + rect.height / 2 - originY;
+
+        const axial =
+          direction === "down" ? dy : direction === "up" ? -dy : direction === "right" ? dx : -dx;
+        const ortho = Math.abs(direction === "down" || direction === "up" ? dx : dy);
+        // Must actually lie in the pressed direction (a few px of tolerance
+        // for grid rounding), and mostly along it rather than across.
+        if (axial < 4 || ortho > axial * 2 + Math.max(origin.width, origin.height)) continue;
+
+        const score = axial + ortho * 2.5;
+        if (score < bestScore) {
+          bestScore = score;
+          best = candidate;
+        }
+      }
+
+      return best;
+    };
+
+    // Preselect / repair the highlight so a connected pad always has a valid
+    // selection: on mount, whenever buttons mount/unmount (view changes, the
+    // end-of-battle OK appearing) and when a pad connects mid-battle. When
+    // the command-area button set changes (new view, OK appearing) the
+    // selection snaps to it even if the old highlight (e.g. the LOG toggle,
+    // the only button during playback) is technically still on screen.
+    let ensureTimer = 0;
+    let lastCommandsSignature = "";
+    const ensureHighlight = () => {
+      const list = visibleButtons();
+      if (list.length === 0) {
+        clearHighlight();
+        lastCommandsSignature = "";
+        return;
+      }
+
+      const commands = rootRef.current?.querySelector('[data-battle-commands="true"]');
+      const commandButtons = commands ? list.filter((button) => commands.contains(button)) : [];
+      const commandsSignature = commandButtons.map((button) => button.textContent ?? "").join("|");
+      const commandsChanged = commandsSignature !== lastCommandsSignature;
+      lastCommandsSignature = commandsSignature;
+
+      const highlightValid = highlighted !== null && list.includes(highlighted);
+      const highlightInCommands =
+        highlightValid && commands !== null && commands !== undefined && commands.contains(highlighted!);
+      if (highlightValid && (highlightInCommands || !commandsChanged || commandButtons.length === 0)) {
+        return;
+      }
+
+      if (highlighted || hasConnectedGamepad()) {
+        const target = preferredButton(list);
+        if (target) highlight(target);
+      }
+    };
+    const scheduleEnsure = () => {
+      window.clearTimeout(ensureTimer);
+      ensureTimer = window.setTimeout(ensureHighlight, 60);
+    };
+
+    const observer = new MutationObserver(scheduleEnsure);
+    if (rootRef.current) {
+      observer.observe(rootRef.current, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled", "style"] });
+    }
+    scheduleEnsure();
 
     const onKeyDown = (event: KeyboardEvent) => {
       const key = event.key;
@@ -115,11 +215,24 @@ function useBattlePadNavigation(
         const list = visibleButtons();
         if (list.length === 0) return;
         event.preventDefault();
-        const forward = key === "ArrowRight" || key === "ArrowDown";
-        const index = currentIndex(list);
-        const next =
-          index === -1 ? preferredIndex(list) : (index + (forward ? 1 : -1) + list.length) % list.length;
-        highlight(list[next]);
+
+        const current = currentButton(list);
+        if (!current) {
+          const target = preferredButton(list);
+          if (target) highlight(target);
+          return;
+        }
+
+        const direction =
+          key === "ArrowRight" ? "right" : key === "ArrowLeft" ? "left" : key === "ArrowDown" ? "down" : "up";
+        const next = spatialNext(current, list, direction);
+        if (next) {
+          highlight(next);
+        } else if (current !== highlighted) {
+          // Keep the visual highlight in sync with a focus that arrived some
+          // other way (mouse hover focus, tab) even when we don't move.
+          highlight(current);
+        }
         return;
       }
 
@@ -128,8 +241,8 @@ function useBattlePadNavigation(
         // (gamepad-bridge) events need the click dispatched by hand.
         if (event.isTrusted) return;
         const list = visibleButtons();
-        const index = currentIndex(list);
-        if (index >= 0) list[index].click();
+        const current = currentButton(list);
+        if (current) current.click();
         return;
       }
 
@@ -141,8 +254,12 @@ function useBattlePadNavigation(
     };
 
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("gamepadconnected", scheduleEnsure);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("gamepadconnected", scheduleEnsure);
+      observer.disconnect();
+      window.clearTimeout(ensureTimer);
       clearHighlight();
     };
   }, [active, rootRef, backRef]);
@@ -342,6 +459,119 @@ function MenuButton({
   );
 }
 
+function partyHpColor(percent: number) {
+  if (percent <= 25) return "#e84b3c";
+  if (percent <= 50) return "#f4c034";
+  return "#4cc95e";
+}
+
+/**
+ * Party entry used by the switch panel and the item-target picker: sprite
+ * icon, name, level, HP bar + numbers and status — enough to pick a mon
+ * without leaving the battle.
+ */
+function PartyMemberCard({
+  pokemon,
+  isCurrent,
+  isDisabled,
+  colorScheme,
+  outlineTextColor,
+  onClick
+}: {
+  pokemon: BattlePublicPokemon;
+  isCurrent: boolean;
+  isDisabled: boolean;
+  colorScheme: string;
+  outlineTextColor: string;
+  onClick: () => void;
+}) {
+  const iconSrc = resolveServerAssetUrl(pokemon.frontImageSrc || pokemon.backImageSrc);
+  const hpPercent = pokemon.maxHp > 0 ? Math.max(0, Math.min(100, (pokemon.hp / pokemon.maxHp) * 100)) : 0;
+  const fainted = pokemon.hp <= 0;
+  const status = pokemon.status ?? null;
+
+  return (
+    <Button
+      size="sm"
+      h="auto"
+      py={1.5}
+      px={2}
+      colorScheme={colorScheme}
+      variant={isCurrent ? "solid" : "outline"}
+      color={isCurrent ? undefined : outlineTextColor}
+      isDisabled={isDisabled}
+      onClick={onClick}
+      justifyContent="flex-start"
+      textAlign="left"
+      whiteSpace="normal"
+    >
+      <HStack spacing={2} width="100%" align="center">
+        <Flex
+          boxSize={{ base: "38px", md: "46px" }}
+          flexShrink={0}
+          bg="rgba(0,0,0,0.16)"
+          borderRadius="8px"
+          align="center"
+          justify="center"
+          overflow="hidden"
+        >
+          {iconSrc ? (
+            <img
+              src={iconSrc}
+              alt={getPokemonDisplayName(pokemon)}
+              style={{
+                maxWidth: "100%",
+                maxHeight: "100%",
+                objectFit: "contain",
+                imageRendering: "pixelated",
+                filter: fainted ? "grayscale(1) brightness(0.75)" : undefined
+              }}
+            />
+          ) : null}
+        </Flex>
+        <VStack flex="1" minW={0} spacing={0.5} align="stretch">
+          <HStack justify="space-between" spacing={1}>
+            <Text as="span" fontWeight="900" fontSize={{ base: "xs", md: "sm" }} noOfLines={1}>
+              {getPokemonDisplayName(pokemon)}
+            </Text>
+            <Text as="span" fontWeight="900" fontSize="xs" whiteSpace="nowrap">
+              Lv{pokemon.level}
+            </Text>
+          </HStack>
+          <HStack spacing={1} align="center">
+            <Box flex="1" h="7px" bg="rgba(0,0,0,0.3)" borderRadius="4px" overflow="hidden">
+              <Box h="100%" width={`${hpPercent}%`} bg={partyHpColor(hpPercent)} borderRadius="4px" />
+            </Box>
+            {fainted ? (
+              <Badge bg="#8f2f2f" color="white" fontSize="0.55rem" borderRadius="4px" px={1}>
+                FNT
+              </Badge>
+            ) : status ? (
+              <Badge
+                bg={STATUS_BADGES[status].color}
+                color="white"
+                fontSize="0.55rem"
+                borderRadius="4px"
+                px={1}
+              >
+                {STATUS_BADGES[status].label}
+              </Badge>
+            ) : null}
+          </HStack>
+          <HStack justify="space-between" spacing={1}>
+            <Text as="span" fontSize="0.65rem" fontWeight="800">
+              {pokemon.hp}/{pokemon.maxHp}
+            </Text>
+            <Text as="span" fontSize="0.6rem" fontWeight="700" opacity={0.85} noOfLines={1}>
+              {(pokemon.types ?? []).join(" / ")}
+            </Text>
+          </HStack>
+        </VStack>
+      </HStack>
+    </Button>
+  );
+}
+
 const TYPE_COLORS: Record<string, string> = {
   NORMAL: "#a8a878", FIRE: "#f08030", WATER: "#6890f0", ELECTRIC: "#f8d030",
   GRASS: "#78c850", ICE: "#98d8d8", FIGHTING: "#c03028", POISON: "#a040a0",
@@ -421,7 +651,7 @@ export default function BattleScene() {
     return Math.max(0, Math.ceil((new Date(battle.turnEndsAt).getTime() - now) / 1000));
   }, [battle?.turnEndsAt, now]);
 
-  const backgroundImages = useMemo(() => readBattleBackgroundImages(config), [config]);
+  const backgroundImages = useBattleBackgroundImages(config, battle?.battleBack ?? null);
 
   if (!battle) {
     return null;
@@ -511,6 +741,29 @@ export default function BattleScene() {
 
   const messageWindowHeight = { base: `${86 + config.messageRows * 22}px`, md: `${96 + config.messageRows * 26}px` };
 
+  // Migrated media plays when a move has one; everything else gets the
+  // procedural type-themed burst so no move ever animates as nothing.
+  const renderMoveAnimation = (sideId: "a" | "b") => {
+    const animation = playback.activeAnimation;
+    if (!animation || animation.targetSideId !== sideId) {
+      return null;
+    }
+    return animation.gfx ? (
+      <MoveAnimationPlayer
+        key={animation.key}
+        gfx={animation.gfx}
+        animationSpeed={config.animationSpeed}
+        onFinished={() => undefined}
+      />
+    ) : (
+      <FallbackMoveAnimation
+        key={animation.key}
+        moveType={animation.fallbackMoveType}
+        animationSpeed={config.animationSpeed}
+      />
+    );
+  };
+
   return (
     <Box
       ref={navRootRef}
@@ -534,12 +787,18 @@ export default function BattleScene() {
       onMouseDown={stopUxEvent}
       onPointerDown={stopUxEvent}
     >
-      {/* Enemy base + battler */}
+      {/* Enemy base + battler. The slot height is FIXED (matching the sprite
+          max-height) so the base platform never jumps up when the battler
+          faints or is caught (a collapsed content-sized box used to pull the
+          bottom-anchored base toward the top anchor). Sprites are capped at
+          the slot height and bottom-aligned, so a taller replacement grows
+          upward from the same base. */}
       <Box
         position="absolute"
         right={{ base: "4%", md: "10%" }}
         top={{ base: "13%", md: "12%" }}
         width={{ base: "46%", md: "34%" }}
+        height="min(26vh, 230px)"
         display="flex"
         alignItems="flex-end"
         justifyContent="center"
@@ -549,8 +808,8 @@ export default function BattleScene() {
           bottom="-6px"
           width="100%"
           height={{ base: "36px", md: "54px" }}
-          borderRadius="50%"
-          bg="rgba(60, 90, 60, 0.35)"
+          borderRadius={backgroundImages.enemyBaseSrc ? undefined : "50%"}
+          bg={backgroundImages.enemyBaseSrc ? undefined : "rgba(60, 90, 60, 0.35)"}
           backgroundImage={backgroundImages.enemyBaseSrc ? `url(${backgroundImages.enemyBaseSrc})` : undefined}
           backgroundSize="100% 100%"
         />
@@ -573,23 +832,17 @@ export default function BattleScene() {
             renderSprite(enemyPokemon, "front", fxForEnemy, enemyHidden)
           )}
         </Box>
-        {playback.activeAnimation && playback.activeAnimation.targetSideId === battle.opponent.id ? (
-          <MoveAnimationPlayer
-            key={playback.activeAnimation.key}
-            gfx={playback.activeAnimation.gfx}
-            animationSpeed={config.animationSpeed}
-            onFinished={() => undefined}
-          />
-        ) : null}
+        {renderMoveAnimation(battle.opponent.id)}
       </Box>
 
-      {/* Player base + battler */}
+      {/* Player base + battler (fixed height for the same reason as above). */}
       <Box
         position="absolute"
         left={{ base: "2%", md: "8%" }}
         bottom={messageWindowHeight}
         mb={{ base: "6px", md: "14px" }}
         width={{ base: "52%", md: "38%" }}
+        height="min(30vh, 280px)"
         display="flex"
         alignItems="flex-end"
         justifyContent="center"
@@ -599,22 +852,15 @@ export default function BattleScene() {
           bottom="-8px"
           width="100%"
           height={{ base: "40px", md: "62px" }}
-          borderRadius="50%"
-          bg="rgba(60, 90, 60, 0.4)"
+          borderRadius={backgroundImages.playerBaseSrc ? undefined : "50%"}
+          bg={backgroundImages.playerBaseSrc ? undefined : "rgba(60, 90, 60, 0.4)"}
           backgroundImage={backgroundImages.playerBaseSrc ? `url(${backgroundImages.playerBaseSrc})` : undefined}
           backgroundSize="100% 100%"
         />
         <Box position="relative" animation={spriteFxAnimation(fxForSelf, true)}>
           {renderSprite(selfPokemon, "back", fxForSelf, selfHidden)}
         </Box>
-        {playback.activeAnimation && playback.activeAnimation.targetSideId === battle.self.id ? (
-          <MoveAnimationPlayer
-            key={playback.activeAnimation.key}
-            gfx={playback.activeAnimation.gfx}
-            animationSpeed={config.animationSpeed}
-            onFinished={() => undefined}
-          />
-        ) : null}
+        {renderMoveAnimation(battle.self.id)}
       </Box>
 
       {/* Databoxes */}
@@ -805,23 +1051,19 @@ export default function BattleScene() {
             </Text>
             <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={1.5}>
               {battle.self.party.map((pokemon) => (
-                <Button
+                <PartyMemberCard
                   key={pokemon.id}
-                  size="sm"
-                  justifyContent="space-between"
-                  colorScheme="teal"
-                  variant={pokemon.id === selfPokemon.id ? "solid" : "outline"}
-                  color={pokemon.id === selfPokemon.id ? undefined : config.messageBoxTextColor}
+                  pokemon={pokemon}
+                  isCurrent={pokemon.id === selfPokemon.id}
                   isDisabled={!selectedItem || actionDisabled}
+                  colorScheme="teal"
+                  outlineTextColor={config.messageBoxTextColor}
                   onClick={() => {
                     if (selectedItem) {
                       sendAction({ type: "bag", itemId: selectedItem.id, targetPokemonId: pokemon.id });
                     }
                   }}
-                >
-                  <Text as="span" noOfLines={1}>{getPokemonDisplayName(pokemon)}</Text>
-                  <Text as="span" fontSize="xs">{pokemon.hp}/{pokemon.maxHp}</Text>
-                </Button>
+                />
               ))}
             </SimpleGrid>
             <Button mt={2} size="sm" variant="outline" color={config.messageBoxTextColor} onClick={() => setView("bag")}>
@@ -839,19 +1081,15 @@ export default function BattleScene() {
             ) : null}
             <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={1.5}>
               {battle.self.party.map((pokemon) => (
-                <Button
+                <PartyMemberCard
                   key={pokemon.id}
-                  size="sm"
-                  justifyContent="space-between"
-                  colorScheme="orange"
-                  variant={pokemon.id === selfPokemon.id ? "solid" : "outline"}
-                  color={pokemon.id === selfPokemon.id ? undefined : config.messageBoxTextColor}
+                  pokemon={pokemon}
+                  isCurrent={pokemon.id === selfPokemon.id}
                   isDisabled={pokemon.id === selfPokemon.id || pokemon.hp <= 0 || switchDisabled}
+                  colorScheme="orange"
+                  outlineTextColor={config.messageBoxTextColor}
                   onClick={() => sendAction({ type: "pokemon", pokemonId: pokemon.id })}
-                >
-                  <Text as="span" noOfLines={1}>{getPokemonDisplayName(pokemon)}</Text>
-                  <Text as="span" fontSize="xs">{pokemon.hp}/{pokemon.maxHp}</Text>
-                </Button>
+                />
               ))}
             </SimpleGrid>
             {!mustReplace ? (

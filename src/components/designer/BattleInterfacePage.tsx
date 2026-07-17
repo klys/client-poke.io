@@ -227,8 +227,13 @@ export default function BattleInterfacePage() {
                   value={config.introTransition}
                   onChange={(event) => set("introTransition", event.target.value as BattleInterfaceConfig["introTransition"])}
                 >
+                  <option value="random">Random (new one each battle)</option>
                   <option value="flash-wipe">Flash + wipe (classic)</option>
                   <option value="fade">Fade</option>
+                  <option value="iris">Iris close</option>
+                  <option value="blinds">Blinds</option>
+                  <option value="checker">Checkerboard</option>
+                  <option value="shutter">Shutter slats</option>
                   <option value="none">None</option>
                 </Select>
               </FormControl>

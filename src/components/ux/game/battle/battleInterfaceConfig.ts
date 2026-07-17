@@ -1,10 +1,36 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   DESIGNER_CACHE_UPDATED_EVENT,
   readStoredDesignerSectionPayload,
   type DesignerCacheUpdateDetail
 } from "../../../designer/designerCache";
 import { resolveServerAssetUrl } from "../../../tilemap/serverAssets";
+import {
+  getBattleBackManifestEntry,
+  normalizeBattleBackName,
+  subscribeBattleBackManifest
+} from "./battleBackManifest";
+
+/** Concrete battle entry transitions (see BattleIntro.tsx). */
+export const BATTLE_INTRO_EFFECTS = [
+  "flash-wipe",
+  "fade",
+  "iris",
+  "blinds",
+  "checker",
+  "shutter"
+] as const;
+
+export type BattleIntroEffect = (typeof BATTLE_INTRO_EFFECTS)[number];
+
+/** "random" picks one of the concrete effects per battle. */
+export type BattleIntroTransition = BattleIntroEffect | "random" | "none";
+
+const INTRO_TRANSITIONS: readonly BattleIntroTransition[] = [
+  ...BATTLE_INTRO_EFFECTS,
+  "random",
+  "none"
+];
 
 /**
  * Battle interface customization published through the `battleInterface`
@@ -32,7 +58,7 @@ export type BattleInterfaceConfig = {
   seVolume: number;
   muteBgm: boolean;
   muteSe: boolean;
-  introTransition: "flash-wipe" | "fade" | "none";
+  introTransition: BattleIntroTransition;
   animationSpeed: number;
   showBattleLog: boolean;
   logRows: number;
@@ -59,7 +85,7 @@ export const DEFAULT_BATTLE_INTERFACE_CONFIG: BattleInterfaceConfig = {
   seVolume: 0.7,
   muteBgm: false,
   muteSe: false,
-  introTransition: "flash-wipe",
+  introTransition: "random",
   animationSpeed: 1,
   showBattleLog: true,
   logRows: 6
@@ -107,10 +133,9 @@ export function sanitizeBattleInterfaceConfig(value: unknown): BattleInterfaceCo
     seVolume: Math.max(0, Math.min(1, toNumber(candidate.seVolume, defaults.seVolume))),
     muteBgm: toBoolean(candidate.muteBgm, defaults.muteBgm),
     muteSe: toBoolean(candidate.muteSe, defaults.muteSe),
-    introTransition:
-      introTransition === "flash-wipe" || introTransition === "fade" || introTransition === "none"
-        ? introTransition
-        : defaults.introTransition,
+    introTransition: INTRO_TRANSITIONS.includes(introTransition as BattleIntroTransition)
+      ? (introTransition as BattleIntroTransition)
+      : defaults.introTransition,
     animationSpeed: Math.max(0.25, Math.min(3, toNumber(candidate.animationSpeed, defaults.animationSpeed))),
     showBattleLog: toBoolean(candidate.showBattleLog, defaults.showBattleLog),
     logRows: Math.max(3, Math.min(14, Math.round(toNumber(candidate.logRows, defaults.logRows))))
@@ -142,34 +167,106 @@ export function useBattleInterfaceConfig(): BattleInterfaceConfig {
   return config;
 }
 
-/** Resolves the configured battleback images (designer battleBackgrounds section). */
-export function readBattleBackgroundImages(config: BattleInterfaceConfig): {
+type BattleBackgroundImages = {
   backgroundSrc: string;
   playerBaseSrc: string;
   enemyBaseSrc: string;
-} {
-  let backgroundSrc = config.backgroundImageSrc;
-  let playerBaseSrc = config.playerBaseImageSrc;
-  let enemyBaseSrc = config.enemyBaseImageSrc;
+};
+
+function readBattleBackgroundProfileImages(item: {
+  battleBackgroundProfile?: {
+    dataUri?: string;
+    imageSrc?: string;
+    componentAssets?: Array<{
+      role?: string;
+      filename?: string;
+      sourcePath?: string;
+      dataUri?: string;
+      imageSrc?: string;
+    }>;
+  };
+}): BattleBackgroundImages | null {
+  const profile = item?.battleBackgroundProfile;
+  if (!profile) {
+    return null;
+  }
+
+  const components = profile.componentAssets ?? [];
+  const findComponent = (exactRole: string, roleMatch: RegExp) => {
+    const exact = components.find((asset) => asset.role === exactRole);
+    if (exact) {
+      return exact.dataUri || exact.imageSrc || "";
+    }
+    const fuzzy = components.find((asset) => {
+      const role = `${asset.role ?? ""} ${asset.filename ?? ""} ${asset.sourcePath ?? ""}`.toLowerCase();
+      return roleMatch.test(role);
+    });
+    return fuzzy?.dataUri || fuzzy?.imageSrc || "";
+  };
+
+  return {
+    backgroundSrc:
+      findComponent("background", /bg|background/) || profile.dataUri || profile.imageSrc || "",
+    playerBaseSrc: findComponent("playerBase", /player|base0|base_0/),
+    enemyBaseSrc: findComponent("opponentBase", /enemy|opponent|base1|base_1|base2|base_2/)
+  };
+}
+
+/**
+ * Resolves the battleback images. `battleBackName` is the map/terrain-driven
+ * backdrop the server picked for this battle (Essentials BattleBack names
+ * like "Field", "FieldGrass", "Cave"); when it matches an item of the
+ * designer battleBackgrounds section it wins over the global config, so
+ * battles look like the place they started in. Falls back to the configured
+ * default battleback, then the config's explicit image overrides.
+ */
+export function readBattleBackgroundImages(
+  config: BattleInterfaceConfig,
+  battleBackName?: string | null
+): BattleBackgroundImages {
+  let backgroundSrc = "";
+  let playerBaseSrc = "";
+  let enemyBaseSrc = "";
+
+  if (battleBackName && battleBackName.trim()) {
+    // Primary source: the static battleback manifest (available to every
+    // player). The designer section lookup below only works for designers
+    // who have the heavy battleBackgrounds payload cached.
+    const manifestEntry = getBattleBackManifestEntry(battleBackName);
+    if (manifestEntry?.backgroundSrc) {
+      backgroundSrc = manifestEntry.backgroundSrc;
+      playerBaseSrc = manifestEntry.playerBaseSrc;
+      enemyBaseSrc = manifestEntry.enemyBaseSrc;
+    } else {
+      const payload = readStoredDesignerSectionPayload("battleBackgrounds");
+      const wanted = normalizeBattleBackName(battleBackName);
+      const item = payload.state.items.find(
+        (candidate) =>
+          normalizeBattleBackName(candidate.name ?? "") === wanted ||
+          candidate.id === `battle-bg-${wanted}`
+      );
+      const images = item ? readBattleBackgroundProfileImages(item) : null;
+      if (images?.backgroundSrc) {
+        backgroundSrc = images.backgroundSrc;
+        playerBaseSrc = images.playerBaseSrc;
+        enemyBaseSrc = images.enemyBaseSrc;
+      }
+    }
+  }
+
+  backgroundSrc = backgroundSrc || config.backgroundImageSrc;
+  playerBaseSrc = playerBaseSrc || config.playerBaseImageSrc;
+  enemyBaseSrc = enemyBaseSrc || config.enemyBaseImageSrc;
 
   if (config.battleBackgroundId && (!backgroundSrc || !playerBaseSrc || !enemyBaseSrc)) {
     const payload = readStoredDesignerSectionPayload("battleBackgrounds");
     const item = payload.state.items.find((candidate) => candidate.id === config.battleBackgroundId);
-    const profile = item?.battleBackgroundProfile;
+    const images = item ? readBattleBackgroundProfileImages(item) : null;
 
-    if (profile) {
-      const components = profile.componentAssets ?? [];
-      const findComponent = (roleMatch: RegExp) => {
-        const component = components.find((asset) => {
-          const role = `${asset.role ?? ""} ${asset.filename ?? ""} ${asset.sourcePath ?? ""}`.toLowerCase();
-          return roleMatch.test(role);
-        });
-        return component?.dataUri || component?.imageSrc || "";
-      };
-
-      backgroundSrc = backgroundSrc || profile.dataUri || profile.imageSrc || findComponent(/bg|background/);
-      playerBaseSrc = playerBaseSrc || findComponent(/player|base1|base_1|base0/);
-      enemyBaseSrc = enemyBaseSrc || findComponent(/enemy|opponent|base2|base_2/);
+    if (images) {
+      backgroundSrc = backgroundSrc || images.backgroundSrc;
+      playerBaseSrc = playerBaseSrc || images.playerBaseSrc;
+      enemyBaseSrc = enemyBaseSrc || images.enemyBaseSrc;
     }
   }
 
@@ -181,4 +278,26 @@ export function readBattleBackgroundImages(config: BattleInterfaceConfig): {
     playerBaseSrc: resolveServerAssetUrl(playerBaseSrc),
     enemyBaseSrc: resolveServerAssetUrl(enemyBaseSrc)
   };
+}
+
+/**
+ * Live battleback images for a battle. Recomputes when the designer config
+ * changes and when the static battleback manifest finishes loading (the
+ * manifest fetch races the first battle after a cold start).
+ */
+export function useBattleBackgroundImages(
+  config: BattleInterfaceConfig,
+  battleBackName: string | null
+): BattleBackgroundImages {
+  const [manifestGeneration, setManifestGeneration] = useState(0);
+
+  useEffect(
+    () => subscribeBattleBackManifest(() => setManifestGeneration((value) => value + 1)),
+    []
+  );
+
+  return useMemo(
+    () => readBattleBackgroundImages(config, battleBackName),
+    [config, battleBackName, manifestGeneration]
+  );
 }
