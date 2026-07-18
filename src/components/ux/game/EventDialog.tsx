@@ -27,6 +27,14 @@ type EventStep =
       interactionDistanceSquares: number;
       items: Array<{ itemId: string; itemName: string; quantity: number; price: number }>;
     }
+  | {
+      type: "pcBox";
+      npcName: string;
+      placementId: string;
+      x: number;
+      y: number;
+      interactionDistanceSquares: number;
+    }
   | { type: "end" };
 
 type BlockingStep = Extract<EventStep, { type: "text" | "choices" | "info" | "nameInput" }>;
@@ -199,6 +207,23 @@ export default function EventDialog() {
             x: payload.x,
             y: payload.y,
             storeItems: payload.items,
+          });
+          return;
+        case "pcBox":
+          // pbPokeCenterPC / pbTrainerPC: open the PC box storage overlay via
+          // the same synthetic-placement mechanism marts use, so proximity
+          // auto-close and movement suppression come for free.
+          setActiveNpcInteraction({
+            id: payload.placementId,
+            npcId: "",
+            name: payload.npcName,
+            category: "",
+            previewImageSrc: "",
+            npcType: "pc",
+            aiType: "standing",
+            interactionDistanceSquares: payload.interactionDistanceSquares,
+            x: payload.x,
+            y: payload.y,
           });
           return;
         default:

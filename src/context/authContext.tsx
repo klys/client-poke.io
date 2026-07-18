@@ -29,6 +29,7 @@ export type AuthUser = {
   money: number
   inventory: InventoryItem[]
   pokemonParty: PokemonSummary[]
+  pokemonStorage: PokemonStorageBox[]
   battleHistory: BattleHistoryEntry[]
   role: UserRole
   permissions: RolePermission[]
@@ -87,6 +88,17 @@ export type PokemonSummary = {
     specialDefense: number
     speed: number
   }
+}
+
+/**
+ * One PC storage box. The server always sends at least one box; a new box is
+ * created automatically whenever every existing one is full.
+ */
+export type PokemonStorageBox = {
+  id: string
+  name: string
+  capacity: number
+  pokemon: PokemonSummary[]
 }
 
 export type BattleHistoryEntry = {
@@ -185,6 +197,8 @@ type AuthContextValue = {
   holdInventoryItem: (payload: { pokemonId: string; itemId: string }) => void
   takeHeldItem: (payload: { pokemonId: string }) => void
   reorderPokemonParty: (payload: { order: string[] }) => void
+  depositPokemonToBox: (payload: { pokemonId: string; boxId?: string }) => void
+  withdrawPokemonFromBox: (payload: { pokemonId: string; boxId: string }) => void
   healNpcParty: (payload: { npcPlacementId: string }) => void
   buyFromNpcStore: (payload: { npcPlacementId: string; itemId: string; quantity: number }) => void
   sellToNpcStore: (payload: { npcPlacementId: string; itemId: string; quantity: number }) => void
@@ -459,6 +473,8 @@ export const AuthProvider = (
     holdInventoryItem: (payload) => emitAuthEvent('inventory:hold-item', payload),
     takeHeldItem: (payload) => emitAuthEvent('inventory:take-held-item', payload),
     reorderPokemonParty: (payload) => emitAuthEvent('pokemon:reorder', payload),
+    depositPokemonToBox: (payload) => emitAuthEvent('pokemon:box-deposit', payload),
+    withdrawPokemonFromBox: (payload) => emitAuthEvent('pokemon:box-withdraw', payload),
     healNpcParty: (payload) => emitAuthEvent('npc:heal-party', payload),
     buyFromNpcStore: (payload) => emitAuthEvent('npc:store-buy', payload),
     sellToNpcStore: (payload) => emitAuthEvent('npc:store-sell', payload),

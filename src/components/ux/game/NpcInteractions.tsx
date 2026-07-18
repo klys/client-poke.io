@@ -20,6 +20,7 @@ import { useAuth, type InventoryItem } from "../../../context/authContext";
 import { AppContext } from "../../../context/appContext";
 import { useCompactUx } from "../useCompactUx";
 import { useGameSettings } from "../../../settings/gameSettings";
+import PcBoxOverlay from "./PcBox";
 
 type RuntimeNpcStoreItem = {
   itemId: string;
@@ -209,7 +210,7 @@ function getStoreSellPrice(storeItem: RuntimeNpcStoreItem) {
   return Math.max(0, Math.floor(perUnitBuyPrice / 2));
 }
 
-function RetroPanel({
+export function RetroPanel({
   children,
   minWidth,
   maxWidth,
@@ -243,7 +244,7 @@ function RetroPanel({
   );
 }
 
-function MenuChoiceButton({
+export function MenuChoiceButton({
   active,
   children,
   onClick,
@@ -473,6 +474,12 @@ export function NpcInteractionOverlay({
       return;
     }
 
+    // The PC storage overlay owns its own actions; Enter/Space does nothing
+    // here (falling through would dismiss the overlay).
+    if (effectiveNpcType === "pc") {
+      return;
+    }
+
     // A talking NPC / sign advances through its message boxes, then dismisses.
     if (effectiveNpcType === "sign") {
       if (pageIndex < messagePages.length - 1) {
@@ -588,6 +595,12 @@ export function NpcInteractionOverlay({
 
   if (!npcPlacement) {
     return null;
+  }
+
+  // Pokemon Center / bedroom computers render the dedicated storage overlay
+  // instead of the dialog panels (Escape still closes via the handler above).
+  if (effectiveNpcType === "pc") {
+    return <PcBoxOverlay npcPlacement={npcPlacement} onClose={onClose} />;
   }
 
   const npcTitle = (npcDefinition?.name ?? npcPlacement.name).toUpperCase();

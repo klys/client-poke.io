@@ -288,7 +288,10 @@ export interface DesignerGameItemProfile {
 
 export type DesignerNpcAiType = "standing" | "moving" | "scriptable";
 
-export type DesignerNpcType = "healer" | "trainer" | "store" | "chest" | "sign";
+// "pc" is a runtime-only type used by synthetic placements the event runtime
+// creates for Pokemon Center / bedroom computers (pbPokeCenterPC); it is not
+// offered in the designer NPC palette.
+export type DesignerNpcType = "healer" | "trainer" | "store" | "chest" | "sign" | "pc";
 
 export type DesignerNpcGraphicsSource = "custom" | "characterSkin";
 
