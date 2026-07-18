@@ -31,6 +31,10 @@ export type EssentialsEventPage = {
     speed?: number;
     frequency?: number;
     route?: { list?: Array<{ code: number }>; repeat?: boolean } | null;
+    walkAnime?: boolean;
+    stepAnime?: boolean;
+    directionFix?: boolean;
+    alwaysOnTop?: boolean;
   };
   commands: Array<{ code: number }>;
 };

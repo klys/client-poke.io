@@ -407,6 +407,7 @@ const Map = ({children}:{children:any}) => {
                                     npc={{
                                         ...(npc as MapEditorNpcPlacement & { spriteAspect?: number }),
                                         movement: activePage.move,
+                                        graphic: activePage.graphic,
                                     }}
                                     cellSize={activeMapConfig.cellSize}
                                     imageSrc={imageSrc}
