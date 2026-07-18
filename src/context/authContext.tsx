@@ -80,6 +80,9 @@ export type PokemonSummary = {
   nextLevelExperience: number
   heldItemId?: string
   heldItemName?: string
+  /** Level-up moves offered in battle but never answered (the prompt was
+   * missed, e.g. the battle UI closed) — learnable later from the stats window. */
+  pendingMoveLearns?: string[]
   statBonuses?: {
     hp: number
     attack: number
@@ -197,6 +200,8 @@ type AuthContextValue = {
   holdInventoryItem: (payload: { pokemonId: string; itemId: string }) => void
   takeHeldItem: (payload: { pokemonId: string }) => void
   reorderPokemonParty: (payload: { order: string[] }) => void
+  learnPokemonMove: (payload: { pokemonId: string; moveName: string; replaceMoveName?: string }) => void
+  forgetPokemonMove: (payload: { pokemonId: string; moveName: string }) => void
   depositPokemonToBox: (payload: { pokemonId: string; boxId?: string }) => void
   withdrawPokemonFromBox: (payload: { pokemonId: string; boxId: string }) => void
   healNpcParty: (payload: { npcPlacementId: string }) => void
@@ -473,6 +478,8 @@ export const AuthProvider = (
     holdInventoryItem: (payload) => emitAuthEvent('inventory:hold-item', payload),
     takeHeldItem: (payload) => emitAuthEvent('inventory:take-held-item', payload),
     reorderPokemonParty: (payload) => emitAuthEvent('pokemon:reorder', payload),
+    learnPokemonMove: (payload) => emitAuthEvent('pokemon:learn-move', payload),
+    forgetPokemonMove: (payload) => emitAuthEvent('pokemon:forget-move', payload),
     depositPokemonToBox: (payload) => emitAuthEvent('pokemon:box-deposit', payload),
     withdrawPokemonFromBox: (payload) => emitAuthEvent('pokemon:box-withdraw', payload),
     healNpcParty: (payload) => emitAuthEvent('npc:heal-party', payload),

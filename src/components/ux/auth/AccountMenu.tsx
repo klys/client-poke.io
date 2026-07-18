@@ -20,6 +20,7 @@ import {
   MenuList,
   Progress,
   SimpleGrid,
+  Spinner,
   Tab,
   TabList,
   TabPanel,
@@ -46,6 +47,7 @@ import {
 } from '../../designer/designerCache';
 import type { DesignerItemSeed, DesignerPokemonProfile } from '../../designer/designerSections';
 import { getPokemonDisplayName, validatePokemonNickname } from '../game/pokemonName';
+import { getBackendBaseUrl } from '../../game/backendConfig';
 import GamepadSettings from './GamepadSettings';
 import {
   AudioSettingsSection,
@@ -189,14 +191,43 @@ function PokemonStatTile({ label, value }: { label: string; value: string }) {
   );
 }
 
+// Per-venomon stats windows (`pokemonStats:<uuid>`) must never reach
+// localStorage: party members change constantly, so persisting them grew the
+// windowPositions blob without bound until any setItem on this origin threw
+// QuotaExceededError (the designer cache shares the same ~5MB budget).
+function withoutPokemonStatsPositions(positions: Record<string, WindowPosition>) {
+  return Object.fromEntries(
+    Object.entries(positions).filter(([key]) => !isPokemonStatsWindowId(key as OpenWindowId))
+  );
+}
+
+function persistWindowPositions(positions: Record<string, WindowPosition>) {
+  try {
+    window.localStorage.setItem(
+      WINDOW_POSITIONS_KEY,
+      JSON.stringify(withoutPokemonStatsPositions(positions))
+    );
+  } catch {
+    // Quota exceeded or storage unavailable — keep positions in memory only.
+  }
+}
+
 function loadStoredPositions() {
   try {
     const raw = window.localStorage.getItem(WINDOW_POSITIONS_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
+    const stored = parsed && typeof parsed === 'object'
+      ? withoutPokemonStatsPositions(parsed as Record<string, WindowPosition>)
+      : {};
+
+    // Rewrite pruned data so storage bloated by older builds shrinks back.
+    if (parsed && Object.keys(stored).length !== Object.keys(parsed).length) {
+      persistWindowPositions(stored);
+    }
 
     return {
       ...DEFAULT_POSITIONS,
-      ...(parsed && typeof parsed === 'object' ? parsed : {})
+      ...stored
     } as Record<string, WindowPosition>;
   } catch {
     return DEFAULT_POSITIONS;
@@ -681,6 +712,445 @@ function BattleHistoryWindow() {
   );
 }
 
+// CanaimaDex species data, proxied by server-poke.io from pokecraft-api
+// (/dex/species/<essentialsId>.json — the API key never reaches the browser).
+type DexSpecies = {
+  pokemonId: string;
+  dexNumber: number;
+  name: string;
+  category: string;
+  growthRate: string;
+  description?: string | null;
+  types: string[];
+  stats: {
+    catchRate?: number;
+    happiness?: number;
+    genderRate?: string;
+    baseExp?: number;
+  } | null;
+  foundOn: Array<{
+    mapId: number;
+    mapName: string | null;
+    method: string;
+    levelMin: number;
+    levelMax: number;
+  }>;
+};
+
+type DexLookup =
+  | { status: 'loading' }
+  | { status: 'missing' }
+  | { status: 'error' }
+  | { status: 'loaded'; data: DexSpecies };
+
+// Session cache so reopening stats windows doesn't refetch (null = 404).
+const dexSpeciesCache = new Map<string, DexSpecies | null>();
+
+function useCanaimaDex(essentialsId: string | undefined): [DexLookup, () => void] {
+  const [attempt, setAttempt] = useState(0);
+  const [lookup, setLookup] = useState<DexLookup>(() => {
+    if (!essentialsId) {
+      return { status: 'missing' };
+    }
+    const cached = dexSpeciesCache.get(essentialsId);
+    if (cached === undefined) {
+      return { status: 'loading' };
+    }
+    return cached === null ? { status: 'missing' } : { status: 'loaded', data: cached };
+  });
+
+  useEffect(() => {
+    if (!essentialsId) {
+      setLookup({ status: 'missing' });
+      return;
+    }
+
+    const cached = dexSpeciesCache.get(essentialsId);
+    if (cached !== undefined) {
+      setLookup(cached === null ? { status: 'missing' } : { status: 'loaded', data: cached });
+      return;
+    }
+
+    let cancelled = false;
+    setLookup({ status: 'loading' });
+
+    (async () => {
+      try {
+        const response = await fetch(
+          `${getBackendBaseUrl()}/dex/species/${encodeURIComponent(essentialsId)}.json`
+        );
+
+        if (response.status === 404) {
+          dexSpeciesCache.set(essentialsId, null);
+          if (!cancelled) {
+            setLookup({ status: 'missing' });
+          }
+          return;
+        }
+        if (!response.ok) {
+          throw new Error(`dex species request failed with ${response.status}`);
+        }
+
+        const data = await response.json() as DexSpecies;
+        dexSpeciesCache.set(essentialsId, data);
+        if (!cancelled) {
+          setLookup({ status: 'loaded', data });
+        }
+      } catch {
+        if (!cancelled) {
+          setLookup({ status: 'error' });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [essentialsId, attempt]);
+
+  const retry = () => setAttempt((value) => value + 1);
+  return [lookup, retry];
+}
+
+function PokemonStatsTab({
+  pokemon,
+  catalogEntry
+}: {
+  pokemon: PokemonSummary;
+  catalogEntry: PokemonCatalogEntry | null;
+}) {
+  return (
+    <VStack align="stretch" spacing={3}>
+      <SimpleGrid columns={{ base: 2, sm: 3 }} spacing={3}>
+        <PokemonStatTile label="Level" value={String(pokemon.level)} />
+        <PokemonStatTile label="Experience Curve" value={pokemon.experienceCurve} />
+        <PokemonStatTile label="Experience" value={`${pokemon.experience}/${pokemon.nextLevelExperience}`} />
+        <PokemonStatTile label="HP" value={`${pokemon.hp}/${pokemon.maxHp}`} />
+        <PokemonStatTile
+          label="Attack"
+          value={catalogEntry ? String(catalogEntry.profile.attack) : 'Unknown'}
+        />
+        <PokemonStatTile
+          label="Defense"
+          value={catalogEntry ? String(catalogEntry.profile.defense) : 'Unknown'}
+        />
+        <PokemonStatTile
+          label="Sp. Attack"
+          value={catalogEntry ? String(catalogEntry.profile.specialAttack) : 'Unknown'}
+        />
+        <PokemonStatTile
+          label="Sp. Defense"
+          value={catalogEntry ? String(catalogEntry.profile.specialDefense) : 'Unknown'}
+        />
+        <PokemonStatTile
+          label="Speed"
+          value={catalogEntry ? String(catalogEntry.profile.speed) : 'Unknown'}
+        />
+        <PokemonStatTile label="Held Item" value={pokemon.heldItemName ?? 'None'} />
+      </SimpleGrid>
+
+      {!catalogEntry ? (
+        <Text color="yellow.200" fontSize="sm">
+          Extra stat art was not found in the local Venomon catalog, so this card is using the party data only.
+        </Text>
+      ) : null}
+    </VStack>
+  );
+}
+
+type AvailableMoveOption = {
+  name: string;
+  /** Learnset level the move unlocks at; null when only known from a missed battle prompt. */
+  level: number | null;
+  /** True when this move was offered in battle but the prompt was never answered. */
+  pending: boolean;
+};
+
+/**
+ * Known moves plus every move the venomon is entitled to at its current
+ * level (learnset up to `level`, and any battle learn prompt that was missed
+ * when the battle UI closed). Learning and forgetting go through the
+ * server-validated `pokemon:learn-move` / `pokemon:forget-move` events.
+ */
+function PokemonMovesTab({
+  pokemon,
+  catalogEntry
+}: {
+  pokemon: PokemonSummary;
+  catalogEntry: PokemonCatalogEntry | null;
+}) {
+  const { learnPokemonMove, forgetPokemonMove } = useAuth();
+  // Move picked to learn while four moves are known — the player must choose
+  // which known move it replaces before anything is sent to the server.
+  const [replacingWith, setReplacingWith] = useState<string | null>(null);
+
+  const knownMovesKey = pokemon.moves.join('|');
+  useEffect(() => {
+    setReplacingWith(null);
+  }, [knownMovesKey, pokemon.id]);
+
+  const availableMoves = useMemo<AvailableMoveOption[]>(() => {
+    const taken = new Set(pokemon.moves.map((move) => move.toLowerCase()));
+    const options: AvailableMoveOption[] = [];
+
+    for (const moveName of pokemon.pendingMoveLearns ?? []) {
+      const key = moveName.toLowerCase();
+      if (!taken.has(key)) {
+        taken.add(key);
+        options.push({ name: moveName, level: null, pending: true });
+      }
+    }
+
+    const learnable = (catalogEntry?.profile.skills ?? [])
+      .filter((entry) => entry.level <= pokemon.level)
+      .sort((a, b) => b.level - a.level);
+    for (const entry of learnable) {
+      const key = entry.skillName.toLowerCase();
+      if (!taken.has(key)) {
+        taken.add(key);
+        options.push({ name: entry.skillName, level: entry.level, pending: false });
+      }
+    }
+
+    return options;
+  }, [catalogEntry, pokemon.level, pokemon.moves, pokemon.pendingMoveLearns]);
+
+  const partyIsFull = pokemon.moves.length >= 4;
+
+  const handleLearn = (moveName: string) => {
+    if (partyIsFull) {
+      setReplacingWith((current) => (current === moveName ? null : moveName));
+      return;
+    }
+    learnPokemonMove({ pokemonId: pokemon.id, moveName });
+  };
+
+  return (
+    <VStack align="stretch" spacing={4}>
+      <Box>
+        <Text fontSize="xs" color="gray.400" mb={2}>Known moves</Text>
+        {pokemon.moves.length === 0 ? (
+          <Text color="gray.400">No moves learned.</Text>
+        ) : (
+          <VStack align="stretch" spacing={2}>
+            {pokemon.moves.map((move) => (
+              <HStack
+                key={move}
+                justify="space-between"
+                bg="whiteAlpha.100"
+                border="1px solid rgba(255,255,255,0.12)"
+                p={3}
+                borderRadius="8px"
+              >
+                <Text fontWeight="700" fontSize="sm" noOfLines={1}>{move}</Text>
+                <HStack spacing={2} flexShrink={0}>
+                  {typeof pokemon.movePp?.[move] === 'number' ? (
+                    <Badge colorScheme="teal">{pokemon.movePp[move]} PP</Badge>
+                  ) : null}
+                  {replacingWith ? (
+                    <Button
+                      size="xs"
+                      colorScheme="orange"
+                      onClick={() => {
+                        learnPokemonMove({
+                          pokemonId: pokemon.id,
+                          moveName: replacingWith,
+                          replaceMoveName: move
+                        });
+                        setReplacingWith(null);
+                      }}
+                    >
+                      Replace
+                    </Button>
+                  ) : (
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      colorScheme="red"
+                      isDisabled={pokemon.moves.length <= 1}
+                      title={pokemon.moves.length <= 1 ? 'A venomon must keep at least one move.' : undefined}
+                      onClick={() => forgetPokemonMove({ pokemonId: pokemon.id, moveName: move })}
+                    >
+                      Forget
+                    </Button>
+                  )}
+                </HStack>
+              </HStack>
+            ))}
+          </VStack>
+        )}
+        {replacingWith ? (
+          <HStack mt={2} justify="space-between">
+            <Text fontSize="xs" color="orange.200">
+              {`Pick the move to replace with ${replacingWith}.`}
+            </Text>
+            <Button size="xs" variant="ghost" onClick={() => setReplacingWith(null)}>
+              Cancel
+            </Button>
+          </HStack>
+        ) : null}
+      </Box>
+
+      <Box>
+        <Text fontSize="xs" color="gray.400" mb={2}>Available at this level</Text>
+        {availableMoves.length === 0 ? (
+          <Text color="gray.400" fontSize="sm">
+            {catalogEntry
+              ? 'Every move available at this level is already known.'
+              : 'The move list for this venomon could not be loaded.'}
+          </Text>
+        ) : (
+          <VStack align="stretch" spacing={2}>
+            {availableMoves.map((option) => (
+              <HStack
+                key={option.name}
+                justify="space-between"
+                bg="whiteAlpha.100"
+                border="1px solid rgba(255,255,255,0.12)"
+                p={3}
+                borderRadius="8px"
+              >
+                <HStack spacing={2} minW={0}>
+                  <Text fontWeight="700" fontSize="sm" noOfLines={1}>{option.name}</Text>
+                  {option.pending ? (
+                    <Badge colorScheme="orange" flexShrink={0}>Missed in battle</Badge>
+                  ) : option.level !== null ? (
+                    <Badge colorScheme="purple" flexShrink={0}>Lv {option.level}</Badge>
+                  ) : null}
+                </HStack>
+                <Button
+                  size="xs"
+                  colorScheme="teal"
+                  variant={replacingWith === option.name ? 'solid' : 'outline'}
+                  flexShrink={0}
+                  onClick={() => handleLearn(option.name)}
+                >
+                  {partyIsFull ? (replacingWith === option.name ? 'Choosing...' : 'Learn...') : 'Learn'}
+                </Button>
+              </HStack>
+            ))}
+          </VStack>
+        )}
+        {partyIsFull && availableMoves.length > 0 && !replacingWith ? (
+          <Text mt={2} fontSize="xs" color="gray.400">
+            Four moves are known — learning a new one replaces a known move.
+          </Text>
+        ) : null}
+      </Box>
+    </VStack>
+  );
+}
+
+function PokemonCanaimaDexTab({
+  pokemon,
+  catalogEntry
+}: {
+  pokemon: PokemonSummary;
+  catalogEntry: PokemonCatalogEntry | null;
+}) {
+  const essentialsId = catalogEntry?.profile.essentialsId || undefined;
+  const [lookup, retry] = useCanaimaDex(essentialsId);
+
+  if (lookup.status === 'loading') {
+    return (
+      <HStack spacing={3} py={4} justify="center">
+        <Spinner size="sm" />
+        <Text color="gray.300" fontSize="sm">Consulting the CanaimaDex...</Text>
+      </HStack>
+    );
+  }
+
+  if (lookup.status === 'error') {
+    return (
+      <VStack align="stretch" spacing={3} py={2}>
+        <Text color="gray.300" fontSize="sm">
+          The CanaimaDex is unreachable right now. Check your connection and try again.
+        </Text>
+        <Button size="sm" alignSelf="start" onClick={retry}>Retry</Button>
+      </VStack>
+    );
+  }
+
+  // Even without a dex record, the local catalog often carries the entry text.
+  const localDescription = catalogEntry?.profile.pokedex;
+
+  if (lookup.status === 'missing') {
+    return (
+      <VStack align="stretch" spacing={3} py={2}>
+        {localDescription ? <Text fontSize="sm">{localDescription}</Text> : null}
+        <Text color="gray.400" fontSize="sm">
+          {`No CanaimaDex record was found for ${getPokemonDisplayName(pokemon)}.`}
+        </Text>
+      </VStack>
+    );
+  }
+
+  const dex = lookup.data;
+  const description = dex.description || localDescription;
+
+  return (
+    <VStack align="stretch" spacing={3}>
+      <HStack spacing={2} flexWrap="wrap">
+        <Badge colorScheme="purple">No. {dex.dexNumber}</Badge>
+        {dex.category ? <Badge>{dex.category}</Badge> : null}
+        {dex.types.map((type) => <Badge key={type} colorScheme="cyan">{type}</Badge>)}
+      </HStack>
+
+      {description ? (
+        <Box bg="whiteAlpha.100" border="1px solid rgba(255,255,255,0.12)" p={3} borderRadius="8px">
+          <Text fontSize="sm">{description}</Text>
+        </Box>
+      ) : null}
+
+      <SimpleGrid columns={{ base: 2, sm: 3 }} spacing={3}>
+        <PokemonStatTile label="Growth Rate" value={dex.growthRate || 'Unknown'} />
+        <PokemonStatTile
+          label="Catch Rate"
+          value={typeof dex.stats?.catchRate === 'number' ? String(dex.stats.catchRate) : 'Unknown'}
+        />
+        <PokemonStatTile
+          label="Base Friendship"
+          value={typeof dex.stats?.happiness === 'number' ? String(dex.stats.happiness) : 'Unknown'}
+        />
+      </SimpleGrid>
+
+      <Box>
+        <Text fontSize="xs" color="gray.400" mb={2}>Habitat</Text>
+        {dex.foundOn.length === 0 ? (
+          <Text color="gray.400" fontSize="sm">
+            This venomon has not been spotted in the wild.
+          </Text>
+        ) : (
+          <VStack align="stretch" spacing={2}>
+            {dex.foundOn.map((spot) => (
+              <HStack
+                key={`${spot.mapId}-${spot.method}`}
+                justify="space-between"
+                bg="whiteAlpha.100"
+                border="1px solid rgba(255,255,255,0.12)"
+                p={3}
+                borderRadius="8px"
+              >
+                <Box minW={0}>
+                  <Text fontWeight="700" fontSize="sm" noOfLines={1}>
+                    {spot.mapName ?? `Map #${spot.mapId}`}
+                  </Text>
+                  <Text color="gray.400" fontSize="xs">{spot.method}</Text>
+                </Box>
+                <Badge colorScheme="teal" flexShrink={0}>
+                  {spot.levelMin === spot.levelMax
+                    ? `Lv ${spot.levelMin}`
+                    : `Lv ${spot.levelMin}-${spot.levelMax}`}
+                </Badge>
+              </HStack>
+            ))}
+          </VStack>
+        )}
+      </Box>
+    </VStack>
+  );
+}
+
 function PokemonStatsWindow({
   pokemon,
   catalogEntry
@@ -750,48 +1220,24 @@ function PokemonStatsWindow({
         </HStack>
       </Box>
 
-      <SimpleGrid columns={{ base: 2, sm: 3 }} spacing={3}>
-        <PokemonStatTile label="Level" value={String(pokemon.level)} />
-        <PokemonStatTile label="Experience Curve" value={pokemon.experienceCurve} />
-        <PokemonStatTile label="Experience" value={`${pokemon.experience}/${pokemon.nextLevelExperience}`} />
-        <PokemonStatTile label="HP" value={`${pokemon.hp}/${pokemon.maxHp}`} />
-        <PokemonStatTile
-          label="Attack"
-          value={catalogEntry ? String(catalogEntry.profile.attack) : 'Unknown'}
-        />
-        <PokemonStatTile
-          label="Defense"
-          value={catalogEntry ? String(catalogEntry.profile.defense) : 'Unknown'}
-        />
-        <PokemonStatTile
-          label="Sp. Attack"
-          value={catalogEntry ? String(catalogEntry.profile.specialAttack) : 'Unknown'}
-        />
-        <PokemonStatTile
-          label="Sp. Defense"
-          value={catalogEntry ? String(catalogEntry.profile.specialDefense) : 'Unknown'}
-        />
-        <PokemonStatTile
-          label="Speed"
-          value={catalogEntry ? String(catalogEntry.profile.speed) : 'Unknown'}
-        />
-        <PokemonStatTile label="Held Item" value={pokemon.heldItemName ?? 'None'} />
-      </SimpleGrid>
-
-      <Box bg="whiteAlpha.100" border="1px solid rgba(255,255,255,0.12)" p={3} borderRadius="8px">
-        <Text fontSize="xs" color="gray.400">Moves</Text>
-        <Text mt={1} fontSize="sm">
-          {pokemon.moves
-            .map((move) => typeof pokemon.movePp?.[move] === 'number' ? `${move} (${pokemon.movePp[move]} PP)` : move)
-            .join(', ') || 'No moves learned.'}
-        </Text>
-      </Box>
-
-      {!catalogEntry ? (
-        <Text color="yellow.200" fontSize="sm">
-          Extra stat art was not found in the local Venomon catalog, so this card is using the party data only.
-        </Text>
-      ) : null}
+      <Tabs variant="soft-rounded" colorScheme="teal" size="sm" isLazy>
+        <TabList gap={1}>
+          <Tab color="gray.300">Stats</Tab>
+          <Tab color="gray.300">Moves</Tab>
+          <Tab color="gray.300">CanaimaDex</Tab>
+        </TabList>
+        <TabPanels>
+          <TabPanel px={0} pb={0}>
+            <PokemonStatsTab pokemon={pokemon} catalogEntry={catalogEntry} />
+          </TabPanel>
+          <TabPanel px={0} pb={0}>
+            <PokemonMovesTab pokemon={pokemon} catalogEntry={catalogEntry} />
+          </TabPanel>
+          <TabPanel px={0} pb={0}>
+            <PokemonCanaimaDexTab pokemon={pokemon} catalogEntry={catalogEntry} />
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
     </VStack>
   );
 }
@@ -1031,7 +1477,7 @@ const AccountMenu = () => {
   const moveWindow = (windowKey: OpenWindowId, position: WindowPosition) => {
     setPositions((current) => {
       const next = { ...current, [windowKey]: position };
-      window.localStorage.setItem(WINDOW_POSITIONS_KEY, JSON.stringify(next));
+      persistWindowPositions(next);
       return next;
     });
   };
@@ -1065,7 +1511,6 @@ const AccountMenu = () => {
         }
       };
 
-      window.localStorage.setItem(WINDOW_POSITIONS_KEY, JSON.stringify(next));
       return next;
     });
 
@@ -1074,12 +1519,16 @@ const AccountMenu = () => {
 
   const setDragEnabled = (value: boolean) => {
     setDragEnabledState(value);
-    window.localStorage.setItem(DRAG_SETTING_KEY, value ? '1' : '0');
+    try {
+      window.localStorage.setItem(DRAG_SETTING_KEY, value ? '1' : '0');
+    } catch {
+      // Storage full/unavailable — the toggle still applies for this session.
+    }
   };
 
   const resetPositions = () => {
     setPositions(DEFAULT_POSITIONS);
-    window.localStorage.setItem(WINDOW_POSITIONS_KEY, JSON.stringify(DEFAULT_POSITIONS));
+    persistWindowPositions(DEFAULT_POSITIONS);
     toast({ title: t('settings.positionsReset'), status: 'success', duration: 2000, position: 'top' });
   };
 

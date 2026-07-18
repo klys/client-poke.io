@@ -32,6 +32,7 @@ import FallbackMoveAnimation from "./FallbackMoveAnimation";
 import MoveAnimationPlayer from "./MoveAnimationPlayer";
 import MoveLearnPrompt from "./MoveLearnPrompt";
 import { useBattleBackgroundImages, useBattleInterfaceConfig } from "./battleInterfaceConfig";
+import { setBattleUiHold } from "./battleUiHold";
 import { useBattleEventQueue, type BattleSpriteFx } from "./useBattleEventQueue";
 
 type BattleView = "menu" | "fight" | "bag" | "bagTarget" | "pokemon";
@@ -611,6 +612,15 @@ export default function BattleScene() {
 
   const mustReplace = Boolean(battle?.mustSelectReplacement) && battle?.status === "active";
   const queueBusy = playback.queueBusy;
+  const hasPendingLearnPrompts = playback.learnPrompts.length > 0;
+
+  // Latch read by Network's deferred battle clear: an ended battle must stay
+  // on screen while events are still playing back or a move-learn decision is
+  // unanswered, otherwise the auto-close silently discards the new move.
+  useEffect(() => {
+    setBattleUiHold(queueBusy || hasPendingLearnPrompts);
+  }, [queueBusy, hasPendingLearnPrompts]);
+  useEffect(() => () => setBattleUiHold(false), []);
 
   // Controller navigation (see useBattlePadNavigation). The back handler
   // mirrors the on-screen Back buttons: bag-target returns to the bag, other
@@ -699,7 +709,9 @@ export default function BattleScene() {
   // queue sets the flag then), and a caught mon stays inside the ball.
   const selfHidden = playback.fainted[battle.self.id];
   const enemyHidden = playback.enemyCaught || playback.fainted[battle.opponent.id];
-  const showEndConfirm = battle.status === "ended" && !playback.queueBusy;
+  // The OK button (and the summary card below) must not appear while a
+  // move-learn prompt is unanswered: closing the battle would discard it.
+  const showEndConfirm = battle.status === "ended" && !playback.queueBusy && !hasPendingLearnPrompts;
 
   const renderSprite = (
     pokemon: BattlePublicPokemon,
@@ -1116,7 +1128,7 @@ export default function BattleScene() {
       {playback.introPlaying ? <BattleIntro config={config} /> : null}
 
       {/* Battle summary */}
-      {battle.summary && !playback.queueBusy && !playback.activeEvolution ? (
+      {battle.summary && !playback.queueBusy && !playback.activeEvolution && !hasPendingLearnPrompts ? (
         <Box
           position="absolute"
           left="50%"

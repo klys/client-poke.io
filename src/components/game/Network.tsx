@@ -11,6 +11,7 @@ import {
     sanitizePlayableMapsSyncPayload,
 } from "./playableMapRuntime";
 import { getBackendBaseUrl } from "./backendConfig";
+import { isBattleUiHeld } from "../ux/game/battle/battleUiHold";
 
 const AUTH_TOKEN_STORAGE_KEY = "client-poke.io.auth.token";
 
@@ -242,7 +243,7 @@ const Network = () => {
         // re-check the latest battle before wiping it, so a stale "ended"
         // timer from a previous battle can never erase a battle that started
         // in the meantime (which left the player stuck with no battle view).
-        const scheduleBattleClear = (battleId: string | null) => {
+        const scheduleBattleClear = (battleId: string | null, delayMs = 12000) => {
             if (battleClearTimerRef.current !== null) {
                 window.clearTimeout(battleClearTimerRef.current);
             }
@@ -258,8 +259,16 @@ const Network = () => {
                     return;
                 }
 
+                // The battle scene still needs the player's input (a
+                // move-learn prompt, or events still playing back) — never
+                // close it under them; check again shortly instead.
+                if (isBattleUiHeld()) {
+                    scheduleBattleClear(battleId, 3000);
+                    return;
+                }
+
                 clearBattleRef.current();
-            }, 12000);
+            }, delayMs);
         };
 
         const handleBattleState = (data:any) => {
