@@ -47,7 +47,12 @@ import {
 import type { DesignerItemSeed, DesignerPokemonProfile } from '../../designer/designerSections';
 import { getPokemonDisplayName, validatePokemonNickname } from '../game/pokemonName';
 import GamepadSettings from './GamepadSettings';
-import GameSettingsSections from './GameSettingsSections';
+import {
+  AudioSettingsSection,
+  ControlsSettingsSection,
+  DisplaySettingsSection,
+  LanguageSettingsSection
+} from './GameSettingsSections';
 import { useGameSettings } from '../../../settings/gameSettings';
 import { useT } from '../../../i18n';
 import { useCompactUx } from '../useCompactUx';
@@ -427,20 +432,56 @@ function SettingsWindow({
 }) {
   const t = useT();
 
+  const tabs: Array<{ key: string; label: string; content: ReactNode }> = [
+    {
+      key: 'gamepad',
+      label: t('gamepad.title'),
+      content: <GamepadSettings />
+    },
+    {
+      key: 'display',
+      label: t('settings.display.title'),
+      content: (
+        <VStack align="stretch" spacing={4}>
+          <DisplaySettingsSection />
+          <Button
+            colorScheme={dragEnabled ? 'teal' : 'gray'}
+            onClick={() => setDragEnabled(!dragEnabled)}
+          >
+            {dragEnabled ? t('settings.disableDrag') : t('settings.enableDrag')}
+          </Button>
+          <Button variant="outline" color="white" borderColor="whiteAlpha.400" onClick={resetPositions}>
+            {t('settings.resetPositions')}
+          </Button>
+        </VStack>
+      )
+    },
+    {
+      key: 'audio',
+      label: t('settings.audio.title'),
+      content: <AudioSettingsSection />
+    },
+    {
+      key: 'controls',
+      label: t('settings.controls.title'),
+      content: <ControlsSettingsSection />
+    },
+    {
+      key: 'language',
+      label: t('settings.language.title'),
+      content: <LanguageSettingsSection />
+    }
+  ];
+
   return (
-    <VStack align="stretch" spacing={4}>
-      <Button
-        colorScheme={dragEnabled ? 'teal' : 'gray'}
-        onClick={() => setDragEnabled(!dragEnabled)}
-      >
-        {dragEnabled ? t('settings.disableDrag') : t('settings.enableDrag')}
-      </Button>
-      <Button variant="outline" color="white" borderColor="whiteAlpha.400" onClick={resetPositions}>
-        {t('settings.resetPositions')}
-      </Button>
-      <GameSettingsSections />
-      <GamepadSettings />
-    </VStack>
+    <Tabs colorScheme="teal" variant="soft-rounded">
+      <TabList flexWrap="wrap" gap={2}>
+        {tabs.map((tab) => <Tab key={tab.key}>{tab.label}</Tab>)}
+      </TabList>
+      <TabPanels>
+        {tabs.map((tab) => <TabPanel key={tab.key} px={0}>{tab.content}</TabPanel>)}
+      </TabPanels>
+    </Tabs>
   );
 }
 

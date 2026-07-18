@@ -30,7 +30,7 @@ import {
 import { useT, type Translator } from '../../../i18n';
 
 /**
- * "Gamepad" section of the Settings window (AccountMenu.tsx).
+ * "Gamepad" tab of the Settings window (AccountMenu.tsx).
  *
  * Two halves:
  *   - Controller: enable switch, stick options, and the standard-mapping
@@ -163,10 +163,8 @@ const GamepadSettings = () => {
 
   return (
     <VStack align="stretch" spacing={4}>
-      <Divider borderColor="whiteAlpha.300" />
       <Box>
-        <Text fontWeight="700" fontSize="lg">{t('gamepad.title')}</Text>
-        <HStack mt={2} spacing={2} flexWrap="wrap">
+        <HStack spacing={2} flexWrap="wrap">
           {pad ? (
             <>
               <Badge colorScheme="green">{t('gamepad.connected')}</Badge>

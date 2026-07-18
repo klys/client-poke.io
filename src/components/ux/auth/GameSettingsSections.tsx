@@ -1,5 +1,4 @@
 import {
-  Divider,
   FormControl,
   FormHelperText,
   FormLabel,
@@ -18,7 +17,7 @@ import { detectSystemLanguage, useT } from '../../../i18n';
 import { SettingSlider } from './GamepadSettings';
 
 /**
- * "Audio", "Display" and "Language" sections of the Settings window
+ * "Audio", "Display", "Controls" and "Language" tabs of the Settings window
  * (AccountMenu.tsx). All values persist via settings/gameSettings.ts and apply
  * live: the audio managers re-read them on change, the scaled surfaces
  * (EventDialog, NpcInteractions, BattleScene, the interface windows) subscribe
@@ -27,15 +26,12 @@ import { SettingSlider } from './GamepadSettings';
 
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 
-const GameSettingsSections = () => {
+export const AudioSettingsSection = () => {
   const [settings, update] = useGameSettings();
   const t = useT();
 
   return (
     <VStack align="stretch" spacing={4}>
-      <Divider borderColor="whiteAlpha.300" />
-      <Text fontWeight="700" fontSize="lg">{t('settings.audio.title')}</Text>
-
       <SettingSlider
         label={t('settings.audio.music')}
         value={settings.audio.musicVolume}
@@ -71,10 +67,16 @@ const GameSettingsSections = () => {
           onChange={(event) => update({ audio: { ...settings.audio, sfxMuted: event.target.checked } })}
         />
       </FormControl>
+    </VStack>
+  );
+};
 
-      <Divider borderColor="whiteAlpha.300" />
-      <Text fontWeight="700" fontSize="lg">{t('settings.display.title')}</Text>
+export const DisplaySettingsSection = () => {
+  const [settings, update] = useGameSettings();
+  const t = useT();
 
+  return (
+    <VStack align="stretch" spacing={4}>
       <SettingSlider
         label={t('settings.display.dialogs')}
         value={settings.uiScale.dialogs}
@@ -102,10 +104,16 @@ const GameSettingsSections = () => {
         format={percent}
         onChange={(battle) => update({ uiScale: { ...settings.uiScale, battle } })}
       />
+    </VStack>
+  );
+};
 
-      <Divider borderColor="whiteAlpha.300" />
-      <Text fontWeight="700" fontSize="lg">{t('settings.controls.title')}</Text>
+export const ControlsSettingsSection = () => {
+  const [settings, update] = useGameSettings();
+  const t = useT();
 
+  return (
+    <VStack align="stretch" spacing={4}>
       <FormControl display="flex" alignItems="center" justifyContent="space-between">
         <FormLabel mb={0}>{t('settings.controls.touchMove')}</FormLabel>
         <Switch
@@ -117,31 +125,33 @@ const GameSettingsSections = () => {
       <Text mt={-2} fontSize="sm" color="gray.500">
         {t('settings.controls.touchMoveHelp')}
       </Text>
-
-      <Divider borderColor="whiteAlpha.300" />
-      <Text fontWeight="700" fontSize="lg">{t('settings.language.title')}</Text>
-
-      <FormControl>
-        <Select
-          size="sm"
-          bg="whiteAlpha.100"
-          borderColor="whiteAlpha.300"
-          value={settings.language}
-          onChange={(event) => update({ language: event.target.value as LanguageSetting })}
-        >
-          <option value="auto" style={{ color: '#1a202c' }}>{t('settings.language.auto')}</option>
-          <option value="en" style={{ color: '#1a202c' }}>{t('settings.language.en')}</option>
-          <option value="es" style={{ color: '#1a202c' }}>{t('settings.language.es')}</option>
-        </Select>
-        {settings.language === 'auto' ? (
-          <FormHelperText color="gray.500">
-            {t('settings.language.detected')}{' '}
-            {detectSystemLanguage() === 'es' ? 'Español' : 'English'}
-          </FormHelperText>
-        ) : null}
-      </FormControl>
     </VStack>
   );
 };
 
-export default GameSettingsSections;
+export const LanguageSettingsSection = () => {
+  const [settings, update] = useGameSettings();
+  const t = useT();
+
+  return (
+    <FormControl>
+      <Select
+        size="sm"
+        bg="whiteAlpha.100"
+        borderColor="whiteAlpha.300"
+        value={settings.language}
+        onChange={(event) => update({ language: event.target.value as LanguageSetting })}
+      >
+        <option value="auto" style={{ color: '#1a202c' }}>{t('settings.language.auto')}</option>
+        <option value="en" style={{ color: '#1a202c' }}>{t('settings.language.en')}</option>
+        <option value="es" style={{ color: '#1a202c' }}>{t('settings.language.es')}</option>
+      </Select>
+      {settings.language === 'auto' ? (
+        <FormHelperText color="gray.500">
+          {t('settings.language.detected')}{' '}
+          {detectSystemLanguage() === 'es' ? 'Español' : 'English'}
+        </FormHelperText>
+      ) : null}
+    </FormControl>
+  );
+};
