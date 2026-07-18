@@ -18,6 +18,11 @@ import {
   type DesignerNpcAiType,
   type DesignerNpcType,
 } from "./designerSections";
+import {
+  DESIGNER_CACHE_UPDATED_EVENT,
+  readStoredDesignerSectionPayload,
+  type DesignerCacheUpdateDetail,
+} from "./designerCache";
 import { sanitizeTileMapProfile } from "../tilemap/tileMapProfile";
 import { resolveServerAssetUrl } from "../tilemap/serverAssets";
 import { type PlayableMapTileMapProfile } from "../tilemap/tileMapTypes";
@@ -110,6 +115,13 @@ export interface MapEditorGrassPlacement {
   sourceEncounterId?: string;
 }
 
+export interface MapEditorNpcStoreItem {
+  itemId: string;
+  itemName: string;
+  quantity: number;
+  price: number;
+}
+
 export interface MapEditorNpcPlacement {
   id: string;
   npcId: string;
@@ -128,12 +140,98 @@ export interface MapEditorNpcPlacement {
     parameters: unknown[];
     indent?: number;
   }>;
+  /** Imported Essentials event pages (carried by the migration tool); the mart
+   * stock editor scans them for pbPokemonMart item symbols. */
+  essentialsEvent?: {
+    eventId?: number;
+    essentialsMapId?: string;
+    pages?: Array<{
+      commands?: Array<{ code: number; parameters: unknown[]; indent?: number }>;
+    }>;
+  };
   /** Inline stock for event-driven marts (pbPokemonMart); designer store NPCs
-   * keep their stock in the npcs catalog instead. */
-  storeItems?: Array<{ itemId: string; itemName: string; quantity: number; price: number }>;
+   * keep their stock in the npcs catalog instead. When set on a mart placement
+   * it overrides the imported script's item list server-side. */
+  storeItems?: MapEditorNpcStoreItem[];
 }
 
 export const DEFAULT_NPC_INTERACTION_DISTANCE_SQUARES = 2;
+
+/** Joins every RMXP Script line (355 + 655 continuations) reachable from the
+ * placement — its selected-page eventCommands plus all imported pages. */
+function collectNpcScriptText(npc: MapEditorNpcPlacement): string {
+  const chunks: string[] = [];
+  const pushCommands = (
+    commands?: Array<{ code: number; parameters: unknown[] }>
+  ) => {
+    commands?.forEach((command) => {
+      if (
+        (command?.code === 355 || command?.code === 655) &&
+        typeof command.parameters?.[0] === "string"
+      ) {
+        chunks.push(command.parameters[0] as string);
+      }
+    });
+  };
+
+  pushCommands(npc.eventCommands);
+  npc.essentialsEvent?.pages?.forEach((page) => pushCommands(page?.commands));
+
+  return chunks.join("\n");
+}
+
+/** Essentials item symbols offered by the placement's pbPokemonMart call(s);
+ * badge-tiered marts contribute the union of all their pages. */
+function parseMartSymbols(npc: MapEditorNpcPlacement): string[] {
+  const script = collectNpcScriptText(npc);
+  const symbols: string[] = [];
+  const seen = new Set<string>();
+
+  for (const call of script.matchAll(/pbPokemonMart\s*\(\s*\[([^\]]*)/g)) {
+    for (const symbol of call[1].matchAll(/:(\w+)/g)) {
+      const upper = symbol[1].toUpperCase();
+
+      if (!seen.has(upper)) {
+        seen.add(upper);
+        symbols.push(upper);
+      }
+    }
+  }
+
+  return symbols;
+}
+
+type MartCatalogItem = {
+  id: string;
+  name: string;
+  essentialsId: string;
+  price: number;
+};
+
+function loadMartItemCatalog(): MartCatalogItem[] {
+  return readStoredDesignerSectionPayload("items")
+    .state.items.map((item) => {
+      const profile = (
+        item as { itemProfile?: { essentialsId?: string; price?: number } }
+      ).itemProfile;
+
+      return {
+        id: item.id,
+        name: item.name,
+        essentialsId:
+          typeof profile?.essentialsId === "string"
+            ? profile.essentialsId.trim().toUpperCase()
+            : "",
+        price:
+          typeof profile?.price === "number" &&
+          Number.isFinite(profile.price) &&
+          profile.price >= 0
+            ? Math.round(profile.price)
+            : 0,
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
 
 export interface PlayableMapEditorData {
   version: 1;
@@ -738,6 +836,34 @@ export default function PlayableMapEditorCanvas({
     () => value.npcs.find((npc) => npc.id === selectedNpcId) ?? null,
     [selectedNpcId, value.npcs]
   );
+  const [martItemCatalog, setMartItemCatalog] = useState<MartCatalogItem[]>(() =>
+    loadMartItemCatalog()
+  );
+
+  useEffect(() => {
+    const handleDesignerCacheUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<DesignerCacheUpdateDetail>).detail;
+
+      if (detail?.sectionKey === "items") {
+        setMartItemCatalog(loadMartItemCatalog());
+      }
+    };
+
+    window.addEventListener(DESIGNER_CACHE_UPDATED_EVENT, handleDesignerCacheUpdate);
+
+    return () => {
+      window.removeEventListener(DESIGNER_CACHE_UPDATED_EVENT, handleDesignerCacheUpdate);
+    };
+  }, []);
+
+  const selectedNpcMartSymbols = useMemo(
+    () => (selectedNpc ? parseMartSymbols(selectedNpc) : []),
+    [selectedNpc]
+  );
+  // A placement is a mart when its imported event script calls pbPokemonMart
+  // (or a stock override is already saved on it).
+  const selectedNpcIsMart =
+    selectedNpcMartSymbols.length > 0 || (selectedNpc?.storeItems?.length ?? 0) > 0;
   const selectedContents = useMemo(
     () =>
       activeSelectionBounds
@@ -1154,6 +1280,32 @@ export default function PlayableMapEditorCanvas({
       npcs: value.npcs.filter((npc) => npc.id !== selectedNpcId),
     });
     setSelectedNpcId(null);
+  };
+
+  // Seeds the stock override with the placement's script items so the designer
+  // edits the mart's current offering instead of starting from a blank list.
+  const customizeMartStock = () => {
+    const prefill = selectedNpcMartSymbols
+      .map((symbol) => {
+        const catalogItem = martItemCatalog.find(
+          (item) =>
+            item.essentialsId === symbol || item.id === `item-${symbol.toLowerCase()}`
+        );
+
+        if (!catalogItem || catalogItem.price <= 0) {
+          return null;
+        }
+
+        return {
+          itemId: catalogItem.id,
+          itemName: catalogItem.name,
+          quantity: 1,
+          price: catalogItem.price,
+        };
+      })
+      .filter((item): item is MapEditorNpcStoreItem => Boolean(item));
+
+    updateSelectedNpc((npc) => ({ ...npc, storeItems: prefill }));
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -2134,6 +2286,160 @@ export default function PlayableMapEditorCanvas({
                     Players must be this many map squares away or less to interact. Default is{" "}
                     {DEFAULT_NPC_INTERACTION_DISTANCE_SQUARES}.
                   </Text>
+                  {selectedNpcIsMart ? (
+                    <Box>
+                      <Text
+                        fontSize="xs"
+                        fontWeight="700"
+                        textTransform="uppercase"
+                        letterSpacing="0.14em"
+                        color="editor.accentMuted"
+                        mb={2}
+                      >
+                        Mart Stock
+                      </Text>
+                      {selectedNpc.storeItems ? (
+                        <Stack spacing={2}>
+                          {selectedNpc.storeItems.map((storeItem) => (
+                            <Flex key={storeItem.itemId} gap={2} align="center">
+                              <Text fontSize="sm" flex="1" noOfLines={1} title={storeItem.itemName}>
+                                {storeItem.itemName}
+                              </Text>
+                              <Input
+                                type="number"
+                                size="sm"
+                                width="64px"
+                                min={1}
+                                step={1}
+                                title="Quantity per purchase"
+                                value={storeItem.quantity}
+                                onChange={(event) => {
+                                  const quantity = Math.max(
+                                    1,
+                                    Math.round(Number(event.target.value) || 1)
+                                  );
+
+                                  updateSelectedNpc((npc) => ({
+                                    ...npc,
+                                    storeItems: (npc.storeItems ?? []).map((entry) =>
+                                      entry.itemId === storeItem.itemId
+                                        ? { ...entry, quantity }
+                                        : entry
+                                    ),
+                                  }));
+                                }}
+                              />
+                              <Input
+                                type="number"
+                                size="sm"
+                                width="88px"
+                                min={0}
+                                step={1}
+                                title="Price"
+                                value={storeItem.price}
+                                onChange={(event) => {
+                                  const price = Math.max(
+                                    0,
+                                    Math.round(Number(event.target.value) || 0)
+                                  );
+
+                                  updateSelectedNpc((npc) => ({
+                                    ...npc,
+                                    storeItems: (npc.storeItems ?? []).map((entry) =>
+                                      entry.itemId === storeItem.itemId
+                                        ? { ...entry, price }
+                                        : entry
+                                    ),
+                                  }));
+                                }}
+                              />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                colorScheme="red"
+                                onClick={() =>
+                                  updateSelectedNpc((npc) => ({
+                                    ...npc,
+                                    storeItems: (npc.storeItems ?? []).filter(
+                                      (entry) => entry.itemId !== storeItem.itemId
+                                    ),
+                                  }))
+                                }
+                              >
+                                ×
+                              </Button>
+                            </Flex>
+                          ))}
+                          {selectedNpc.storeItems.length === 0 ? (
+                            <Text fontSize="sm" color="editor.textSubtle">
+                              No items in stock yet — add some below. An empty stock falls
+                              back to the imported script items in-game.
+                            </Text>
+                          ) : null}
+                          <Select
+                            size="sm"
+                            placeholder="Add item to stock…"
+                            value=""
+                            onChange={(event) => {
+                              const catalogItem = martItemCatalog.find(
+                                (item) => item.id === event.target.value
+                              );
+
+                              if (!catalogItem) {
+                                return;
+                              }
+
+                              updateSelectedNpc((npc) => {
+                                const current = npc.storeItems ?? [];
+
+                                if (current.some((entry) => entry.itemId === catalogItem.id)) {
+                                  return npc;
+                                }
+
+                                return {
+                                  ...npc,
+                                  storeItems: [
+                                    ...current,
+                                    {
+                                      itemId: catalogItem.id,
+                                      itemName: catalogItem.name,
+                                      quantity: 1,
+                                      price: catalogItem.price,
+                                    },
+                                  ],
+                                };
+                              });
+                            }}
+                          >
+                            {martItemCatalog.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.name} (${item.price})
+                              </option>
+                            ))}
+                          </Select>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              updateSelectedNpc((npc) => ({ ...npc, storeItems: undefined }))
+                            }
+                          >
+                            Use Script Stock
+                          </Button>
+                        </Stack>
+                      ) : (
+                        <Stack spacing={2}>
+                          <Text fontSize="sm" color="editor.textSubtle">
+                            Selling the imported script stock ({selectedNpcMartSymbols.length}{" "}
+                            items). Customize to control what this mart sells.
+                          </Text>
+                          <Button size="sm" onClick={customizeMartStock}>
+                            Customize Stock
+                          </Button>
+                        </Stack>
+                      )}
+                    </Box>
+                  ) : null}
                   <Button colorScheme="red" variant="outline" onClick={removeSelectedNpc}>
                     Remove NPC
                   </Button>

@@ -59,8 +59,9 @@ import { useGameSettings } from '../../../settings/gameSettings';
 import { useT } from '../../../i18n';
 import { useCompactUx } from '../useCompactUx';
 import { resolveServerAssetUrl } from '../../tilemap/serverAssets';
+import WorldMapWindow, { FLY_MOVE_NAME } from '../game/WorldMapWindow';
 
-type WindowKey = 'account' | 'settings' | 'bag' | 'pokemons' | 'trainerCard' | 'battleHistory';
+type WindowKey = 'account' | 'settings' | 'bag' | 'pokemons' | 'map' | 'trainerCard' | 'battleHistory';
 type PokemonStatsWindowId = `pokemonStats:${string}`;
 type OpenWindowId = WindowKey | PokemonStatsWindowId;
 
@@ -88,6 +89,7 @@ const WINDOW_TITLE_KEYS: Record<WindowKey, string> = {
   settings: 'menu.settings',
   bag: 'menu.bag',
   pokemons: 'menu.pokemons',
+  map: 'menu.map',
   trainerCard: 'menu.trainerCard',
   battleHistory: 'menu.battleHistory'
 };
@@ -97,6 +99,7 @@ const DEFAULT_POSITIONS: Record<WindowKey, WindowPosition> = {
   settings: { x: 96, y: 132 },
   bag: { x: 132, y: 84 },
   pokemons: { x: 168, y: 120 },
+  map: { x: 120, y: 72 },
   trainerCard: { x: 210, y: 156 },
   battleHistory: { x: 246, y: 192 }
 };
@@ -874,10 +877,12 @@ type AvailableMoveOption = {
  */
 function PokemonMovesTab({
   pokemon,
-  catalogEntry
+  catalogEntry,
+  onOpenWorldMap
 }: {
   pokemon: PokemonSummary;
   catalogEntry: PokemonCatalogEntry | null;
+  onOpenWorldMap: () => void;
 }) {
   const { learnPokemonMove, forgetPokemonMove } = useAuth();
   // Move picked to learn while four moves are known — the player must choose
@@ -946,6 +951,11 @@ function PokemonMovesTab({
                 <HStack spacing={2} flexShrink={0}>
                   {typeof pokemon.movePp?.[move] === 'number' ? (
                     <Badge colorScheme="teal">{pokemon.movePp[move]} PP</Badge>
+                  ) : null}
+                  {move.trim().toLowerCase() === FLY_MOVE_NAME ? (
+                    <Button size="xs" colorScheme="cyan" onClick={onOpenWorldMap}>
+                      Use
+                    </Button>
                   ) : null}
                   {replacingWith ? (
                     <Button
@@ -1153,10 +1163,12 @@ function PokemonCanaimaDexTab({
 
 function PokemonStatsWindow({
   pokemon,
-  catalogEntry
+  catalogEntry,
+  onOpenWorldMap
 }: {
   pokemon: PokemonSummary;
   catalogEntry: PokemonCatalogEntry | null;
+  onOpenWorldMap: () => void;
 }) {
   const experienceProgress = pokemon.nextLevelExperience > 0
     ? Math.min((pokemon.experience / pokemon.nextLevelExperience) * 100, 100)
@@ -1231,7 +1243,7 @@ function PokemonStatsWindow({
             <PokemonStatsTab pokemon={pokemon} catalogEntry={catalogEntry} />
           </TabPanel>
           <TabPanel px={0} pb={0}>
-            <PokemonMovesTab pokemon={pokemon} catalogEntry={catalogEntry} />
+            <PokemonMovesTab pokemon={pokemon} catalogEntry={catalogEntry} onOpenWorldMap={onOpenWorldMap} />
           </TabPanel>
           <TabPanel px={0} pb={0}>
             <PokemonCanaimaDexTab pokemon={pokemon} catalogEntry={catalogEntry} />
@@ -1553,9 +1565,13 @@ const AccountMenu = () => {
     return pokemon ? `${getPokemonDisplayName(pokemon)} ${t('menu.statsSuffix')}` : t('menu.pokemonStats');
   };
 
-  const getWindowDesktopWidth = (windowKey: OpenWindowId) => (
-    isPokemonStatsWindowId(windowKey) ? '760px' : '460px'
-  );
+  const getWindowDesktopWidth = (windowKey: OpenWindowId) => {
+    if (isPokemonStatsWindowId(windowKey)) {
+      return '760px';
+    }
+
+    return windowKey === 'map' ? '620px' : '460px';
+  };
 
   const renderWindow = (windowKey: OpenWindowId) => {
     if (isPokemonStatsWindowId(windowKey)) {
@@ -1570,6 +1586,7 @@ const AccountMenu = () => {
         <PokemonStatsWindow
           pokemon={pokemon}
           catalogEntry={resolvePokemonCatalogEntry(pokemon, pokemonCatalog)}
+          onOpenWorldMap={() => openWindow('map')}
         />
       );
     }
@@ -1600,6 +1617,10 @@ const AccountMenu = () => {
           onOpenStats={openPokemonStatsWindow}
         />
       );
+    }
+
+    if (windowKey === 'map') {
+      return <WorldMapWindow onRequestClose={() => closeWindow('map')} />;
     }
 
     if (windowKey === 'battleHistory') {
@@ -1635,6 +1656,7 @@ const AccountMenu = () => {
           <MenuItem onClick={() => openWindow('settings')}>{t('menu.settings')}</MenuItem>
           <MenuItem onClick={() => openWindow('bag')}>{t('menu.bag')}</MenuItem>
           <MenuItem onClick={() => openWindow('pokemons')}>{t('menu.pokemons')}</MenuItem>
+          <MenuItem onClick={() => openWindow('map')}>{t('menu.map')}</MenuItem>
           <MenuItem onClick={() => openWindow('trainerCard')}>{t('menu.trainerCard')}</MenuItem>
           <MenuItem onClick={() => openWindow('battleHistory')}>{t('menu.battleHistory')}</MenuItem>
           {hasPermission('designer.access') ? (

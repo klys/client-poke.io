@@ -392,6 +392,13 @@ export function NpcInteractionOverlay({
     [npcDefinition, npcPlacement]
   );
 
+  // Designer store NPCs resolve a catalog definition; event marts
+  // (pbPokemonMart) are synthetic placements outside the catalog whose inline
+  // stock makes them just as operational — gating store actions on the
+  // definition alone would permanently disable every mart's Buy/Sell.
+  const storeReady =
+    effectiveNpcType === "store" && (Boolean(npcDefinition) || storeItems.length > 0);
+
   const sellableItems = useMemo<SellableStoreItem[]>(() => {
     if (effectiveNpcType !== "store") {
       return [];
@@ -514,7 +521,7 @@ export function NpcInteractionOverlay({
       }
 
       if (mode === "storeBuy") {
-        if (selectedStoreItem && npcDefinition) {
+        if (selectedStoreItem && storeReady) {
           setIsSubmitting(true);
           buyFromNpcStore({
             npcPlacementId: npcPlacement.id,
@@ -525,7 +532,7 @@ export function NpcInteractionOverlay({
         return;
       }
 
-      if (selectedSellItem && npcDefinition) {
+      if (selectedSellItem && storeReady) {
         setIsSubmitting(true);
         sellToNpcStore({
           npcPlacementId: npcPlacement.id,
@@ -553,6 +560,7 @@ export function NpcInteractionOverlay({
     selectedSellItem,
     selectedStoreItem,
     sellToNpcStore,
+    storeReady,
   ]);
 
   useEffect(() => {
@@ -613,7 +621,7 @@ export function NpcInteractionOverlay({
     dialogueText = messagePages.length
       ? cleanRmxpText(messagePages[Math.min(pageIndex, messagePages.length - 1)], playerName)
       : "There is nothing written here.";
-  } else if (!npcDefinition) {
+  } else if (!npcDefinition && !storeReady) {
     dialogueText = "This NPC is still loading. Please try again in a moment.";
   } else if (effectiveNpcType === "healer") {
     dialogueText = isSubmitting
@@ -815,7 +823,7 @@ export function NpcInteractionOverlay({
               </Button>
               <Button
                 colorScheme="green"
-                isDisabled={!selectedStoreItem || isSubmitting || !npcDefinition}
+                isDisabled={!selectedStoreItem || isSubmitting || !storeReady}
                 onClick={() => {
                   if (!selectedStoreItem) {
                     return;
@@ -846,7 +854,7 @@ export function NpcInteractionOverlay({
               </Button>
               <Button
                 colorScheme="orange"
-                isDisabled={!selectedSellItem || isSubmitting || !npcDefinition}
+                isDisabled={!selectedSellItem || isSubmitting || !storeReady}
                 onClick={() => {
                   if (!selectedSellItem) {
                     return;

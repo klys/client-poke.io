@@ -43,6 +43,7 @@ const STRINGS: Record<string, Entry> = {
   'menu.settings': { en: 'Settings', es: 'Ajustes' },
   'menu.bag': { en: 'Bag', es: 'Mochila' },
   'menu.pokemons': { en: 'Venomons', es: 'Venomons' },
+  'menu.map': { en: 'Map', es: 'Mapa' },
   'menu.trainerCard': { en: 'Trainer Card', es: 'Tarjeta de Entrenador' },
   'menu.battleHistory': { en: 'Battle History', es: 'Historial de Batallas' },
   'menu.designer': { en: 'Designer', es: 'Diseñador' },
@@ -51,6 +52,29 @@ const STRINGS: Record<string, Entry> = {
   'menu.logout': { en: 'Log out', es: 'Cerrar sesión' },
   'menu.pokemonStats': { en: 'Venomon Stats', es: 'Estadísticas del Venomon' },
   'menu.statsSuffix': { en: 'Stats', es: 'Estadísticas' },
+
+  // --- World map window / Volar (Fly) ---
+  'map.youAreHere': { en: 'You are here', es: 'Estás aquí' },
+  'map.indoors': { en: 'indoors', es: 'interior' },
+  'map.unknownLocation': { en: 'Unknown location', es: 'Ubicación desconocida' },
+  'map.towns': { en: 'Towns', es: 'Ciudades' },
+  'map.routes': { en: 'Routes', es: 'Rutas' },
+  'map.flyHint': {
+    en: 'Select a town to fly there with Volar.',
+    es: 'Selecciona una ciudad para viajar con Volar.',
+  },
+  'map.noFly': {
+    en: 'A party venomon that knows Volar can fly you to any town.',
+    es: 'Un venomon del equipo que sepa Volar puede llevarte volando a cualquier ciudad.',
+  },
+  'map.flyTo': { en: 'Fly to', es: 'Volar a' },
+  'map.fly': { en: 'Fly', es: 'Volar' },
+  'map.cancel': { en: 'Cancel', es: 'Cancelar' },
+  'map.flyFailed': { en: 'Could not fly there.', es: 'No se pudo volar hasta allí.' },
+  'map.empty': {
+    en: 'The world map has not loaded yet.',
+    es: 'El mapa del mundo todavía no se ha cargado.',
+  },
 
   // --- Settings window: general ---
   'settings.enableDrag': { en: 'Enable draggable screen', es: 'Activar ventanas arrastrables' },
