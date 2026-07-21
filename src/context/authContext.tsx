@@ -196,6 +196,8 @@ type AuthContextValue = {
   recoverUsername: (payload: RecoverUsernamePayload) => void
   verifyEmail: (payload: VerifyEmailPayload) => void
   changePassword: (payload: ChangePasswordPayload) => void
+  requestAccountDeletion: () => void
+  confirmAccountDeletion: (payload: { code: string }) => void
   updateProfile: (payload: UpdateProfilePayload) => void
   setCharacterSkin: (payload: { characterSkinId: string }) => void
   chooseStarter: (payload: ChooseStarterPayload) => void
@@ -417,10 +419,27 @@ export const AuthProvider = (
       });
     };
 
+    const handleAccountDeleted = ({ message }: AuthMessagePayload) => {
+      setInfoMessage(null);
+      setErrorMessage(null);
+      setAuthReady(true);
+      setAuthenticated(false);
+      setUser(null);
+      syncToken(null);
+      toast({
+        title: message,
+        status: 'success',
+        duration: 6000,
+        isClosable: true,
+        position: 'top'
+      });
+    };
+
     socket.on('connect', handleConnect);
     socket.on('auth:session', handleSession);
     socket.on('auth:info', handleInfo);
     socket.on('auth:error', handleError);
+    socket.on('auth:account-deleted', handleAccountDeleted);
 
     if (!socket.connected) {
       socket.connect();
@@ -431,6 +450,7 @@ export const AuthProvider = (
       socket.off('auth:session', handleSession);
       socket.off('auth:info', handleInfo);
       socket.off('auth:error', handleError);
+      socket.off('auth:account-deleted', handleAccountDeleted);
       socket.disconnect();
     };
   }, [clearMessages, socketUrl, syncToken, toast]);
@@ -475,6 +495,8 @@ export const AuthProvider = (
     recoverPassword: (payload) => emitAuthEvent('auth:recover-password', payload),
     resetPassword: (payload) => emitAuthEvent('auth:reset-password', payload),
     changePassword: (payload) => emitAuthEvent('auth:change-password', payload),
+    requestAccountDeletion: () => emitAuthEvent('auth:request-account-deletion'),
+    confirmAccountDeletion: (payload) => emitAuthEvent('auth:confirm-account-deletion', payload),
     updateProfile: (payload) => emitAuthEvent('auth:update-profile', payload),
     setCharacterSkin: (payload) => emitAuthEvent('player:set-skin', payload),
     chooseStarter: (payload) => emitAuthEvent('auth:choose-starter', payload),

@@ -23,15 +23,20 @@ const ChunkImage = ({
     chunkKey,
     priority,
     style,
+    onSettled,
 }: {
     src: string;
     mapId?: string;
     chunkKey: string;
     priority: boolean;
     style: CSSProperties;
+    // Fires once when the chunk finishes loading (or exhausts its retries),
+    // regardless of priority. Used by the map editor's own loading bar.
+    onSettled?: (loaded: boolean) => void;
 }) => {
     const [attempt, setAttempt] = useState(0);
     const failedRef = useRef(false);
+    const settledOnceRef = useRef(false);
     const retryTimerRef = useRef<number | null>(null);
     const imgRef = useRef<HTMLImageElement | null>(null);
     const retryNonce = useSyncExternalStore(
@@ -77,6 +82,10 @@ const ChunkImage = ({
     const reportResult = (loaded: boolean) => {
         if (priority && mapId) {
             reportMapChunkResult(mapId, chunkKey, loaded);
+        }
+        if (!settledOnceRef.current) {
+            settledOnceRef.current = true;
+            onSettled?.(loaded);
         }
     };
 
@@ -135,12 +144,16 @@ const TileMapSurface = ({
     zIndex,
     mapId,
     priorityKeys,
+    onChunkSettled,
 }: {
     tileMap: PlayableMapTileMapProfile;
     plane: "background" | "foreground";
     zIndex: number;
     mapId?: string;
     priorityKeys?: ReadonlySet<string>;
+    // Fires once per chunk as it settles. Optional — only the map editor's
+    // loading bar uses it; in-game rendering leaves it undefined.
+    onChunkSettled?: (chunkKey: string, loaded: boolean) => void;
 }) => {
     const baked = tileMap.baked;
 
@@ -168,6 +181,11 @@ const TileMapSurface = ({
                         mapId={mapId}
                         chunkKey={chunkKey}
                         priority={Boolean(priorityKeys?.has(chunkKey))}
+                        onSettled={
+                            onChunkSettled
+                                ? (loaded) => onChunkSettled(chunkKey, loaded)
+                                : undefined
+                        }
                         style={{
                             position: "absolute",
                             left: `${chunk.col * chunkPixels}px`,

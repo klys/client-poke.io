@@ -203,6 +203,29 @@ const STRINGS: Record<string, Entry> = {
   'account.newPassword': { en: 'New password', es: 'Contraseña nueva' },
   'account.changePassword': { en: 'Change password', es: 'Cambiar contraseña' },
   'account.reportBug': { en: 'Report bug', es: 'Reportar un error' },
+  'account.cancel': { en: 'Cancel', es: 'Cancelar' },
+  'account.dangerZone': { en: 'Danger zone', es: 'Zona de peligro' },
+  'account.deleteAccount': { en: 'Delete account', es: 'Eliminar cuenta' },
+  'account.deleteAccountHelp': {
+    en: 'Permanently delete your account and all of your data. This cannot be undone.',
+    es: 'Elimina permanentemente tu cuenta y todos tus datos. Esto no se puede deshacer.'
+  },
+  'account.deleteConfirmWarning': {
+    en: 'This will permanently delete your account, Pokemon, items, money, and progress. This action cannot be undone.',
+    es: 'Esto eliminará permanentemente tu cuenta, Pokemon, objetos, dinero y progreso. Esta acción no se puede deshacer.'
+  },
+  'account.deleteCodeIntro': {
+    en: "We'll send a confirmation code to {email} to verify it's you.",
+    es: 'Enviaremos un código de confirmación a {email} para verificar que eres tú.'
+  },
+  'account.deleteSendCode': { en: 'Send confirmation code', es: 'Enviar código de confirmación' },
+  'account.deleteCodeSent': {
+    en: 'We sent a confirmation code to {email}. Enter it below to permanently delete your account.',
+    es: 'Enviamos un código de confirmación a {email}. Ingrésalo abajo para eliminar tu cuenta permanentemente.'
+  },
+  'account.deleteCodeLabel': { en: 'Confirmation code', es: 'Código de confirmación' },
+  'account.deleteResendCode': { en: 'Resend code', es: 'Reenviar código' },
+  'account.deleteConfirmButton': { en: 'Permanently delete account', es: 'Eliminar cuenta permanentemente' },
 
   // --- Bag window ---
   'bag.all': { en: 'All', es: 'Todo' },

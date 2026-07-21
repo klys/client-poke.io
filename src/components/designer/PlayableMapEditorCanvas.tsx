@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Box,
   Button,
@@ -7,6 +7,7 @@ import {
   FormControl,
   FormLabel,
   Input,
+  Progress,
   Select,
   SimpleGrid,
   Stack,
@@ -894,6 +895,55 @@ export default function PlayableMapEditorCanvas({
 
   const getNpcPreviewImageSrc = (npc: Pick<MapEditorNpcPlacement, "npcId" | "previewImageSrc">) =>
     npcCatalogById.get(npc.npcId)?.previewImageSrc || npc.previewImageSrc;
+
+  // Loading bar: every asset the surface renders (baked tile chunks, object
+  // sprites, NPC sprites) registers a key here; each reports back once it has
+  // loaded or failed. While any expected key is still unsettled we show a
+  // progress bar so it's obvious the editor is working, not frozen.
+  const loadableKeys = useMemo(() => {
+    const keys: string[] = [];
+    if (bakedTileMap?.baked && showTiles) {
+      bakedTileMap.baked.background.forEach((chunk) =>
+        keys.push(`background-${chunk.col}-${chunk.row}`)
+      );
+      bakedTileMap.baked.foreground.forEach((chunk) =>
+        keys.push(`foreground-${chunk.col}-${chunk.row}`)
+      );
+    }
+    value.objects.forEach((item) => {
+      if (item.imageSrc) {
+        keys.push(`object-${item.id}`);
+      }
+    });
+    value.npcs.forEach((npc) => {
+      if (getNpcPreviewImageSrc(npc)) {
+        keys.push(`npc-${npc.id}`);
+      }
+    });
+    return keys;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bakedTileMap, showTiles, value.objects, value.npcs, npcCatalogById]);
+
+  const [settledKeys, setSettledKeys] = useState<Set<string>>(() => new Set());
+  const markSettled = useCallback((key: string) => {
+    setSettledKeys((prev) => {
+      if (prev.has(key)) {
+        return prev;
+      }
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+  }, []);
+
+  const settledCount = useMemo(
+    () => loadableKeys.reduce((total, key) => total + (settledKeys.has(key) ? 1 : 0), 0),
+    [loadableKeys, settledKeys]
+  );
+  const totalLoadable = loadableKeys.length;
+  const isLoadingAssets = totalLoadable > 0 && settledCount < totalLoadable;
+  const loadPercent =
+    totalLoadable === 0 ? 100 : Math.round((settledCount / totalLoadable) * 100);
 
   const activeGrassSettings = {
     pokemonIds: activeGrassPokemonIds,
@@ -2517,6 +2567,30 @@ export default function PlayableMapEditorCanvas({
 
       <Box flex="1" minW={0}>
         <Box
+          height="6px"
+          mb={2}
+          borderRadius="full"
+          overflow="hidden"
+          opacity={isLoadingAssets ? 1 : 0}
+          transition="opacity 0.3s ease"
+          aria-hidden={!isLoadingAssets}
+        >
+          <Progress
+            value={loadPercent}
+            size="sm"
+            height="6px"
+            borderRadius="full"
+            colorScheme="green"
+            hasStripe
+            isAnimated
+          />
+        </Box>
+        {isLoadingAssets ? (
+          <Text fontSize="xs" color="editor.textSubtle" mb={2}>
+            Loading map assets… {settledCount}/{totalLoadable} ({loadPercent}%)
+          </Text>
+        ) : null}
+        <Box
           borderRadius="20px"
           border="1px solid" borderColor="editor.borderMuted"
           bg="editor.well"
@@ -2539,11 +2613,13 @@ export default function PlayableMapEditorCanvas({
                   tileMap={bakedTileMap}
                   plane="background"
                   zIndex={0}
+                  onChunkSettled={markSettled}
                 />
                 <TileMapSurface
                   tileMap={bakedTileMap}
                   plane="foreground"
                   zIndex={1}
+                  onChunkSettled={markSettled}
                 />
               </>
             ) : null}
@@ -2567,6 +2643,8 @@ export default function PlayableMapEditorCanvas({
                     width={`${item.width}px`}
                     height={`${item.height}px`}
                     objectFit="contain"
+                    onLoad={() => markSettled(`object-${item.id}`)}
+                    onError={() => markSettled(`object-${item.id}`)}
                     style={{
                       imageRendering: "pixelated",
                       filter:
@@ -2695,6 +2773,8 @@ export default function PlayableMapEditorCanvas({
                     width={`${cellSize}px`}
                     height={`${cellSize}px`}
                     objectFit="contain"
+                    onLoad={() => markSettled(`npc-${npc.id}`)}
+                    onError={() => markSettled(`npc-${npc.id}`)}
                     style={{
                       imageRendering: "pixelated",
                       filter: "drop-shadow(0 0 3px rgba(0, 245, 255, 0.95))",

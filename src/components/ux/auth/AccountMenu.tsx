@@ -36,6 +36,7 @@ import {
   Text,
   Textarea,
   VStack,
+  useDisclosure,
   useToast
 } from '@chakra-ui/react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -397,6 +398,106 @@ function DraggableWindow({
 
 const SKIN_CHANGE_PRICE = 300;
 
+/**
+ * Danger-zone control that lets a user permanently delete their own account and
+ * all related data. Deletion is two-step: request a numeric code by email, then
+ * type it back to confirm. On success the server signs the socket out and the
+ * auth context returns to the logged-out state (unmounting this window).
+ */
+function DeleteAccountSection() {
+  const { user, requestAccountDeletion, confirmAccountDeletion } = useAuth();
+  const t = useT();
+  const { isOpen, onOpen, onClose } = useDisclosure();
+  const [step, setStep] = useState<'intro' | 'code'>('intro');
+  const [code, setCode] = useState('');
+
+  const reset = () => {
+    setStep('intro');
+    setCode('');
+  };
+
+  const handleClose = () => {
+    reset();
+    onClose();
+  };
+
+  const handleSendCode = () => {
+    requestAccountDeletion();
+    setStep('code');
+  };
+
+  const trimmedCode = code.trim();
+
+  return (
+    <>
+      <Divider borderColor="whiteAlpha.300" />
+      <Box borderWidth="1px" borderColor="red.400" borderRadius="8px" p={3}>
+        <Text fontWeight="700" color="red.300">{t('account.dangerZone')}</Text>
+        <Text fontSize="sm" color="gray.400" mt={1}>{t('account.deleteAccountHelp')}</Text>
+        <Button mt={3} size="sm" colorScheme="red" variant="outline" onClick={onOpen}>
+          {t('account.deleteAccount')}
+        </Button>
+      </Box>
+
+      <Modal isOpen={isOpen} onClose={handleClose} isCentered>
+        <ModalOverlay />
+        <ModalContent bg="gray.800" color="white">
+          <ModalHeader color="red.300">{t('account.deleteAccount')}</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            {step === 'intro' ? (
+              <VStack align="stretch" spacing={3}>
+                <Text>{t('account.deleteConfirmWarning')}</Text>
+                <Text fontSize="sm" color="gray.400">
+                  {t('account.deleteCodeIntro', { email: user?.email ?? '' })}
+                </Text>
+              </VStack>
+            ) : (
+              <VStack align="stretch" spacing={3}>
+                <Text fontSize="sm" color="gray.400">
+                  {t('account.deleteCodeSent', { email: user?.email ?? '' })}
+                </Text>
+                <FormControl>
+                  <FormLabel>{t('account.deleteCodeLabel')}</FormLabel>
+                  <Input
+                    value={code}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    placeholder="000000"
+                    onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                  />
+                </FormControl>
+                <Link color="teal.200" fontSize="sm" onClick={() => requestAccountDeletion()}>
+                  {t('account.deleteResendCode')}
+                </Link>
+              </VStack>
+            )}
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={handleClose}>
+              {t('account.cancel')}
+            </Button>
+            {step === 'intro' ? (
+              <Button colorScheme="red" onClick={handleSendCode}>
+                {t('account.deleteSendCode')}
+              </Button>
+            ) : (
+              <Button
+                colorScheme="red"
+                isDisabled={trimmedCode.length < 4}
+                onClick={() => confirmAccountDeletion({ code: trimmedCode })}
+              >
+                {t('account.deleteConfirmButton')}
+              </Button>
+            )}
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+    </>
+  );
+}
+
 function ProfileTab() {
   const { user, changePassword, updateProfile } = useAuth();
   const t = useT();
@@ -471,6 +572,7 @@ function ProfileTab() {
       <Link href={BUG_REPORT_URL} isExternal color="teal.200" fontWeight="700">
         {t('account.reportBug')}
       </Link>
+      <DeleteAccountSection />
     </VStack>
   );
 }
