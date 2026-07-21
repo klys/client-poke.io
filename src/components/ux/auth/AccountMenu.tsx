@@ -18,6 +18,13 @@ import {
   MenuButton,
   MenuItem,
   MenuList,
+  Modal,
+  ModalBody,
+  ModalCloseButton,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalOverlay,
   Progress,
   SimpleGrid,
   Spinner,
@@ -47,6 +54,7 @@ import {
 } from '../../designer/designerCache';
 import type { DesignerItemSeed, DesignerPokemonProfile } from '../../designer/designerSections';
 import { getPokemonDisplayName, validatePokemonNickname } from '../game/pokemonName';
+import { classifyInventoryItem, type ItemUsage } from '../game/itemUsage';
 import { getBackendBaseUrl } from '../../game/backendConfig';
 import GamepadSettings from './GamepadSettings';
 import {
@@ -519,7 +527,167 @@ function SettingsWindow({
   );
 }
 
-function BagWindow() {
+/** One selectable party Venomon card in the item-target modal. */
+function ItemTargetCard({
+  pokemon,
+  iconSrc,
+  onSelect
+}: {
+  pokemon: PokemonSummary;
+  iconSrc: string;
+  onSelect: () => void;
+}) {
+  const fainted = pokemon.hp <= 0;
+  const hpRatio = pokemon.maxHp > 0 ? pokemon.hp / pokemon.maxHp : 0;
+  const hpColor = fainted ? 'red' : hpRatio > 0.5 ? 'green' : hpRatio > 0.2 ? 'yellow' : 'red';
+
+  return (
+    <Button
+      onClick={onSelect}
+      variant="outline"
+      height="auto"
+      justifyContent="flex-start"
+      p={3}
+      borderColor="whiteAlpha.300"
+      _hover={{ borderColor: 'teal.300', bg: 'whiteAlpha.100' }}
+      width="100%"
+    >
+      <HStack spacing={3} width="100%" align="center">
+        <Box boxSize="42px" flexShrink={0} display="flex" alignItems="center" justifyContent="center">
+          {iconSrc ? (
+            <Image
+              src={iconSrc}
+              alt={getPokemonDisplayName(pokemon)}
+              boxSize="42px"
+              objectFit="contain"
+              style={{ imageRendering: 'pixelated' }}
+            />
+          ) : (
+            <Text fontFamily="mono" fontWeight="800">
+              {(pokemon.nickname || pokemon.name).slice(0, 2).toUpperCase()}
+            </Text>
+          )}
+        </Box>
+        <Box flex={1} minW={0} textAlign="left">
+          <HStack justify="space-between">
+            <Text fontWeight="700" noOfLines={1}>{getPokemonDisplayName(pokemon)}</Text>
+            <Badge>Lv {pokemon.level}</Badge>
+          </HStack>
+          <HStack mt={1} spacing={2}>
+            <Progress
+              value={hpRatio * 100}
+              colorScheme={hpColor}
+              size="sm"
+              borderRadius="full"
+              flex={1}
+            />
+            <Text fontSize="xs" color="gray.300" whiteSpace="nowrap">
+              {fainted ? 'Fainted' : `${pokemon.hp}/${pokemon.maxHp}`}
+            </Text>
+          </HStack>
+        </Box>
+      </HStack>
+    </Button>
+  );
+}
+
+/** Modal to pick a Venomon (and, for PP items, one of its moves) for an item. */
+function ItemTargetModal({
+  item,
+  usage,
+  party,
+  pokemonCatalog,
+  onSelect,
+  onCancel
+}: {
+  item: InventoryItem;
+  usage: ItemUsage;
+  party: PokemonSummary[];
+  pokemonCatalog: Map<string, PokemonCatalogEntry>;
+  onSelect: (targetPokemonId: string, targetMoveName?: string) => void;
+  onCancel: () => void;
+}) {
+  const [selectedPokemonId, setSelectedPokemonId] = useState<string | null>(null);
+  const selectedPokemon = party.find((pokemon) => pokemon.id === selectedPokemonId) ?? null;
+  const needsMove = usage.target === 'pokemon-move';
+
+  const iconFor = (pokemon: PokemonSummary) =>
+    resolveServerAssetUrl(resolvePokemonCatalogEntry(pokemon, pokemonCatalog)?.profile.iconImageSrc ?? '');
+
+  const handlePokemonClick = (pokemon: PokemonSummary) => {
+    if (needsMove) {
+      setSelectedPokemonId(pokemon.id);
+    } else {
+      onSelect(pokemon.id);
+    }
+  };
+
+  return (
+    <Modal isOpen onClose={onCancel} isCentered size="sm" scrollBehavior="inside">
+      <ModalOverlay />
+      <ModalContent bg="#1f2937" color="white" onClick={stopUxEvent}>
+        <ModalHeader>
+          {needsMove && selectedPokemon
+            ? `Restore which move? — ${getPokemonDisplayName(selectedPokemon)}`
+            : `Use ${item.name} on…`}
+        </ModalHeader>
+        <ModalCloseButton />
+        <ModalBody>
+          {party.length === 0 ? (
+            <Text color="gray.300">You have no Venomon in your party.</Text>
+          ) : needsMove && selectedPokemon ? (
+            <VStack align="stretch" spacing={2}>
+              {(selectedPokemon.moves ?? []).length === 0 ? (
+                <Text color="gray.300">This Venomon knows no moves.</Text>
+              ) : (
+                (selectedPokemon.moves ?? []).map((move) => {
+                  const pp = selectedPokemon.movePp?.[move];
+                  return (
+                    <Button
+                      key={move}
+                      variant="outline"
+                      borderColor="whiteAlpha.300"
+                      justifyContent="space-between"
+                      onClick={() => onSelect(selectedPokemon.id, move)}
+                    >
+                      <Text>{move}</Text>
+                      {typeof pp === 'number' ? (
+                        <Badge>PP {pp}</Badge>
+                      ) : null}
+                    </Button>
+                  );
+                })
+              )}
+            </VStack>
+          ) : (
+            <VStack align="stretch" spacing={2}>
+              {party.map((pokemon) => (
+                <ItemTargetCard
+                  key={pokemon.id}
+                  pokemon={pokemon}
+                  iconSrc={iconFor(pokemon)}
+                  onSelect={() => handlePokemonClick(pokemon)}
+                />
+              ))}
+            </VStack>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          {needsMove && selectedPokemon ? (
+            <Button variant="ghost" mr="auto" onClick={() => setSelectedPokemonId(null)}>
+              Back
+            </Button>
+          ) : null}
+          <Button variant="outline" borderColor="whiteAlpha.400" onClick={onCancel}>
+            Cancel
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
+
+function BagWindow({ onOpenWorldMap }: { onOpenWorldMap: () => void }) {
   const {
     user,
     useInventoryItem: requestUseInventoryItem,
@@ -527,8 +695,13 @@ function BagWindow() {
     throwAwayInventoryItem
   } = useAuth();
   const t = useT();
+  const toast = useToast();
+  const pokemonCatalog = usePokemonCatalog();
   const items = user?.inventory ?? [];
   const party = user?.pokemonParty ?? [];
+  const [targetSelection, setTargetSelection] = useState<
+    { item: InventoryItem; usage: ItemUsage } | null
+  >(null);
   const categories: Array<{ key: InventoryItem['category'] | 'all'; label: string }> = [
     { key: 'all', label: t('bag.all') },
     { key: 'usable', label: t('bag.usable') },
@@ -536,34 +709,58 @@ function BagWindow() {
     { key: 'moves', label: t('bag.moves') },
     { key: 'quest', label: t('bag.quest') }
   ];
-  const selectPokemonTarget = (item: InventoryItem) => {
+
+  const requireParty = () => {
     if (party.length === 0) {
-      window.alert('You do not have Venomons in your party.');
-      return null;
+      toast({ status: 'warning', title: 'You have no Venomon in your party.', position: 'top' });
+      return false;
     }
-
-    const promptText = party
-      .map((pokemon, index) => `${index + 1}. ${getPokemonDisplayName(pokemon)} HP ${pokemon.hp}/${pokemon.maxHp}`)
-      .join('\n');
-    const selection = window.prompt(`Select a Venomon for ${item.name}:\n${promptText}`);
-    const selectedIndex = selection ? Number.parseInt(selection, 10) - 1 : -1;
-
-    return party[selectedIndex]?.id ?? null;
+    return true;
   };
 
   const handleUse = (item: InventoryItem) => {
-    const targetPokemonId = selectPokemonTarget(item);
+    const usage = classifyInventoryItem(item);
 
-    if (targetPokemonId) {
-      requestUseInventoryItem({ itemId: item.id, targetPokemonId });
+    if (!usage.usable) {
+      toast({ status: 'info', title: `${item.name} can't be used right now.`, position: 'top' });
+      return;
     }
+
+    // Town Map (and similar) are handled entirely client-side.
+    if (usage.clientAction === 'town-map') {
+      onOpenWorldMap();
+      return;
+    }
+
+    // No target needed (Repel, Escape Rope, Sacred Ash, Poké Flute, key items).
+    if (usage.target === 'none') {
+      requestUseInventoryItem({ itemId: item.id });
+      return;
+    }
+
+    if (!requireParty()) {
+      return;
+    }
+    setTargetSelection({ item, usage });
   };
 
   const handleTeach = (item: InventoryItem) => {
-    const targetPokemonId = selectPokemonTarget(item);
+    if (!requireParty()) {
+      return;
+    }
+    setTargetSelection({ item, usage: { target: 'pokemon', usable: true } });
+  };
 
-    if (targetPokemonId) {
-      teachInventoryMove({ itemId: item.id, targetPokemonId });
+  const handleTargetSelected = (targetPokemonId: string, targetMoveName?: string) => {
+    const selection = targetSelection;
+    setTargetSelection(null);
+    if (!selection) {
+      return;
+    }
+    if (selection.item.category === 'moves') {
+      teachInventoryMove({ itemId: selection.item.id, targetPokemonId });
+    } else {
+      requestUseInventoryItem({ itemId: selection.item.id, targetPokemonId, targetMoveName });
     }
   };
 
@@ -610,7 +807,9 @@ function BagWindow() {
                     </HStack>
                     <Text color="gray.300" fontSize="sm">{item.description}</Text>
                     <HStack mt={3} spacing={2} flexWrap="wrap">
-                      {item.category === 'usable' || item.category === 'berries' ? (
+                      {item.category === 'usable' ||
+                      item.category === 'berries' ||
+                      item.category === 'quest' ? (
                         <Button size="xs" colorScheme="teal" onClick={() => handleUse(item)}>
                           {t('bag.use')}
                         </Button>
@@ -638,6 +837,16 @@ function BagWindow() {
           );
         })}
       </TabPanels>
+      {targetSelection ? (
+        <ItemTargetModal
+          item={targetSelection.item}
+          usage={targetSelection.usage}
+          party={party}
+          pokemonCatalog={pokemonCatalog}
+          onSelect={handleTargetSelected}
+          onCancel={() => setTargetSelection(null)}
+        />
+      ) : null}
     </Tabs>
   );
 }
@@ -1606,7 +1815,7 @@ const AccountMenu = () => {
     }
 
     if (windowKey === 'bag') {
-      return <BagWindow />;
+      return <BagWindow onOpenWorldMap={() => openWindow('map')} />;
     }
 
     if (windowKey === 'pokemons') {
