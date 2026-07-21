@@ -155,14 +155,6 @@ function formatMapTypeLabel(value: DesignerPlayableMapType) {
     .join(" ");
 }
 
-function buildMapFrameSrc() {
-  if (typeof window === "undefined") {
-    return "/#/map";
-  }
-
-  return `${window.location.pathname}${window.location.search}#/map`;
-}
-
 function normalizeBackgroundColor(value: string) {
   return /^#[0-9a-f]{6}$/i.test(value) ? value : DEFAULT_MAP_BACKGROUND_COLOR;
 }
@@ -644,8 +636,6 @@ export default function MapEditorPage() {
       })),
     [mapsState.items]
   );
-
-  const editorFrameSrc = useMemo(() => buildMapFrameSrc(), []);
 
   const [cellSize, setCellSize] = useState(String(initialConfig.cellSize));
   const [mapName, setMapName] = useState(mapItem?.name ?? "");
@@ -1188,7 +1178,6 @@ export default function MapEditorPage() {
                 mapHeight={previewConfig.height}
                 pixelWidth={mapPixelWidth}
                 pixelHeight={mapPixelHeight}
-                iframeSrc={editorFrameSrc}
                 backgroundStyle={mapSurfaceBackgroundStyle}
                 objectCatalog={objectCatalog}
                 pokemonCatalog={pokemonCatalog}

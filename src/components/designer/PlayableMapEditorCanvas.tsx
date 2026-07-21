@@ -26,6 +26,7 @@ import {
 import { sanitizeTileMapProfile } from "../tilemap/tileMapProfile";
 import { resolveServerAssetUrl } from "../tilemap/serverAssets";
 import { type PlayableMapTileMapProfile } from "../tilemap/tileMapTypes";
+import TileMapSurface from "../game/TileMapSurface";
 
 export interface MapEditorObjectCatalogItem {
   id: string;
@@ -270,7 +271,6 @@ interface PlayableMapEditorCanvasProps {
   mapHeight: number;
   pixelWidth: number;
   pixelHeight: number;
-  iframeSrc: string;
   backgroundStyle: React.CSSProperties;
   objectCatalog: MapEditorObjectCatalogItem[];
   pokemonCatalog: MapEditorPokemonCatalogItem[];
@@ -661,7 +661,6 @@ export default function PlayableMapEditorCanvas({
   mapHeight,
   pixelWidth,
   pixelHeight,
-  iframeSrc,
   backgroundStyle,
   objectCatalog,
   pokemonCatalog,
@@ -682,6 +681,11 @@ export default function PlayableMapEditorCanvas({
   const [selectedPortalId, setSelectedPortalId] = useState<string | null>(null);
   const [selectedGrassId, setSelectedGrassId] = useState<string | null>(null);
   const [selectedNpcId, setSelectedNpcId] = useState<string | null>(null);
+  const [showTiles, setShowTiles] = useState(true);
+  // The baked tile-map chunks are the actual rendered map graphics. Rendering
+  // them here lets designers see where their placements land instead of the
+  // blank/black surface the live-game iframe left behind.
+  const bakedTileMap = value.tileMap?.baked ? value.tileMap : null;
   const objectCategories = useMemo(
     () => Array.from(new Set(objectCatalog.map((item) => item.category))).sort(),
     [objectCatalog]
@@ -2477,6 +2481,37 @@ export default function PlayableMapEditorCanvas({
               {isDirty ? "Unsaved changes" : "All changes saved"}
             </Text>
           </Box>
+
+          <Divider />
+
+          <Box>
+            <Text
+              fontSize="xs"
+              fontWeight="700"
+              textTransform="uppercase"
+              letterSpacing="0.14em"
+              color="editor.accentMuted"
+              mb={2}
+            >
+              Map Tiles
+            </Text>
+            {bakedTileMap ? (
+              <Button
+                size="sm"
+                width="100%"
+                variant={showTiles ? "solid" : "outline"}
+                colorScheme={showTiles ? "green" : "gray"}
+                onClick={() => setShowTiles((current) => !current)}
+              >
+                {showTiles ? "Hide map tiles" : "Show map tiles"}
+              </Button>
+            ) : (
+              <Text fontSize="sm" color="editor.textSubtle">
+                This map has no baked tiles yet. Paint tiles in the Tiles tab to
+                see them here.
+              </Text>
+            )}
+          </Box>
         </Stack>
       </Box>
 
@@ -2498,17 +2533,20 @@ export default function PlayableMapEditorCanvas({
             boxShadow="0 18px 50px rgba(24, 34, 20, 0.18)"
             overflow="hidden"
           >
-            <Box
-              as="iframe"
-              title="Map Preview"
-              src={iframeSrc}
-              width={`${pixelWidth}px`}
-              height={`${pixelHeight}px`}
-              border="0"
-              display="block"
-              loading="lazy"
-              bg="transparent"
-            />
+            {bakedTileMap && showTiles ? (
+              <>
+                <TileMapSurface
+                  tileMap={bakedTileMap}
+                  plane="background"
+                  zIndex={0}
+                />
+                <TileMapSurface
+                  tileMap={bakedTileMap}
+                  plane="foreground"
+                  zIndex={1}
+                />
+              </>
+            ) : null}
 
             {value.objects.map((item) => (
               <Box
@@ -2529,7 +2567,11 @@ export default function PlayableMapEditorCanvas({
                     width={`${item.width}px`}
                     height={`${item.height}px`}
                     objectFit="contain"
-                    style={{ imageRendering: "pixelated" }}
+                    style={{
+                      imageRendering: "pixelated",
+                      filter:
+                        "drop-shadow(0 0 0 rgba(255, 240, 0, 1)) drop-shadow(0 0 4px rgba(255, 240, 0, 0.95)) drop-shadow(0 0 8px rgba(255, 140, 0, 0.7))",
+                    }}
                   />
                 ) : (
                   <Flex
@@ -2537,9 +2579,11 @@ export default function PlayableMapEditorCanvas({
                     justify="center"
                     width="100%"
                     height="100%"
-                    border="1px dashed rgba(16, 22, 14, 0.55)"
-                    bg="rgba(255,255,255,0.55)"
-                    color="#1f2d25"
+                    border="2px solid rgba(255, 240, 0, 0.95)"
+                    boxShadow="0 0 10px rgba(255, 240, 0, 0.9)"
+                    bg="rgba(255, 240, 0, 0.28)"
+                    color="#ffffff"
+                    textShadow="0 0 4px rgba(0,0,0,0.9)"
                     fontSize="xs"
                     fontWeight="700"
                     textAlign="center"
@@ -2561,19 +2605,20 @@ export default function PlayableMapEditorCanvas({
                 height={`${cellSize}px`}
                 border={
                   grassCell.id === selectedGrassId
-                    ? "2px solid rgba(34, 197, 94, 0.95)"
-                    : "1px solid rgba(20, 83, 45, 0.45)"
+                    ? "2px solid rgba(190, 255, 120, 1)"
+                    : "2px solid rgba(57, 255, 20, 0.95)"
                 }
                 bg={
                   grassCell.id === selectedGrassId
-                    ? "rgba(34, 197, 94, 0.38)"
-                    : "rgba(34, 197, 94, 0.22)"
+                    ? "rgba(57, 255, 20, 0.55)"
+                    : "rgba(57, 255, 20, 0.4)"
                 }
                 pointerEvents="none"
                 zIndex={2}
+                boxShadow="0 0 8px rgba(57, 255, 20, 0.9), inset 0 0 6px rgba(190, 255, 120, 0.6)"
                 sx={{
                   backgroundImage:
-                    "repeating-linear-gradient(45deg, rgba(20, 83, 45, 0.36) 0 4px, rgba(74, 222, 128, 0.08) 4px 8px)",
+                    "repeating-linear-gradient(45deg, rgba(57, 255, 20, 0.55) 0 4px, rgba(190, 255, 120, 0.2) 4px 8px)",
                 }}
               />
             ))}
@@ -2590,15 +2635,21 @@ export default function PlayableMapEditorCanvas({
                 justify="center"
                 border={
                   portal.id === selectedPortalId
-                    ? "2px solid #f97316"
-                    : "2px solid rgba(147, 51, 234, 0.92)"
+                    ? "2px solid rgba(255, 176, 0, 1)"
+                    : "2px solid rgba(240, 0, 255, 0.95)"
                 }
                 bg={
                   portal.id === selectedPortalId
-                    ? "rgba(249, 115, 22, 0.2)"
-                    : "rgba(147, 51, 234, 0.18)"
+                    ? "rgba(255, 176, 0, 0.5)"
+                    : "rgba(240, 0, 255, 0.45)"
                 }
-                color="#1f132b"
+                boxShadow={
+                  portal.id === selectedPortalId
+                    ? "0 0 10px rgba(255, 176, 0, 0.95)"
+                    : "0 0 10px rgba(240, 0, 255, 0.95)"
+                }
+                color="#ffffff"
+                textShadow="0 0 4px rgba(0,0,0,0.9)"
                 fontSize="10px"
                 fontWeight="800"
                 lineHeight="1.1"
@@ -2623,14 +2674,15 @@ export default function PlayableMapEditorCanvas({
                 justify="center"
                 border={
                   npc.id === selectedNpcId
-                    ? "2px solid rgba(14, 116, 144, 0.95)"
-                    : "1px solid rgba(8, 145, 178, 0.5)"
+                    ? "2px solid rgba(190, 255, 255, 1)"
+                    : "2px solid rgba(0, 245, 255, 0.95)"
                 }
                 bg={
                   npc.id === selectedNpcId
-                    ? "rgba(6, 182, 212, 0.26)"
-                    : "rgba(6, 182, 212, 0.14)"
+                    ? "rgba(0, 245, 255, 0.45)"
+                    : "rgba(0, 245, 255, 0.3)"
                 }
+                boxShadow="0 0 9px rgba(0, 245, 255, 0.95)"
                 pointerEvents="none"
                 zIndex={4}
                 overflow="hidden"
@@ -2643,10 +2695,18 @@ export default function PlayableMapEditorCanvas({
                     width={`${cellSize}px`}
                     height={`${cellSize}px`}
                     objectFit="contain"
-                    style={{ imageRendering: "pixelated" }}
+                    style={{
+                      imageRendering: "pixelated",
+                      filter: "drop-shadow(0 0 3px rgba(0, 245, 255, 0.95))",
+                    }}
                   />
                 ) : (
-                  <Text fontSize="10px" fontWeight="800" color="#0f172a">
+                  <Text
+                    fontSize="10px"
+                    fontWeight="800"
+                    color="#ffffff"
+                    textShadow="0 0 4px rgba(0,0,0,0.9)"
+                  >
                     N
                   </Text>
                 )}
