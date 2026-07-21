@@ -68,6 +68,16 @@ import { useT } from '../../../i18n';
 import { useCompactUx } from '../useCompactUx';
 import { resolveServerAssetUrl } from '../../tilemap/serverAssets';
 import WorldMapWindow, { FLY_MOVE_NAME } from '../game/WorldMapWindow';
+import {
+  TrainerCardView,
+  TRAINER_CARD_COLORS,
+  type TrainerCardTeamMember
+} from '../game/TrainerCard';
+import {
+  getCharacterSkinPreview,
+  loadCharacterSkinCatalog,
+  type CharacterSkinCatalogItem
+} from '../game/characterSkinCatalog';
 
 type WindowKey = 'account' | 'settings' | 'bag' | 'pokemons' | 'map' | 'trainerCard' | 'battleHistory';
 type PokemonStatsWindowId = `pokemonStats:${string}`;
@@ -385,7 +395,9 @@ function DraggableWindow({
   );
 }
 
-function AccountWindow() {
+const SKIN_CHANGE_PRICE = 300;
+
+function ProfileTab() {
   const { user, changePassword, updateProfile } = useAuth();
   const t = useT();
   const [profileImage, setProfileImage] = useState(user?.profileImage ?? '');
@@ -460,6 +472,186 @@ function AccountWindow() {
         {t('account.reportBug')}
       </Link>
     </VStack>
+  );
+}
+
+/** Keeps the character-skin catalog fresh from the designer cache, and joins
+ * the "players" section over the socket so it populates on a cold load. */
+function useCharacterSkinCatalog(): CharacterSkinCatalogItem[] {
+  const { socket, authReady, authenticated } = useAuth();
+  const [catalog, setCatalog] = useState<CharacterSkinCatalogItem[]>(() => loadCharacterSkinCatalog());
+
+  useEffect(() => {
+    const sync = () => setCatalog(loadCharacterSkinCatalog());
+    const handle = (event: Event) => {
+      const detail = (event as CustomEvent<DesignerCacheUpdateDetail>).detail;
+      if (detail?.sectionKey === 'players') {
+        sync();
+      }
+    };
+    sync();
+    window.addEventListener(DESIGNER_CACHE_UPDATED_EVENT, handle);
+    return () => window.removeEventListener(DESIGNER_CACHE_UPDATED_EVENT, handle);
+  }, []);
+
+  useEffect(() => {
+    if (!authReady || !authenticated || !socket) {
+      return undefined;
+    }
+    socket.emit('designer:section:join', { sectionKey: 'players' });
+    return () => {
+      socket.emit('designer:section:leave', { sectionKey: 'players' });
+    };
+  }, [authReady, authenticated, socket]);
+
+  return catalog;
+}
+
+function SkinShopTab() {
+  const { user, setCharacterSkin } = useAuth();
+  const t = useT();
+  const skins = useCharacterSkinCatalog();
+  const money = user?.money ?? 0;
+  const currentSkinId = user?.characterSkinId ?? '';
+  const canAfford = money >= SKIN_CHANGE_PRICE;
+
+  return (
+    <VStack align="stretch" spacing={4}>
+      <HStack justify="space-between">
+        <Text color="gray.300">{t('skin.intro', { price: String(SKIN_CHANGE_PRICE) })}</Text>
+        <Badge colorScheme="yellow">${money}</Badge>
+      </HStack>
+      {skins.length === 0 ? (
+        <Text color="yellow.200">{t('skin.empty')}</Text>
+      ) : (
+        <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+          {skins.map((skin) => {
+            const previewSrc = getCharacterSkinPreview(skin.profile);
+            const isCurrent = skin.id === currentSkinId;
+            return (
+              <Box
+                key={skin.id}
+                p={3}
+                borderRadius="8px"
+                border={isCurrent ? '2px solid #38b2ac' : '1px solid rgba(255,255,255,0.14)'}
+                bg={isCurrent ? 'rgba(20, 184, 166, 0.16)' : 'whiteAlpha.100'}
+              >
+                <Box
+                  minH="120px"
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  borderRadius="8px"
+                  bg="rgba(255,255,255,0.04)"
+                  border="1px dashed rgba(255,255,255,0.12)"
+                >
+                  {previewSrc ? (
+                    <Image
+                      src={previewSrc}
+                      alt={skin.name}
+                      maxH="96px"
+                      objectFit="contain"
+                      style={{ imageRendering: 'pixelated' }}
+                    />
+                  ) : (
+                    <Text color="gray.400">{t('skin.noPreview')}</Text>
+                  )}
+                </Box>
+                <Box mt={2}>
+                  <Text fontWeight="800" noOfLines={1}>{skin.name}</Text>
+                  <HStack mt={1} justify="space-between" align="center" spacing={2}>
+                    <Text fontSize="xs" color="gray.400" noOfLines={1} flex="1" minW={0}>
+                      {skin.category}
+                    </Text>
+                    {isCurrent ? (
+                      <Badge colorScheme="teal" flexShrink={0}>{t('skin.wearing')}</Badge>
+                    ) : (
+                      <Button
+                        size="sm"
+                        colorScheme="teal"
+                        flexShrink={0}
+                        isDisabled={!canAfford}
+                        title={canAfford ? undefined : t('skin.notEnough', { price: String(SKIN_CHANGE_PRICE) })}
+                        onClick={() => setCharacterSkin({ characterSkinId: skin.id })}
+                      >
+                        {t('skin.change', { price: String(SKIN_CHANGE_PRICE) })}
+                      </Button>
+                    )}
+                  </HStack>
+                </Box>
+              </Box>
+            );
+          })}
+        </SimpleGrid>
+      )}
+      {!canAfford ? (
+        <Text color="gray.400" fontSize="sm">{t('skin.notEnough', { price: String(SKIN_CHANGE_PRICE) })}</Text>
+      ) : null}
+    </VStack>
+  );
+}
+
+function CardColorTab() {
+  const { user, updateProfile } = useAuth();
+  const t = useT();
+  const party = (user?.pokemonParty ?? []).slice(0, 6);
+  const currentColor = user?.trainerCardColor || TRAINER_CARD_COLORS[0].key;
+
+  return (
+    <VStack align="stretch" spacing={4}>
+      <Text color="gray.300">{t('card.intro')}</Text>
+      <SimpleGrid columns={{ base: 5, sm: 10 }} spacing={2}>
+        {TRAINER_CARD_COLORS.map((color) => (
+          <Box
+            key={color.key}
+            as="button"
+            type="button"
+            aria-label={color.label}
+            title={color.label}
+            height="34px"
+            borderRadius="8px"
+            bg={color.swatch}
+            border={currentColor === color.key ? '3px solid white' : '1px solid rgba(255,255,255,0.3)'}
+            onClick={() => updateProfile({ trainerCardColor: color.key })}
+          />
+        ))}
+      </SimpleGrid>
+      <Divider borderColor="whiteAlpha.300" />
+      <Text fontSize="xs" color="gray.400" textTransform="uppercase">{t('card.preview')}</Text>
+      <TrainerCardView
+        name={user?.name}
+        username={user?.username}
+        trainerId={user?.id}
+        description={user?.description}
+        characterSkinId={user?.characterSkinId}
+        badges={user?.badges ?? []}
+        team={toTrainerCardTeam(party)}
+        colorKey={currentColor}
+        medalsLabel={t('trainer.gymMedals')}
+        teamLabel={t('trainer.team')}
+        noDescription={t('trainer.noDescription')}
+      />
+    </VStack>
+  );
+}
+
+function AccountWindow() {
+  const t = useT();
+  const tabs: Array<{ key: string; label: string; content: ReactNode }> = [
+    { key: 'profile', label: t('account.tab.profile'), content: <ProfileTab /> },
+    { key: 'skin', label: t('account.tab.skin'), content: <SkinShopTab /> },
+    { key: 'card', label: t('account.tab.card'), content: <CardColorTab /> }
+  ];
+
+  return (
+    <Tabs colorScheme="teal" variant="soft-rounded" isLazy>
+      <TabList flexWrap="wrap" gap={2}>
+        {tabs.map((tab) => <Tab key={tab.key}>{tab.label}</Tab>)}
+      </TabList>
+      <TabPanels>
+        {tabs.map((tab) => <TabPanel key={tab.key} px={0}>{tab.content}</TabPanel>)}
+      </TabPanels>
+    </Tabs>
   );
 }
 
@@ -851,27 +1043,41 @@ function BagWindow({ onOpenWorldMap }: { onOpenWorldMap: () => void }) {
   );
 }
 
+/** Maps party Venomon to the shared Trainer Card team-icon shape. */
+function toTrainerCardTeam(party: PokemonSummary[]): TrainerCardTeamMember[] {
+  return party.map((pokemon) => ({
+    name: pokemon.name,
+    nickname: pokemon.nickname,
+    sourcePokemonId: pokemon.sourcePokemonId,
+    id: pokemon.id
+  }));
+}
+
 function TrainerCardWindow({ openBattleHistory }: { openBattleHistory: () => void }) {
   const { user } = useAuth();
   const t = useT();
+  const party = (user?.pokemonParty ?? []).slice(0, 6);
 
   return (
-    <Box bg="linear-gradient(135deg, #0f766e 0%, #1f2937 100%)" p={5} borderRadius="8px">
-      <HStack spacing={4} align="center">
-        <Avatar name={user?.name} src={user?.profileImage} size="xl" />
-        <Box>
-          <Text fontSize="xs" color="teal.100">TRAINER ID #{user?.id}</Text>
-          <Text fontSize="2xl" fontWeight="800">{user?.name}</Text>
-          <Text color="teal.100">@{user?.username}</Text>
-        </Box>
-      </HStack>
-      <Divider my={4} borderColor="whiteAlpha.400" />
-      <Text fontWeight="800" color="yellow.100">${user?.money ?? 0}</Text>
-      <Text minH="24px">{user?.description || t('trainer.noDescription')}</Text>
-      <Button mt={4} width="100%" colorScheme="teal" onClick={openBattleHistory}>
-        {t('trainer.battleHistory')}
-      </Button>
-    </Box>
+    <TrainerCardView
+      name={user?.name}
+      username={user?.username}
+      trainerId={user?.id}
+      money={user?.money ?? 0}
+      description={user?.description}
+      characterSkinId={user?.characterSkinId}
+      badges={user?.badges ?? []}
+      team={toTrainerCardTeam(party)}
+      colorKey={user?.trainerCardColor}
+      medalsLabel={t('trainer.gymMedals')}
+      teamLabel={t('trainer.team')}
+      noDescription={t('trainer.noDescription')}
+      footer={
+        <Button width="100%" colorScheme="teal" onClick={openBattleHistory}>
+          {t('trainer.battleHistory')}
+        </Button>
+      }
+    />
   );
 }
 

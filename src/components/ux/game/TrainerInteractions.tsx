@@ -1,15 +1,29 @@
 import {
-  Avatar,
   Box,
   Button,
   HStack,
+  Spinner,
   Text,
   VStack
 } from "@chakra-ui/react";
-import { useContext } from "react";
-import type { CSSProperties, SyntheticEvent } from "react";
+import { useContext, useEffect, useState } from "react";
+import type { CSSProperties, ReactNode, SyntheticEvent } from "react";
 import { AppContext } from "../../../context/appContext";
 import { useGameSettings } from "../../../settings/gameSettings";
+import { useT } from "../../../i18n";
+import { TrainerCardView, type TrainerCardTeamMember } from "./TrainerCard";
+
+/** The public trainer card the server returns for another player. */
+type FetchedTrainerCard = {
+  playerId: string;
+  name: string;
+  username: string;
+  description: string;
+  characterSkinId: string;
+  trainerCardColor: string;
+  badges: number[];
+  party: TrainerCardTeamMember[];
+};
 
 function stopUxEvent(event: SyntheticEvent) {
   event.stopPropagation();
@@ -18,6 +32,33 @@ function stopUxEvent(event: SyntheticEvent) {
 export function TrainerInteractionCard() {
   const { socket, selectedTrainer, setSelectedTrainer } = useContext(AppContext);
   const [gameSettings] = useGameSettings();
+  const t = useT();
+  const [card, setCard] = useState<FetchedTrainerCard | null>(null);
+
+  const targetPlayerId: string | undefined = selectedTrainer?.playerId;
+
+  // Fetch the clicked player's public trainer card (medals, skin, team). The
+  // reply arrives on the same game socket; ignore stale replies for a player
+  // we've since stopped inspecting.
+  useEffect(() => {
+    if (!socket || !targetPlayerId) {
+      setCard(null);
+      return undefined;
+    }
+
+    setCard(null);
+    const handleCard = (data: FetchedTrainerCard) => {
+      if (data.playerId === targetPlayerId) {
+        setCard(data);
+      }
+    };
+    socket.on("trainer:card-data", handleCard);
+    socket.emit("trainer:card", { targetPlayerId });
+
+    return () => {
+      socket.off("trainer:card-data", handleCard);
+    };
+  }, [socket, targetPlayerId]);
 
   if (!selectedTrainer) {
     return null;
@@ -32,8 +73,10 @@ export function TrainerInteractionCard() {
       position="fixed"
       right={{ base: 3, md: 6 }}
       top={{ base: 20, md: 24 }}
-      width={{ base: "calc(100vw - 24px)", sm: "340px" }}
+      width={{ base: "calc(100vw - 24px)", sm: "360px" }}
       maxW="calc(100vw - 24px)"
+      maxH="calc(100dvh - 96px)"
+      overflowY="auto"
       bg="rgba(17, 24, 39, 0.97)"
       border="1px solid rgba(255,255,255,0.18)"
       borderRadius="8px"
@@ -46,44 +89,57 @@ export function TrainerInteractionCard() {
       onMouseDown={stopUxEvent}
       onPointerDown={stopUxEvent}
     >
-      <HStack align="center" spacing={3}>
-        <Avatar name={displayName} src={selectedTrainer.profileImage} />
-        <Box minW={0}>
-          <Text fontSize="lg" fontWeight="800" noOfLines={1}>{displayName}</Text>
-          <Text color="gray.300" fontSize="sm" noOfLines={2}>
-            {selectedTrainer.description || "Ready for a challenge."}
-          </Text>
-        </Box>
-      </HStack>
+      <TrainerCardView
+        name={card?.name || selectedTrainer.name}
+        username={card?.username || selectedTrainer.username}
+        description={card?.description ?? selectedTrainer.description}
+        characterSkinId={card?.characterSkinId ?? selectedTrainer.characterSkinId}
+        badges={card?.badges ?? []}
+        team={card?.party ?? []}
+        colorKey={card?.trainerCardColor}
+        medalsLabel={t('trainer.gymMedals')}
+        teamLabel={t('trainer.team')}
+        noDescription={t('trainer.readyForChallenge')}
+      />
+      {!card ? (
+        <HStackCentered>
+          <Spinner size="sm" />
+          <Text color="gray.300" fontSize="sm">{t('trainer.loadingCard')}</Text>
+        </HStackCentered>
+      ) : null}
       <VStack mt={4} spacing={3} align="stretch">
         <Button
           colorScheme="red"
           onClick={() => {
-            socket.emit("battle:challenge-player", {
-              targetPlayerId: selectedTrainer.playerId
-            });
+            socket.emit("battle:challenge-player", { targetPlayerId: selectedTrainer.playerId });
             setSelectedTrainer(null);
           }}
         >
-          Challenge to Battle
+          {t('trainer.challenge')}
         </Button>
         <Button
           variant="outline"
           color="white"
           borderColor="whiteAlpha.500"
           onClick={() => {
-            socket.emit("battle:trade-request", {
-              targetPlayerId: selectedTrainer.playerId
-            });
+            socket.emit("battle:trade-request", { targetPlayerId: selectedTrainer.playerId });
             setSelectedTrainer(null);
           }}
         >
-          Trade Request
+          {t('trainer.trade')}
         </Button>
         <Button variant="ghost" color="gray.200" onClick={() => setSelectedTrainer(null)}>
-          Close
+          {t('trainer.close')}
         </Button>
       </VStack>
+    </Box>
+  );
+}
+
+function HStackCentered({ children }: { children: ReactNode }) {
+  return (
+    <Box mt={3} display="flex" alignItems="center" justifyContent="center" gap={2}>
+      {children}
     </Box>
   );
 }

@@ -229,7 +229,27 @@ const STRINGS: Record<string, Entry> = {
   // --- Trainer card / battle history ---
   'trainer.battleHistory': { en: 'Battle History', es: 'Historial de Batallas' },
   'trainer.noDescription': { en: 'No description set.', es: 'Sin descripción.' },
+  'trainer.gymMedals': { en: 'Gym Medals', es: 'Medallas de Gimnasio' },
+  'trainer.team': { en: 'Team', es: 'Equipo' },
+  'trainer.readyForChallenge': { en: 'Ready for a challenge.', es: 'Listo para un desafío.' },
+  'trainer.loadingCard': { en: 'Loading trainer card…', es: 'Cargando tarjeta…' },
+  'trainer.challenge': { en: 'Challenge to Battle', es: 'Retar a Combate' },
+  'trainer.trade': { en: 'Trade Request', es: 'Solicitar Intercambio' },
+  'trainer.close': { en: 'Close', es: 'Cerrar' },
   'history.empty': { en: 'No battles recorded yet.', es: 'Aún no hay batallas registradas.' },
+
+  // --- Account tabs / skin shop / trainer card color ---
+  'account.tab.profile': { en: 'Profile', es: 'Perfil' },
+  'account.tab.skin': { en: 'Skin', es: 'Apariencia' },
+  'account.tab.card': { en: 'Card', es: 'Tarjeta' },
+  'skin.intro': { en: 'Change your trainer skin for ${price} each.', es: 'Cambia tu apariencia por ${price} cada vez.' },
+  'skin.empty': { en: 'No skins are available yet.', es: 'Aún no hay apariencias disponibles.' },
+  'skin.noPreview': { en: 'No preview', es: 'Sin vista previa' },
+  'skin.wearing': { en: 'Wearing', es: 'En uso' },
+  'skin.change': { en: 'Change – ${price}', es: 'Cambiar – ${price}' },
+  'skin.notEnough': { en: 'You need ${price} to change your skin.', es: 'Necesitas ${price} para cambiar de apariencia.' },
+  'card.intro': { en: 'Pick a background color for your Trainer Card.', es: 'Elige un color de fondo para tu Tarjeta de Entrenador.' },
+  'card.preview': { en: 'Preview', es: 'Vista previa' },
 };
 
 export function translate(key: string, language: Language, params?: Record<string, string>): string {

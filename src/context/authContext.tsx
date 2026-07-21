@@ -27,6 +27,10 @@ export type AuthUser = {
   trainerGender: string
   characterSkinId: string
   money: number
+  /** 0-based gym badge indices earned (see the gym Trainer Card). */
+  badges: number[]
+  /** Palette key chosen for the Trainer Card background. */
+  trainerCardColor: string
   inventory: InventoryItem[]
   pokemonParty: PokemonSummary[]
   pokemonStorage: PokemonStorageBox[]
@@ -167,6 +171,7 @@ type UpdateProfilePayload = {
   profileImage?: string
   description?: string
   characterSkinId?: string
+  trainerCardColor?: string
 }
 
 type ChooseStarterPayload = {
@@ -192,6 +197,7 @@ type AuthContextValue = {
   verifyEmail: (payload: VerifyEmailPayload) => void
   changePassword: (payload: ChangePasswordPayload) => void
   updateProfile: (payload: UpdateProfilePayload) => void
+  setCharacterSkin: (payload: { characterSkinId: string }) => void
   chooseStarter: (payload: ChooseStarterPayload) => void
   namePokemon: (payload: { pokemonId: string; nickname: string }) => void
   useInventoryItem: (payload: { itemId: string; targetPokemonId?: string; targetMoveName?: string }) => void
@@ -470,6 +476,7 @@ export const AuthProvider = (
     resetPassword: (payload) => emitAuthEvent('auth:reset-password', payload),
     changePassword: (payload) => emitAuthEvent('auth:change-password', payload),
     updateProfile: (payload) => emitAuthEvent('auth:update-profile', payload),
+    setCharacterSkin: (payload) => emitAuthEvent('player:set-skin', payload),
     chooseStarter: (payload) => emitAuthEvent('auth:choose-starter', payload),
     namePokemon: (payload) => emitAuthEvent('pokemon:name', payload),
     useInventoryItem: (payload) => emitAuthEvent('inventory:use-item', payload),

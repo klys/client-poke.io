@@ -109,5 +109,6 @@ export type TrainerCardPlayer = {
   name?: string;
   profileImage?: string;
   description?: string;
+  characterSkinId?: string;
   currentMapId?: string;
 };

@@ -372,6 +372,7 @@ const Player = (props: any) => {
           name: playerInfo.name,
           profileImage: playerInfo.profileImage,
           description: playerInfo.description,
+          characterSkinId: playerInfo.characterSkinId,
           currentMapId: pos.currentMapId
         });
       }}
