@@ -902,7 +902,9 @@ function ItemTargetModal({
   onCancel: () => void;
 }) {
   const [selectedPokemonId, setSelectedPokemonId] = useState<string | null>(null);
-  const selectedPokemon = party.find((pokemon) => pokemon.id === selectedPokemonId) ?? null;
+  // Eggs can't be healed, fed, or have items used on them — hide them here.
+  const targetableParty = party.filter((pokemon) => !pokemon.isEgg);
+  const selectedPokemon = targetableParty.find((pokemon) => pokemon.id === selectedPokemonId) ?? null;
   const needsMove = usage.target === 'pokemon-move';
 
   const iconFor = (pokemon: PokemonSummary) =>
@@ -927,7 +929,7 @@ function ItemTargetModal({
         </ModalHeader>
         <ModalCloseButton />
         <ModalBody>
-          {party.length === 0 ? (
+          {targetableParty.length === 0 ? (
             <Text color="gray.300">You have no Venomon in your party.</Text>
           ) : needsMove && selectedPokemon ? (
             <VStack align="stretch" spacing={2}>
@@ -955,7 +957,7 @@ function ItemTargetModal({
             </VStack>
           ) : (
             <VStack align="stretch" spacing={2}>
-              {party.map((pokemon) => (
+              {targetableParty.map((pokemon) => (
                 <ItemTargetCard
                   key={pokemon.id}
                   pokemon={pokemon}
@@ -1151,7 +1153,8 @@ function toTrainerCardTeam(party: PokemonSummary[]): TrainerCardTeamMember[] {
     name: pokemon.name,
     nickname: pokemon.nickname,
     sourcePokemonId: pokemon.sourcePokemonId,
-    id: pokemon.id
+    id: pokemon.id,
+    isEgg: pokemon.isEgg
   }));
 }
 
@@ -1833,6 +1836,40 @@ function PokemonCard({
 
     namePokemon({ pokemonId: pokemon.id, nickname });
   };
+
+  // An egg hides its species entirely: no stats, no moves, no rename — just a
+  // "Huevo" and a flavour hint about how close it is to hatching. It hatches
+  // automatically as the player walks (server-driven).
+  if (pokemon.isEgg) {
+    const remaining = pokemon.eggStepsToHatch ?? Number.POSITIVE_INFINITY;
+    const hatchHint =
+      remaining <= 60
+        ? '¡Hace ruidos! Parece que va a eclosionar pronto...'
+        : remaining <= 200
+          ? 'Se mueve de vez en cuando. Sigue caminando con él.'
+          : 'Parece que aún tardará en eclosionar. ¡Camina mucho con él!';
+    return (
+      <Box bg="whiteAlpha.100" border="1px solid rgba(255,255,255,0.12)" p={3} borderRadius="8px">
+        <HStack justify="space-between" align="start" spacing={3}>
+          <HStack spacing={3} minW={0} align="center">
+            <Image
+              boxSize="40px"
+              objectFit="contain"
+              alt="Huevo"
+              src={resolveServerAssetUrl('/migration_exports/pictures/summaryEgg.PNG')}
+              flexShrink={0}
+            />
+            <Box minW={0}>
+              <Text fontWeight="800" noOfLines={1}>Huevo</Text>
+              <Text color="gray.400" fontSize="xs">¿? / Especie desconocida</Text>
+            </Box>
+          </HStack>
+          {partyIndex === 0 ? <Badge colorScheme="orange">{t('party.lead')}</Badge> : null}
+        </HStack>
+        <Text mt={3} fontSize="sm" color="gray.300" fontStyle="italic">{hatchHint}</Text>
+      </Box>
+    );
+  }
 
   return (
     <Box bg="whiteAlpha.100" border="1px solid rgba(255,255,255,0.12)" p={3} borderRadius="8px">

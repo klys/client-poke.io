@@ -27,7 +27,12 @@ export type TrainerCardTeamMember = {
   nickname?: string;
   sourcePokemonId?: string;
   id?: string;
+  /** Unhatched egg: shown as a generic "Huevo" with no species revealed. */
+  isEgg?: boolean;
 };
+
+/** Root-relative egg image on the asset server (see summaryEgg picture). */
+const EGG_ICON_SRC = '/migration_exports/pictures/summaryEgg.PNG';
 
 // -- Trainer Card background palette ---------------------------------------
 export type TrainerCardColorKey =
@@ -138,10 +143,12 @@ export function TeamIconsStrip({
   return (
     <HStack spacing={2} flexWrap="wrap">
       {team.map((member, index) => {
-        const iconSrc = resolveServerAssetUrl(
-          iconMap.get(member.sourcePokemonId ?? '') ?? iconMap.get(member.id ?? '') ?? ''
-        );
-        const label = member.nickname || member.name;
+        const iconSrc = member.isEgg
+          ? resolveServerAssetUrl(EGG_ICON_SRC)
+          : resolveServerAssetUrl(
+              iconMap.get(member.sourcePokemonId ?? '') ?? iconMap.get(member.id ?? '') ?? ''
+            );
+        const label = member.isEgg ? 'Huevo' : (member.nickname || member.name);
         return (
           <Tooltip key={`${member.id ?? member.sourcePokemonId ?? member.name}-${index}`} label={label} hasArrow>
             <Box

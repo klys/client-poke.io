@@ -87,6 +87,11 @@ export type PokemonSummary = {
   /** Level-up moves offered in battle but never answered (the prompt was
    * missed, e.g. the battle UI closed) — learnable later from the stats window. */
   pendingMoveLearns?: string[]
+  /** True while this party member is an unhatched egg ("Huevo"): it is hidden
+   * as an egg in the UI and cannot battle or be targeted by items until it
+   * hatches after the player walks `eggStepsToHatch` more tiles. */
+  isEgg?: boolean
+  eggStepsToHatch?: number
   statBonuses?: {
     hp: number
     attack: number
