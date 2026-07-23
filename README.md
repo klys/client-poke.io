@@ -216,4 +216,3 @@ npm install
 - Document the backend event contract in a dedicated spec
 - Add screenshots or a short gameplay preview
 
-# test
