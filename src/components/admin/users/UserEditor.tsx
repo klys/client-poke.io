@@ -23,21 +23,26 @@ import {
   Tabs,
   Text,
   Textarea,
+  Tooltip,
   useDisclosure,
   useToast
 } from '@chakra-ui/react';
 import { useEffect, useRef, useState } from 'react';
 import type {
   AdminCatalogPayload,
+  AdminEventState,
   AdminInventoryItem,
   AdminPokemonSummary,
   AdminUserDetails,
-  AdminUserRole
+  AdminUserRole,
+  AdminUserStorage
 } from '../types';
+import EventStateEditor from './EventStateEditor';
 import InventoryEditor from './InventoryEditor';
 import MapLocationEditor from './MapLocationEditor';
 import PokemonEditor from './PokemonEditor';
 import SecurityPanel from './SecurityPanel';
+import StorageViewer from './StorageViewer';
 
 // Partial on purpose: each tab applies only its own fields and the server
 // updates just what is present in the payload.
@@ -62,11 +67,21 @@ type UserEditorProps = {
   isSettingPassword: boolean
   isSendingRecovery: boolean
   isDeleting: boolean
+  isDisconnecting: boolean
+  eventState: AdminEventState | null
+  eventStateLoading: boolean
+  isSavingEventState: boolean
+  storage: AdminUserStorage | null
+  storageLoading: boolean
   onSave: (updates: UserUpdatePayload) => void
   onResetProgress: () => void
   onSetPassword: (newPassword: string) => void
   onSendRecovery: () => void
   onDeleteUser: () => void
+  onDisconnect: () => void
+  onLoadEventState: () => void
+  onSaveEventState: (next: { switches: Record<string, boolean>; variables: Record<string, number> }) => void
+  onLoadStorage: () => void
 }
 
 type EditorState = {
@@ -133,18 +148,43 @@ export default function UserEditor(props: UserEditorProps) {
     isSettingPassword,
     isSendingRecovery,
     isDeleting,
+    isDisconnecting,
+    eventState,
+    eventStateLoading,
+    isSavingEventState,
+    storage,
+    storageLoading,
     onSave,
     onResetProgress,
     onSetPassword,
     onSendRecovery,
-    onDeleteUser
+    onDeleteUser,
+    onDisconnect,
+    onLoadEventState,
+    onSaveEventState,
+    onLoadStorage
   } = props;
   const toast = useToast();
   const [editor, setEditor] = useState<EditorState>(() => buildEditorState(user));
   const [dirtyTabs, setDirtyTabs] = useState<Set<EditableTab>>(() => new Set());
   const [savingTab, setSavingTab] = useState<EditableTab | null>(null);
+  const [variablesDirty, setVariablesDirty] = useState(false);
   const dirtyTabsRef = useRef(dirtyTabs);
   dirtyTabsRef.current = dirtyTabs;
+
+  // Lazy per-tab data: request event state / storage the first time their
+  // tabs are opened (index matches the TabList order below).
+  const requestedRef = useRef<{ variables: boolean; storage: boolean }>({ variables: false, storage: false });
+  const handleTabChange = (index: number) => {
+    if (index === 4 && !requestedRef.current.variables) {
+      requestedRef.current.variables = true;
+      onLoadEventState();
+    }
+    if (index === 5 && !requestedRef.current.storage) {
+      requestedRef.current.storage = true;
+      onLoadStorage();
+    }
+  };
 
   // Re-seed whenever a different user is opened or the server returns a fresh
   // copy after an apply — but keep the local edits of tabs that still have
@@ -278,15 +318,38 @@ export default function UserEditor(props: UserEditorProps) {
           </HStack>
           <Text color="#657367">{user.email}</Text>
         </Box>
-        <Badge colorScheme="purple">User #{user.id}</Badge>
+        <HStack spacing={2}>
+          <Tooltip
+            label={online ? 'Drop every live session of this trainer' : 'This trainer is not connected'}
+            openDelay={300}
+          >
+            <Button
+              size="sm"
+              colorScheme="orange"
+              variant="outline"
+              isDisabled={!online}
+              isLoading={isDisconnecting}
+              onClick={() => {
+                if (window.confirm(`Disconnect ${user.username} from the game? They can log back in at any time.`)) {
+                  onDisconnect();
+                }
+              }}
+            >
+              Disconnect
+            </Button>
+          </Tooltip>
+          <Badge colorScheme="purple">User #{user.id}</Badge>
+        </HStack>
       </HStack>
 
-      <Tabs colorScheme="green" variant="soft-rounded" size="sm" isLazy>
+      <Tabs colorScheme="green" variant="soft-rounded" size="sm" isLazy onChange={handleTabChange}>
         <TabList flexWrap="wrap" gap={1}>
           <Tab>Profile{dirtyTabs.has('profile') ? <DirtyDot /> : null}</Tab>
           <Tab>Location{dirtyTabs.has('location') ? <DirtyDot /> : null}</Tab>
           <Tab>Inventory{dirtyTabs.has('inventory') ? <DirtyDot /> : null}</Tab>
           <Tab>Party{dirtyTabs.has('party') ? <DirtyDot /> : null}</Tab>
+          <Tab>Variables{variablesDirty ? <DirtyDot /> : null}</Tab>
+          <Tab>PC Box</Tab>
           <Tab>Security</Tab>
           <Tab color="#a13636">Danger Zone</Tab>
         </TabList>
@@ -378,6 +441,24 @@ export default function UserEditor(props: UserEditorProps) {
               />
               {applyButton('party', applyParty)}
             </Stack>
+          </TabPanel>
+
+          <TabPanel px={0}>
+            <EventStateEditor
+              state={eventState}
+              loading={eventStateLoading}
+              onDirty={() => setVariablesDirty(true)}
+              onApply={(next) => {
+                setVariablesDirty(false);
+                onSaveEventState(next);
+              }}
+              isSaving={isSavingEventState}
+              applyDisabled={false}
+            />
+          </TabPanel>
+
+          <TabPanel px={0}>
+            <StorageViewer storage={storage} loading={storageLoading} />
           </TabPanel>
 
           <TabPanel px={0}>

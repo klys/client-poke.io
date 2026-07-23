@@ -144,6 +144,25 @@ export function decodeCollisionCells(profile: PlayableMapTileMapProfile): Uint8A
   return cells;
 }
 
+/**
+ * Per-cell RMXP terrain tags (mirrors decodeCollisionCells). Used client-side
+ * to tell whether a tapped tile is fishable water. Returns null when the map
+ * has no baked terrain-tag grid.
+ */
+export function decodeTerrainTagCells(profile: PlayableMapTileMapProfile): Uint8Array | null {
+  if (!profile.terrainTags) {
+    return null;
+  }
+
+  const cells = decodeRleBytes(profile.terrainTags);
+
+  if (!cells || cells.length !== profile.width * profile.height) {
+    return null;
+  }
+
+  return cells;
+}
+
 export function resizeTileLayers(
   layers: Uint16Array[],
   oldWidth: number,

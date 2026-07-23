@@ -11,7 +11,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import type {
   AdminCatalogPayload,
+  AdminEventState,
   AdminUserDetails,
+  AdminUserStorage,
   AdminUserSummary
 } from '../types';
 import UserEditor, { type UserUpdatePayload } from './UserEditor';
@@ -52,6 +54,13 @@ export default function UsersSection({ socket }: UsersSectionProps) {
   const [isSettingPassword, setIsSettingPassword] = useState(false);
   const [isSendingRecovery, setIsSendingRecovery] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+
+  const [eventState, setEventState] = useState<AdminEventState | null>(null);
+  const [eventStateLoading, setEventStateLoading] = useState(false);
+  const [isSavingEventState, setIsSavingEventState] = useState(false);
+  const [storage, setStorage] = useState<AdminUserStorage | null>(null);
+  const [storageLoading, setStorageLoading] = useState(false);
 
   const currentPageRef = useRef(1);
   const currentSearchRef = useRef('');
@@ -114,19 +123,39 @@ export default function UsersSection({ socket }: UsersSectionProps) {
       setOnlineUserIds(new Set(ids));
     };
 
+    const handleEventState = (payload: AdminEventState & { userId: number }) => {
+      setEventState({
+        switches: payload.switches ?? {},
+        variables: payload.variables ?? {},
+        selfSwitches: payload.selfSwitches ?? {}
+      });
+      setEventStateLoading(false);
+      setIsSavingEventState(false);
+    };
+
+    const handleStorage = (payload: AdminUserStorage & { userId: number }) => {
+      setStorage({ boxes: payload.boxes ?? [], profile: payload.profile });
+      setStorageLoading(false);
+    };
+
     const handleAdminError = () => {
       // AdminPage surfaces the toast; here we only clear busy state.
       setIsSaving(false);
       setIsSettingPassword(false);
       setIsSendingRecovery(false);
       setIsDeleting(false);
+      setIsDisconnecting(false);
       setDetailLoading(false);
+      setEventStateLoading(false);
+      setIsSavingEventState(false);
+      setStorageLoading(false);
     };
 
     const handleAuthInfo = () => {
       // Success feedback is toasted globally; just release the action buttons.
       setIsSettingPassword(false);
       setIsSendingRecovery(false);
+      setIsDisconnecting(false);
     };
 
     // Requests in flight when the socket drops are lost; without this the
@@ -142,12 +171,18 @@ export default function UsersSection({ socket }: UsersSectionProps) {
       setIsSettingPassword(false);
       setIsSendingRecovery(false);
       setIsDeleting(false);
+      setIsDisconnecting(false);
       setDetailLoading(false);
+      setEventStateLoading(false);
+      setIsSavingEventState(false);
+      setStorageLoading(false);
     };
 
     socket.on('admin:users:list', handleUsers);
     socket.on('admin:user:details', handleUserDetails);
     socket.on('admin:user:deleted', handleUserDeleted);
+    socket.on('admin:user:event-state', handleEventState);
+    socket.on('admin:user:storage', handleStorage);
     socket.on('admin:catalog', handleCatalog);
     socket.on('admin:presence:state', handlePresence);
     socket.on('admin:error', handleAdminError);
@@ -163,6 +198,8 @@ export default function UsersSection({ socket }: UsersSectionProps) {
       socket.off('admin:users:list', handleUsers);
       socket.off('admin:user:details', handleUserDetails);
       socket.off('admin:user:deleted', handleUserDeleted);
+      socket.off('admin:user:event-state', handleEventState);
+      socket.off('admin:user:storage', handleStorage);
       socket.off('admin:catalog', handleCatalog);
       socket.off('admin:presence:state', handlePresence);
       socket.off('admin:error', handleAdminError);
@@ -199,6 +236,9 @@ export default function UsersSection({ socket }: UsersSectionProps) {
       return;
     }
     setDetailLoading(true);
+    // Per-user side panels reload lazily for the newly opened user.
+    setEventState(null);
+    setStorage(null);
     socket.emit('admin:user:get', { userId });
   }, [socket]);
 
@@ -245,6 +285,38 @@ export default function UsersSection({ socket }: UsersSectionProps) {
     socket.emit('admin:user:delete', { userId: selectedUser.id });
   }, [socket, selectedUser]);
 
+  const disconnectUser = useCallback(() => {
+    if (!socket || !selectedUser) {
+      return;
+    }
+    setIsDisconnecting(true);
+    socket.emit('admin:user:disconnect', { userId: selectedUser.id });
+  }, [socket, selectedUser]);
+
+  const loadEventState = useCallback(() => {
+    if (!socket || !selectedUser) {
+      return;
+    }
+    setEventStateLoading(true);
+    socket.emit('admin:user:event-state:get', { userId: selectedUser.id });
+  }, [socket, selectedUser]);
+
+  const saveEventState = useCallback((next: { switches: Record<string, boolean>; variables: Record<string, number> }) => {
+    if (!socket || !selectedUser) {
+      return;
+    }
+    setIsSavingEventState(true);
+    socket.emit('admin:user:event-state:update', { userId: selectedUser.id, ...next });
+  }, [socket, selectedUser]);
+
+  const loadStorage = useCallback(() => {
+    if (!socket || !selectedUser) {
+      return;
+    }
+    setStorageLoading(true);
+    socket.emit('admin:user:storage:get', { userId: selectedUser.id });
+  }, [socket, selectedUser]);
+
   const closeEditor = useCallback(() => {
     setSelectedUser(null);
     setDetailLoading(false);
@@ -276,11 +348,21 @@ export default function UsersSection({ socket }: UsersSectionProps) {
         isSettingPassword={isSettingPassword}
         isSendingRecovery={isSendingRecovery}
         isDeleting={isDeleting}
+        isDisconnecting={isDisconnecting}
+        eventState={eventState}
+        eventStateLoading={eventStateLoading}
+        isSavingEventState={isSavingEventState}
+        storage={storage}
+        storageLoading={storageLoading}
         onSave={saveUser}
         onResetProgress={resetProgress}
         onSetPassword={setPassword}
         onSendRecovery={sendRecovery}
         onDeleteUser={deleteUser}
+        onDisconnect={disconnectUser}
+        onLoadEventState={loadEventState}
+        onSaveEventState={saveEventState}
+        onLoadStorage={loadStorage}
       />
     );
   }, [
@@ -292,11 +374,21 @@ export default function UsersSection({ socket }: UsersSectionProps) {
     isSettingPassword,
     isSendingRecovery,
     isDeleting,
+    isDisconnecting,
+    eventState,
+    eventStateLoading,
+    isSavingEventState,
+    storage,
+    storageLoading,
     saveUser,
     resetProgress,
     setPassword,
     sendRecovery,
-    deleteUser
+    deleteUser,
+    disconnectUser,
+    loadEventState,
+    saveEventState,
+    loadStorage
   ]);
 
   return (

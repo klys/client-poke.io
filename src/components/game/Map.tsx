@@ -7,6 +7,7 @@ import MapNeighbors from "./MapNeighbors";
 import TileMapSurface, { tileMapChunkKey } from "./TileMapSurface";
 import { setMapLoadWaiting, startMapLoad } from "./mapLoadProgress";
 import NpcInteractionOverlay from "../ux/game/NpcInteractions";
+import FishingController from "./FishingController";
 import NpcSprite from "./NpcSprite";
 import { assetUrl, resolveServerAssetUrl } from "../tilemap/serverAssets";
 import {
@@ -486,6 +487,13 @@ const Map = ({children}:{children:any}) => {
         <NpcInteractionOverlay
             npcPlacement={activeNpcInteraction}
             onClose={() => setActiveNpcInteraction(null)}
+        />
+        <FishingController
+            socket={socket}
+            player={currentPlayer}
+            mapId={activeMapId}
+            cellSize={activeMapConfig?.cellSize ?? 32}
+            tileMap={activeMapEditorData?.tileMap ?? null}
         />
     </>)
 }

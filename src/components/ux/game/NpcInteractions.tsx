@@ -285,6 +285,55 @@ export function MenuChoiceButton({
   );
 }
 
+function QuantityStepper({
+  value,
+  max,
+  onChange,
+  isDisabled,
+}: {
+  value: number;
+  max: number;
+  onChange: (value: number) => void;
+  isDisabled?: boolean;
+}) {
+  return (
+    <HStack spacing={1}>
+      <Button
+        size="sm"
+        variant="outline"
+        borderColor="#5d5a7b"
+        color="#4a4964"
+        aria-label="Less"
+        isDisabled={isDisabled || value <= 1}
+        onClick={() => onChange(Math.max(1, value - 1))}
+      >
+        −
+      </Button>
+      <Text
+        fontFamily="mono"
+        fontWeight="800"
+        fontSize={{ base: "md", md: "lg" }}
+        color="#4a4964"
+        minW="3em"
+        textAlign="center"
+      >
+        x{value}
+      </Text>
+      <Button
+        size="sm"
+        variant="outline"
+        borderColor="#5d5a7b"
+        color="#4a4964"
+        aria-label="More"
+        isDisabled={isDisabled || value >= max}
+        onClick={() => onChange(Math.min(max, value + 1))}
+      >
+        +
+      </Button>
+    </HStack>
+  );
+}
+
 function StoreSelectionList({
   title,
   rows,
@@ -355,6 +404,8 @@ export function NpcInteractionOverlay({
   const [mode, setMode] = useState<InteractionMode>("healer");
   const [selectedStoreItemId, setSelectedStoreItemId] = useState<string | null>(null);
   const [selectedSellItemId, setSelectedSellItemId] = useState<string | null>(null);
+  const [buyQuantity, setBuyQuantity] = useState(1);
+  const [sellQuantity, setSellQuantity] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
 
@@ -438,6 +489,43 @@ export function NpcInteractionOverlay({
     [selectedSellItemId, sellableItems]
   );
 
+  // Purchases are capped by the player's wallet (at least 1 so the server can
+  // answer a too-expensive attempt with its own message); sales by how many of
+  // the item the player owns.
+  const maxBuyQuantity = useMemo(() => {
+    if (!selectedStoreItem) {
+      return 1;
+    }
+
+    const affordable =
+      selectedStoreItem.price > 0
+        ? Math.floor((user?.money ?? 0) / selectedStoreItem.price)
+        : 99;
+
+    return Math.max(1, Math.min(99, affordable));
+  }, [selectedStoreItem, user?.money]);
+  const maxSellQuantity = selectedSellItem
+    ? Math.max(1, selectedSellItem.inventoryItem.quantity)
+    : 1;
+
+  // Restart from x1 when the highlighted item changes; keep the current count
+  // clamped when the caps shrink (e.g. money spent, items sold).
+  useEffect(() => {
+    setBuyQuantity(1);
+  }, [selectedStoreItemId]);
+
+  useEffect(() => {
+    setSellQuantity(1);
+  }, [selectedSellItemId]);
+
+  useEffect(() => {
+    setBuyQuantity((quantity) => Math.min(quantity, maxBuyQuantity));
+  }, [maxBuyQuantity]);
+
+  useEffect(() => {
+    setSellQuantity((quantity) => Math.min(quantity, maxSellQuantity));
+  }, [maxSellQuantity]);
+
   useEffect(() => {
     if (!npcPlacement) {
       return;
@@ -446,6 +534,8 @@ export function NpcInteractionOverlay({
     setMode(getInitialMode(effectiveNpcType));
     setSelectedStoreItemId(storeItems[0]?.itemId ?? null);
     setSelectedSellItemId(sellableItems[0]?.inventoryItem.id ?? null);
+    setBuyQuantity(1);
+    setSellQuantity(1);
     setIsSubmitting(false);
     setPageIndex(0);
   }, [effectiveNpcType, npcPlacement, sellableItems, storeItems]);
@@ -526,7 +616,7 @@ export function NpcInteractionOverlay({
           buyFromNpcStore({
             npcPlacementId: npcPlacement.id,
             itemId: selectedStoreItem.itemId,
-            quantity: 1,
+            quantity: buyQuantity,
           });
         }
         return;
@@ -537,7 +627,7 @@ export function NpcInteractionOverlay({
         sellToNpcStore({
           npcPlacementId: npcPlacement.id,
           itemId: selectedSellItem.inventoryItem.id,
-          quantity: 1,
+          quantity: sellQuantity,
         });
       }
       return;
@@ -547,6 +637,7 @@ export function NpcInteractionOverlay({
     onClose();
   }, [
     buyFromNpcStore,
+    buyQuantity,
     effectiveNpcType,
     gameSocket,
     healNpcParty,
@@ -559,6 +650,7 @@ export function NpcInteractionOverlay({
     pageIndex,
     selectedSellItem,
     selectedStoreItem,
+    sellQuantity,
     sellToNpcStore,
     storeReady,
   ]);
@@ -631,10 +723,10 @@ export function NpcInteractionOverlay({
     dialogueText = "How may I serve you?";
   } else if (mode === "storeBuy") {
     dialogueText = selectedStoreItem
-      ? `Buy ${selectedStoreItem.itemName} x${selectedStoreItem.quantity} for ${normalizeMoney(selectedStoreItem.price)}?`
+      ? `Buy ${selectedStoreItem.itemName} x${selectedStoreItem.quantity * buyQuantity} for ${normalizeMoney(selectedStoreItem.price * buyQuantity)}?`
       : "I have nothing in stock right now.";
   } else if (selectedSellItem) {
-    dialogueText = `Sell ${selectedSellItem.inventoryItem.name} x1 for ${normalizeMoney(selectedSellItem.sellPrice)}?`;
+    dialogueText = `Sell ${selectedSellItem.inventoryItem.name} x${sellQuantity} for ${normalizeMoney(selectedSellItem.sellPrice * sellQuantity)}?`;
   } else {
     dialogueText = "I only buy items that I keep in stock.";
   }
@@ -813,6 +905,14 @@ export function NpcInteractionOverlay({
 
           {effectiveNpcType === "store" && mode === "storeBuy" ? (
             <HStack justify="flex-end" spacing={3} flexWrap="wrap">
+              {selectedStoreItem ? (
+                <QuantityStepper
+                  value={buyQuantity}
+                  max={maxBuyQuantity}
+                  isDisabled={isSubmitting}
+                  onChange={setBuyQuantity}
+                />
+              ) : null}
               <Button
                 variant="outline"
                 borderColor="#5d5a7b"
@@ -833,7 +933,7 @@ export function NpcInteractionOverlay({
                   buyFromNpcStore({
                     npcPlacementId: npcPlacement.id,
                     itemId: selectedStoreItem.itemId,
-                    quantity: 1,
+                    quantity: buyQuantity,
                   });
                 }}
               >
@@ -844,6 +944,14 @@ export function NpcInteractionOverlay({
 
           {effectiveNpcType === "store" && mode === "storeSell" ? (
             <HStack justify="flex-end" spacing={3} flexWrap="wrap">
+              {selectedSellItem ? (
+                <QuantityStepper
+                  value={sellQuantity}
+                  max={maxSellQuantity}
+                  isDisabled={isSubmitting}
+                  onChange={setSellQuantity}
+                />
+              ) : null}
               <Button
                 variant="outline"
                 borderColor="#5d5a7b"
@@ -864,7 +972,7 @@ export function NpcInteractionOverlay({
                   sellToNpcStore({
                     npcPlacementId: npcPlacement.id,
                     itemId: selectedSellItem.inventoryItem.id,
-                    quantity: 1,
+                    quantity: sellQuantity,
                   });
                 }}
               >

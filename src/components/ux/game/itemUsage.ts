@@ -122,6 +122,35 @@ function classifyByEssentialsId(essentialsId: string, healHp: number, category: 
   return NOT_USABLE;
 }
 
+export type FishingRodTier = "old" | "good" | "super";
+
+const FISHING_ROD_TIERS: Record<string, FishingRodTier> = {
+  OLDROD: "old",
+  GOODROD: "good",
+  SUPERROD: "super"
+};
+
+/**
+ * The best fishing rod tier the player currently holds, or null when they own
+ * no rod. Drives whether the click-to-fish prompt is offered on a water tile.
+ */
+export function bestFishingRodTier(inventory: InventoryItem[]): FishingRodTier | null {
+  const index = readItemCatalogIndex();
+  const order: Record<FishingRodTier, number> = { old: 0, good: 1, super: 2 };
+  let best: FishingRodTier | null = null;
+  for (const item of inventory) {
+    if ((item.quantity ?? 0) <= 0) {
+      continue;
+    }
+    const essentialsId = (index.get(item.id)?.essentialsId ?? "").toUpperCase();
+    const tier = FISHING_ROD_TIERS[essentialsId];
+    if (tier && (best === null || order[tier] > order[best])) {
+      best = tier;
+    }
+  }
+  return best;
+}
+
 /** Classifies a bag item for the Use flow. */
 export function classifyInventoryItem(item: InventoryItem): ItemUsage {
   if (item.category === "moves" || item.category === "quest") {

@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: build-deploy-release-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   NODE_VERSION: '22'
   MOBILE_REPOSITORY: ${{ vars.MOBILE_REPOSITORY || 'klys/pokecraft-mobile' }}
@@ -91,6 +95,17 @@ jobs:
         working-directory: native/mobile
         run: npm ci
 
+      - name: Apply client version to Android wrapper
+        working-directory: native/mobile
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('../../package.json').version")"
+          IFS=. read -r MAJOR MINOR PATCH <<< "$VERSION"
+          VERSION_CODE=$((MAJOR * 10000 + MINOR * 100 + PATCH))
+
+          sed -i -E "s/versionCode [0-9]+/versionCode ${VERSION_CODE}/" android/app/build.gradle
+          sed -i -E "s/versionName \"[^\"]+\"/versionName \"${VERSION}\"/" android/app/build.gradle
+
       - name: Build web client into Android wrapper
         working-directory: native/mobile
         env:
@@ -114,7 +129,7 @@ jobs:
         id: package
         shell: bash
         run: |
-          VERSION="$(node -p "require('./native/mobile/package.json').version")"
+          VERSION="$(node -p "require('./package.json').version")"
           SHORT_SHA="${GITHUB_SHA::7}"
           APK_NAME="PokeCraft-Android-debug-v${VERSION}-${SHORT_SHA}.apk"
           APK_PATH="release-assets/${APK_NAME}"
@@ -184,6 +199,13 @@ jobs:
         working-directory: native/desktop
         run: npm ci
 
+      - name: Apply client version to desktop wrapper
+        working-directory: native/desktop
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('../../package.json').version")"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+
       - name: Build web client into desktop wrapper
         working-directory: native/desktop
         shell: bash
@@ -234,10 +256,13 @@ jobs:
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           SHORT_SHA="${GITHUB_SHA::7}"
-          TAG="native-v${VERSION}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          TAG="native-v${VERSION}"
 
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "title=PokeCraft Native v${VERSION} (${SHORT_SHA})" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=$TAG"
+            echo "title=PokeCraft Native v${VERSION} (${SHORT_SHA})"
+            echo "version=$VERSION"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Publish assets on client-poke.io release
         shell: bash
@@ -253,9 +278,39 @@ jobs:
             exit 1
           fi
 
-          gh release create "$RELEASE_TAG" "${ASSETS[@]}" \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "$RELEASE_TITLE" \
-            --notes "Debug-signed Android APK and unsigned desktop builds generated from client-poke.io commit ${GITHUB_SHA}." \
-            --prerelease
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${ASSETS[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          else
+            gh release create "$RELEASE_TAG" "${ASSETS[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "$RELEASE_TITLE" \
+              --notes "Debug-signed Android APK and unsigned desktop builds generated from client-poke.io commit ${GITHUB_SHA}." \
+              --prerelease
+          fi
+
+      - name: Bump version on master
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          RELEASED_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          git fetch origin master:refs/remotes/origin/master
+          git switch --force-create master origin/master
+
+          CURRENT_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$CURRENT_VERSION" != "$RELEASED_VERSION" ]; then
+            echo "master is already at version ${CURRENT_VERSION}; skipping bump from ${RELEASED_VERSION}."
+            exit 0
+          fi
+
+          NEXT_VERSION="$(node scripts/next-version.js "$CURRENT_VERSION")"
+          npm version "$NEXT_VERSION" --no-git-tag-version
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "chore: bump version to ${NEXT_VERSION} [skip ci]"
+          git push origin master

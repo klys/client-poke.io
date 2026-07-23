@@ -131,6 +131,11 @@ branches. Native endpoint configuration can be supplied through
 `MOBILE_CONFIG_JSON` and `DESKTOP_CONFIG_JSON`, or through the corresponding
 backend and asset-storage secrets or variables used in the workflow.
 
+The version in `package.json` is applied to the Android and desktop packages.
+After a successful push release, the workflow commits the next version back to
+`master`. Version components use a base-100 rollover: `1.0.8` becomes `1.0.9`,
+`1.0.99` becomes `1.1.0`, and `1.99.99` becomes `2.0.0`.
+
 ## Gameplay Controls
 
 - `Mouse move`: updates the pointer position used for aiming

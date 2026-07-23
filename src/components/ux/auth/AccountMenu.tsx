@@ -2180,7 +2180,7 @@ const AccountMenu = () => {
       return '760px';
     }
 
-    return windowKey === 'map' ? '620px' : '460px';
+    return windowKey === 'map' ? '540px' : '460px';
   };
 
   const renderWindow = (windowKey: OpenWindowId) => {

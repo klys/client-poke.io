@@ -170,6 +170,36 @@ export type CreatedApiKey = {
   meta: ApiKeySummary
 }
 
+export type AdminEventState = {
+  switches: Record<string, boolean>
+  variables: Record<string, number>
+  selfSwitches: Record<string, boolean>
+}
+
+export type AdminStorageBox = {
+  id: string
+  name: string
+  capacity: number
+  pokemon: AdminPokemonSummary[]
+}
+
+export type AdminTrainerProfile = {
+  name: string
+  username: string
+  description: string
+  profileImage: string
+  characterSkinId: string
+  trainerCardColor: string
+  badges: number[]
+  money: number
+  createdAt: string
+}
+
+export type AdminUserStorage = {
+  boxes: AdminStorageBox[]
+  profile: AdminTrainerProfile
+}
+
 export type OnlineMapOverview = {
   mapId: string
   onlinePlayers: number

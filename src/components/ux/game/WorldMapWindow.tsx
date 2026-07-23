@@ -1,13 +1,10 @@
-import { Badge, Box, Button, HStack, Text, VStack, useToast } from '@chakra-ui/react';
+import { Badge, Box, Button, HStack, Image, Text, VStack, useToast } from '@chakra-ui/react';
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppContext } from '../../../context/appContext';
 import { useAuth } from '../../../context/authContext';
 import { useT } from '../../../i18n';
-import {
-  buildWorldMapLayout,
-  resolveWorldMapLocation,
-  type WorldMapPlacement,
-} from '../../game/worldMap';
+import { getFlyablePoints, resolveTownMapLocation } from '../../game/worldMap';
+import { TOWN_MAP_GRID_PX, type TownMapPoint } from '../../game/townMapData';
 
 export const FLY_MOVE_NAME = 'volar';
 
@@ -17,15 +14,19 @@ export function partyKnowsFly(party: Array<{ moves?: string[] }>): boolean {
   );
 }
 
-// Rendered size the map scales itself into (the window supplies the chrome).
-const VIEWPORT_WIDTH = 552;
-const VIEWPORT_HEIGHT = 380;
-const MIN_PX_PER_CELL = 0.7;
-const MAX_PX_PER_CELL = 4;
+// Original region image + marker sprites (public/townmap/, from the game's
+// Graphics/Pictures). The image is 480x320 with 16px grid squares; the
+// player/fly/cursor sprites are 32x32 drawn centered over a square (fly and
+// cursor are 2-frame 64x32 strips — the CSS crop shows the first frame).
+const REGION_IMAGE_WIDTH = 480;
+const REGION_IMAGE_HEIGHT = 320;
+const MARKER_SIZE = 32;
 
-const TOWN_COLOR = '#e05d5d';
-const ROUTE_COLOR = '#3f7d4e';
-const CURRENT_OUTLINE = '#ffef69';
+const townmapAsset = (name: string) => `${process.env.PUBLIC_URL ?? ''}/townmap/${name}`;
+
+function markerOffsetPx(grid: number) {
+  return grid * TOWN_MAP_GRID_PX + TOWN_MAP_GRID_PX / 2 - MARKER_SIZE / 2;
+}
 
 const WorldMapWindow = ({ onRequestClose }: { onRequestClose?: () => void }) => {
   const { players, myplayer, playableMapsState, socket } = useContext(AppContext);
@@ -33,7 +34,7 @@ const WorldMapWindow = ({ onRequestClose }: { onRequestClose?: () => void }) => 
   const t = useT();
   const toast = useToast();
 
-  const layout = useMemo(() => buildWorldMapLayout(playableMapsState), [playableMapsState]);
+  const flyablePoints = useMemo(() => getFlyablePoints(playableMapsState), [playableMapsState]);
 
   // NOT memoized on `players`: the app reducer mutates the players array in
   // place, so its reference is stable and a memo would never see moves. The
@@ -45,12 +46,12 @@ const WorldMapWindow = ({ onRequestClose }: { onRequestClose?: () => void }) => 
   const currentMapId: string | null = currentPlayer?.currentMapId ?? null;
 
   const location = useMemo(
-    () => resolveWorldMapLocation(playableMapsState, layout, currentMapId),
-    [playableMapsState, layout, currentMapId]
+    () => resolveTownMapLocation(playableMapsState, currentMapId),
+    [playableMapsState, currentMapId]
   );
 
   const canFly = partyKnowsFly(user?.pokemonParty ?? []);
-  const [selectedTown, setSelectedTown] = useState<WorldMapPlacement | null>(null);
+  const [selectedTown, setSelectedTown] = useState<TownMapPoint | null>(null);
   const [flyingTo, setFlyingTo] = useState<string | null>(null);
   const flyingToRef = useRef<string | null>(null);
   flyingToRef.current = flyingTo;
@@ -86,131 +87,101 @@ const WorldMapWindow = ({ onRequestClose }: { onRequestClose?: () => void }) => 
     }
   }, [currentMapId, onRequestClose]);
 
-  if (layout.placements.length === 0) {
-    return <Text color="gray.400">{t('map.empty')}</Text>;
-  }
-
-  const pxPerCell = Math.min(
-    MAX_PX_PER_CELL,
-    Math.max(
-      MIN_PX_PER_CELL,
-      Math.min(VIEWPORT_WIDTH / layout.widthCells, VIEWPORT_HEIGHT / layout.heightCells)
-    )
-  );
-  const canvasWidth = Math.ceil(layout.widthCells * pxPerCell);
-  const canvasHeight = Math.ceil(layout.heightCells * pxPerCell);
-
-  const markerPosition = location
-    ? {
-        left:
-          (location.placement.cellX +
-            (location.isExact && currentPlayer
-              ? Math.min(
-                  location.placement.widthCells,
-                  Math.max(0, (currentPlayer.x ?? 0) / location.placement.cellSize)
-                )
-              : location.placement.widthCells / 2)) * pxPerCell,
-        top:
-          (location.placement.cellY +
-            (location.isExact && currentPlayer
-              ? Math.min(
-                  location.placement.heightCells,
-                  Math.max(0, (currentPlayer.y ?? 0) / location.placement.cellSize)
-                )
-              : location.placement.heightCells / 2)) * pxPerCell,
-      }
-    : null;
-
-  const handleTownClick = (placement: WorldMapPlacement) => {
-    if (!canFly || placement.mapId === location?.placement.mapId) {
+  const handleTownClick = (point: TownMapPoint) => {
+    if (!canFly || !point.fly || point.fly.mapId === currentMapId) {
       return;
     }
-    setSelectedTown((current) => (current?.mapId === placement.mapId ? null : placement));
+    setSelectedTown((current) => (current?.name === point.name ? null : point));
   };
 
   const handleFly = () => {
-    if (!selectedTown || !socket) {
+    if (!selectedTown?.fly || !socket) {
       return;
     }
-    setFlyingTo(selectedTown.mapId);
-    socket.emit('player:fly', { mapId: selectedTown.mapId });
+    setFlyingTo(selectedTown.fly.mapId);
+    socket.emit('player:fly', { mapId: selectedTown.fly.mapId });
     setSelectedTown(null);
   };
 
   return (
     <VStack align="stretch" spacing={3}>
       <Box
-        maxH={`${VIEWPORT_HEIGHT}px`}
-        overflow="auto"
         bg="#0e1a2b"
         border="1px solid rgba(255,255,255,0.14)"
         borderRadius="10px"
         p={2}
+        overflow="auto"
       >
-        <Box position="relative" width={`${canvasWidth}px`} height={`${canvasHeight}px`} mx="auto">
-          {layout.placements.map((placement) => {
-            const isCurrent = placement.mapId === location?.placement.mapId;
-            const isSelected = placement.mapId === selectedTown?.mapId;
-            const clickable = canFly && placement.isTown && !isCurrent;
+        <Box
+          position="relative"
+          width={`${REGION_IMAGE_WIDTH}px`}
+          height={`${REGION_IMAGE_HEIGHT}px`}
+          mx="auto"
+          sx={{ imageRendering: 'pixelated' }}
+        >
+          <Image
+            src={townmapAsset('mapRegion0.png')}
+            alt={t('menu.map')}
+            width={`${REGION_IMAGE_WIDTH}px`}
+            height={`${REGION_IMAGE_HEIGHT}px`}
+            draggable={false}
+            pointerEvents="none"
+          />
+
+          {flyablePoints.map((point) => {
+            const isSelected = selectedTown?.name === point.name;
+            const clickable = canFly && point.fly!.mapId !== currentMapId;
 
             return (
               <Box
-                key={placement.mapId}
+                key={`${point.gridX}-${point.gridY}-${point.name}`}
                 position="absolute"
-                left={`${placement.cellX * pxPerCell}px`}
-                top={`${placement.cellY * pxPerCell}px`}
-                width={`${Math.max(3, placement.widthCells * pxPerCell)}px`}
-                height={`${Math.max(3, placement.heightCells * pxPerCell)}px`}
-                bg={placement.isTown ? TOWN_COLOR : ROUTE_COLOR}
-                opacity={placement.isTown ? 0.95 : 0.75}
-                borderRadius="3px"
-                border={
-                  isCurrent
-                    ? `2px solid ${CURRENT_OUTLINE}`
-                    : isSelected
-                      ? '2px solid #7fd4ff'
-                      : '1px solid rgba(0,0,0,0.45)'
-                }
+                left={`${markerOffsetPx(point.gridX)}px`}
+                top={`${markerOffsetPx(point.gridY)}px`}
+                width={`${MARKER_SIZE}px`}
+                height={`${MARKER_SIZE}px`}
                 cursor={clickable ? 'pointer' : 'default'}
-                title={placement.name}
-                onClick={() => handleTownClick(placement)}
-                _hover={clickable ? { filter: 'brightness(1.25)' } : undefined}
-                overflow="hidden"
+                title={point.name}
+                onClick={() => handleTownClick(point)}
+                _hover={clickable ? { filter: 'brightness(1.3)' } : undefined}
               >
-                {placement.isTown ? (
-                  <Text
-                    fontSize="10px"
-                    fontWeight="700"
-                    color="whiteAlpha.900"
-                    px={1}
-                    noOfLines={2}
-                    lineHeight="1.1"
+                {canFly && clickable ? (
+                  <Box
+                    width={`${MARKER_SIZE}px`}
+                    height={`${MARKER_SIZE}px`}
+                    backgroundImage={`url(${townmapAsset('mapFly.png')})`}
+                    backgroundPosition="0 0"
+                    opacity={isSelected ? 1 : 0.85}
                     pointerEvents="none"
-                  >
-                    {placement.name}
-                  </Text>
+                  />
+                ) : null}
+                {isSelected ? (
+                  <Box
+                    position="absolute"
+                    inset={0}
+                    backgroundImage={`url(${townmapAsset('mapCursor.png')})`}
+                    backgroundPosition="0 0"
+                    pointerEvents="none"
+                  />
                 ) : null}
               </Box>
             );
           })}
-          {markerPosition ? (
+
+          {location ? (
             <Box
               position="absolute"
-              left={`${markerPosition.left}px`}
-              top={`${markerPosition.top}px`}
-              transform="translate(-50%, -50%)"
-              width="12px"
-              height="12px"
-              borderRadius="full"
-              bg="#ffef69"
-              border="2px solid #1f1f1f"
-              boxShadow="0 0 0 4px rgba(255,239,105,0.35)"
+              left={`${markerOffsetPx(location.gridX)}px`}
+              top={`${markerOffsetPx(location.gridY)}px`}
+              width={`${MARKER_SIZE}px`}
+              height={`${MARKER_SIZE}px`}
+              backgroundImage={`url(${townmapAsset('mapPlayer000.png')})`}
               pointerEvents="none"
               sx={{
                 animation: 'world-map-pulse 1.4s ease-in-out infinite',
                 '@keyframes world-map-pulse': {
-                  '0%, 100%': { boxShadow: '0 0 0 3px rgba(255,239,105,0.45)' },
-                  '50%': { boxShadow: '0 0 0 8px rgba(255,239,105,0.12)' },
+                  '0%, 100%': { opacity: 1 },
+                  '50%': { opacity: 0.55 },
                 },
               }}
             />
@@ -218,27 +189,15 @@ const WorldMapWindow = ({ onRequestClose }: { onRequestClose?: () => void }) => 
         </Box>
       </Box>
 
-      <HStack justify="space-between" align="center" minH="24px">
-        <HStack spacing={2} minW={0}>
-          <Badge colorScheme="yellow" flexShrink={0}>{t('map.youAreHere')}</Badge>
-          <Text fontSize="sm" color="gray.200" noOfLines={1}>
-            {location
-              ? location.isExact
-                ? location.placement.name
-                : `${location.placement.name} (${t('map.indoors')})`
-              : t('map.unknownLocation')}
-          </Text>
-        </HStack>
-        <HStack spacing={3} flexShrink={0}>
-          <HStack spacing={1}>
-            <Box w="10px" h="10px" borderRadius="2px" bg={TOWN_COLOR} />
-            <Text fontSize="xs" color="gray.400">{t('map.towns')}</Text>
-          </HStack>
-          <HStack spacing={1}>
-            <Box w="10px" h="10px" borderRadius="2px" bg={ROUTE_COLOR} />
-            <Text fontSize="xs" color="gray.400">{t('map.routes')}</Text>
-          </HStack>
-        </HStack>
+      <HStack justify="flex-start" align="center" minH="24px" spacing={2}>
+        <Badge colorScheme="yellow" flexShrink={0}>{t('map.youAreHere')}</Badge>
+        <Text fontSize="sm" color="gray.200" noOfLines={1}>
+          {location
+            ? location.isExact
+              ? location.mapName
+              : `${location.mapName} (${t('map.indoors')})`
+            : t('map.unknownLocation')}
+        </Text>
       </HStack>
 
       {canFly ? (

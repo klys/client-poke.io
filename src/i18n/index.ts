@@ -57,8 +57,6 @@ const STRINGS: Record<string, Entry> = {
   'map.youAreHere': { en: 'You are here', es: 'Estás aquí' },
   'map.indoors': { en: 'indoors', es: 'interior' },
   'map.unknownLocation': { en: 'Unknown location', es: 'Ubicación desconocida' },
-  'map.towns': { en: 'Towns', es: 'Ciudades' },
-  'map.routes': { en: 'Routes', es: 'Rutas' },
   'map.flyHint': {
     en: 'Select a town to fly there with Volar.',
     es: 'Selecciona una ciudad para viajar con Volar.',
@@ -71,10 +69,6 @@ const STRINGS: Record<string, Entry> = {
   'map.fly': { en: 'Fly', es: 'Volar' },
   'map.cancel': { en: 'Cancel', es: 'Cancelar' },
   'map.flyFailed': { en: 'Could not fly there.', es: 'No se pudo volar hasta allí.' },
-  'map.empty': {
-    en: 'The world map has not loaded yet.',
-    es: 'El mapa del mundo todavía no se ha cargado.',
-  },
 
   // --- Settings window: general ---
   'settings.enableDrag': { en: 'Enable draggable screen', es: 'Activar ventanas arrastrables' },
