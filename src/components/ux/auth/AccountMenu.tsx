@@ -998,6 +998,9 @@ function BagWindow({ onOpenWorldMap }: { onOpenWorldMap: () => void }) {
   const [targetSelection, setTargetSelection] = useState<
     { item: InventoryItem; usage: ItemUsage } | null
   >(null);
+  const [replacePrompt, setReplacePrompt] = useState<
+    { item: InventoryItem; targetPokemonId: string; moves: string[] } | null
+  >(null);
   const categories: Array<{ key: InventoryItem['category'] | 'all'; label: string }> = [
     { key: 'all', label: t('bag.all') },
     { key: 'usable', label: t('bag.usable') },
@@ -1054,10 +1057,31 @@ function BagWindow({ onOpenWorldMap }: { onOpenWorldMap: () => void }) {
       return;
     }
     if (selection.item.category === 'moves') {
-      teachInventoryMove({ itemId: selection.item.id, targetPokemonId });
+      // A Venomon that already knows four moves must forget one first — show the
+      // replace picker before sending (the server also enforces this).
+      const target = party.find((pokemon) => pokemon.id === targetPokemonId);
+      const knownMoves = target?.moves ?? [];
+      if (knownMoves.length >= 4) {
+        setReplacePrompt({ item: selection.item, targetPokemonId, moves: knownMoves });
+      } else {
+        teachInventoryMove({ itemId: selection.item.id, targetPokemonId });
+      }
     } else {
       requestUseInventoryItem({ itemId: selection.item.id, targetPokemonId, targetMoveName });
     }
+  };
+
+  const handleReplaceMove = (replaceMoveName: string) => {
+    const prompt = replacePrompt;
+    setReplacePrompt(null);
+    if (!prompt) {
+      return;
+    }
+    teachInventoryMove({
+      itemId: prompt.item.id,
+      targetPokemonId: prompt.targetPokemonId,
+      replaceMoveName
+    });
   };
 
   const handleThrowAway = (item: InventoryItem) => {
@@ -1142,6 +1166,38 @@ function BagWindow({ onOpenWorldMap }: { onOpenWorldMap: () => void }) {
           onSelect={handleTargetSelected}
           onCancel={() => setTargetSelection(null)}
         />
+      ) : null}
+      {replacePrompt ? (
+        <Modal isOpen onClose={() => setReplacePrompt(null)} isCentered>
+          <ModalOverlay />
+          <ModalContent bg="gray.800" color="white">
+            <ModalHeader>{t('bag.replaceMoveTitle')}</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody>
+              <Text color="gray.300" fontSize="sm" mb={3}>
+                {t('bag.replaceMovePrompt')}
+              </Text>
+              <VStack align="stretch" spacing={2}>
+                {replacePrompt.moves.map((move) => (
+                  <Button
+                    key={move}
+                    variant="outline"
+                    borderColor="whiteAlpha.400"
+                    justifyContent="flex-start"
+                    onClick={() => handleReplaceMove(move)}
+                  >
+                    {move}
+                  </Button>
+                ))}
+              </VStack>
+            </ModalBody>
+            <ModalFooter>
+              <Button variant="ghost" onClick={() => setReplacePrompt(null)}>
+                {t('bag.cancel') ?? 'Cancel'}
+              </Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
       ) : null}
     </Tabs>
   );

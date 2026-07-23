@@ -315,6 +315,10 @@ const Map = ({children}:{children:any}) => {
             openNpcInteraction(npc);
             return;
         }
+
+        // Nothing to talk to in front: let the server try a terrain field skill
+        // (Surf onto water, Dive under it, climb a Waterfall, push a boulder).
+        socket.emit("player:field-interact");
     };
 
     useEffect(() => {

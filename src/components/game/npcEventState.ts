@@ -74,10 +74,21 @@ function pageConditionsMet(
   return true;
 }
 
+// Reserved self-switch set by pbEraseThisEvent (Cut trees, Rock Smash rocks).
+// Mirrors the server (eventPageSelection.ts): an erased event renders nothing.
+export const ERASED_SELF_SWITCH = 'ERASED';
+
+export function isEventErased(event: EssentialsEvent, state: EventPlayerState): boolean {
+  return Boolean(state.selfSwitches[`${event.essentialsMapId}:${event.eventId}:${ERASED_SELF_SWITCH}`]);
+}
+
 export function selectActiveEventPage(
   event: EssentialsEvent,
   state: EventPlayerState
 ): EssentialsEventPage | null {
+  if (isEventErased(event, state)) {
+    return null;
+  }
   for (let index = event.pages.length - 1; index >= 0; index -= 1) {
     if (pageConditionsMet(event.pages[index].conditions, state, event.essentialsMapId, event.eventId)) {
       return event.pages[index];

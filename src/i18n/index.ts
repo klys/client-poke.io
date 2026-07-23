@@ -237,6 +237,12 @@ const STRINGS: Record<string, Entry> = {
   'bag.teach': { en: 'Teach', es: 'Enseñar' },
   'bag.throwAway': { en: 'Throw Away', es: 'Tirar' },
   'bag.empty': { en: 'No items in this pocket.', es: 'No hay objetos en este bolsillo.' },
+  'bag.cancel': { en: 'Cancel', es: 'Cancelar' },
+  'bag.replaceMoveTitle': { en: 'Replace a move', es: 'Reemplazar un movimiento' },
+  'bag.replaceMovePrompt': {
+    en: 'This Venomon already knows four moves. Choose one to forget.',
+    es: 'Este Venomon ya conoce cuatro movimientos. Elige cuál olvidar.'
+  },
 
   // --- Venomons window ---
   'party.onHand': { en: 'Venomons on hand:', es: 'Venomons en el equipo:' },

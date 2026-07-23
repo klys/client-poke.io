@@ -115,6 +115,22 @@ Then open `http://localhost:8080`.
 - The game server is still a separate dependency and must be reachable by the frontend.
 - The backend URL comes from your local `public/config.json`, so create or update that file before building or deploying.
 
+## Native Release Builds
+
+Every push to `master` (and every manual workflow run) builds the Android wrapper
+from `klys/pokecraft-mobile` and the Linux, Windows, and macOS desktop wrappers
+from `klys/pokecraft-desktop`. The installers are attached as individual assets
+to a prerelease in this repository. The Android APK is debug-signed and the
+desktop installers are unsigned.
+
+Set the `NATIVE_REPO_TOKEN` Actions secret to a PAT that can read both wrapper
+repositories when either repository is private. The repository variables
+`MOBILE_REPOSITORY`, `MOBILE_REPOSITORY_REF`, `DESKTOP_REPOSITORY`, and
+`DESKTOP_REPOSITORY_REF` can override the default wrapper repositories and
+branches. Native endpoint configuration can be supplied through
+`MOBILE_CONFIG_JSON` and `DESKTOP_CONFIG_JSON`, or through the corresponding
+backend and asset-storage secrets or variables used in the workflow.
+
 ## Gameplay Controls
 
 - `Mouse move`: updates the pointer position used for aiming
