@@ -161,10 +161,17 @@ jobs:
             artifact_paths: |
               native/desktop/release/*.AppImage
               native/desktop/release/*.deb
-          - platform: windows
+          - platform: windows-64
             os: windows-latest
-            builder_flag: --win
-            artifact_name: release-desktop-windows
+            builder_flag: --win --x64
+            filename_suffix: win64
+            artifact_name: release-desktop-windows-64
+            artifact_paths: native/desktop/release/*.exe
+          - platform: windows-32
+            os: windows-latest
+            builder_flag: --win --ia32
+            filename_suffix: win32
+            artifact_name: release-desktop-windows-32
             artifact_paths: native/desktop/release/*.exe
           - platform: macos
             os: macos-latest
@@ -223,6 +230,25 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
           GH_TOKEN: ${{ github.token }}
         run: npx electron-builder ${{ matrix.builder_flag }} --publish never
+
+      - name: Add architecture to Windows installer filenames
+        if: startsWith(matrix.platform, 'windows-')
+        working-directory: native/desktop
+        shell: bash
+        env:
+          ARCH_SUFFIX: ${{ matrix.filename_suffix }}
+        run: |
+          shopt -s nullglob
+          INSTALLERS=(release/*.exe)
+
+          if [ "${#INSTALLERS[@]}" -eq 0 ]; then
+            echo "No Windows installers were produced." >&2
+            exit 1
+          fi
+
+          for INSTALLER in "${INSTALLERS[@]}"; do
+            mv -- "$INSTALLER" "${INSTALLER%.exe}-${ARCH_SUFFIX}.exe"
+          done
 
       - name: Upload desktop release assets
         uses: actions/upload-artifact@v7

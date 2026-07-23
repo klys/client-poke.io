@@ -118,10 +118,10 @@ Then open `http://localhost:8080`.
 ## Native Release Builds
 
 Every push to `master` (and every manual workflow run) builds the Android wrapper
-from `klys/pokecraft-mobile` and the Linux, Windows, and macOS desktop wrappers
-from `klys/pokecraft-desktop`. The installers are attached as individual assets
-to a prerelease in this repository. The Android APK is debug-signed and the
-desktop installers are unsigned.
+from `klys/pokecraft-mobile` and the Linux, Windows 64-bit, Windows 32-bit, and
+macOS desktop wrappers from `klys/pokecraft-desktop`. The installers are attached
+as individual assets to a prerelease in this repository. The Android APK is
+debug-signed and the desktop installers are unsigned.
 
 Set the `NATIVE_REPO_TOKEN` Actions secret to a PAT that can read both wrapper
 repositories when either repository is private. The repository variables
