@@ -54,6 +54,8 @@ const STRINGS: Record<string, Entry> = {
   'menu.statsSuffix': { en: 'Stats', es: 'Estadísticas' },
 
   // --- World map window / Volar (Fly) ---
+  'map.regionTab': { en: 'Region', es: 'Región' },
+  'map.currentMapTab': { en: 'Current map', es: 'Mapa actual' },
   'map.youAreHere': { en: 'You are here', es: 'Estás aquí' },
   'map.indoors': { en: 'indoors', es: 'interior' },
   'map.unknownLocation': { en: 'Unknown location', es: 'Ubicación desconocida' },
