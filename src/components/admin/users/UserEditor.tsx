@@ -44,6 +44,12 @@ import PokemonEditor from './PokemonEditor';
 import SecurityPanel from './SecurityPanel';
 import StorageViewer from './StorageViewer';
 
+// Wire form of a location update: either explicit coordinates or an automatic
+// placement request (server picks a non-stuck spot on the chosen map).
+export type UserSavedLocationInput =
+  | { mapId: string; x: number; y: number }
+  | { mapId: string; automatic: true }
+
 // Partial on purpose: each tab applies only its own fields and the server
 // updates just what is present in the payload.
 export type UserUpdatePayload = Partial<{
@@ -54,7 +60,7 @@ export type UserUpdatePayload = Partial<{
   trainerGender: string
   money: number
   emailVerified: boolean
-  savedLocation: { mapId: string; x: number; y: number }
+  savedLocation: UserSavedLocationInput
   inventory: AdminInventoryItem[]
   pokemonParty: AdminPokemonSummary[]
 }>
@@ -95,6 +101,7 @@ type EditorState = {
   mapId: string
   mapX: string
   mapY: string
+  mapAuto: boolean
   inventory: AdminInventoryItem[]
   pokemonParty: AdminPokemonSummary[]
 }
@@ -103,7 +110,7 @@ type EditableTab = 'profile' | 'location' | 'inventory' | 'party'
 
 const TAB_FIELDS: Record<EditableTab, Array<keyof EditorState>> = {
   profile: ['name', 'role', 'profileImage', 'description', 'trainerGender', 'money', 'emailVerified'],
-  location: ['mapId', 'mapX', 'mapY'],
+  location: ['mapId', 'mapX', 'mapY', 'mapAuto'],
   inventory: ['inventory'],
   party: ['pokemonParty']
 };
@@ -120,6 +127,7 @@ function buildEditorState(user: AdminUserDetails): EditorState {
     mapId: user.savedLocation?.mapId ?? '',
     mapX: String(user.savedLocation?.x ?? 0),
     mapY: String(user.savedLocation?.y ?? 0),
+    mapAuto: false,
     inventory: user.inventory,
     pokemonParty: user.pokemonParty
   };
@@ -263,6 +271,13 @@ export default function UserEditor(props: UserEditorProps) {
     const trimmedMapId = editor.mapId.trim();
     if (!trimmedMapId) {
       toast({ title: 'Choose a map before applying the location.', status: 'error', duration: 3500, position: 'top' });
+      return;
+    }
+
+    // Automatic placement: the server drops the trainer on a safe, non-stuck
+    // cell on the chosen map, so the manual X/Y are intentionally ignored.
+    if (editor.mapAuto) {
+      apply('location', { savedLocation: { mapId: trimmedMapId, automatic: true } });
       return;
     }
 
@@ -410,11 +425,13 @@ export default function UserEditor(props: UserEditorProps) {
                 mapId={editor.mapId}
                 x={editor.mapX}
                 y={editor.mapY}
+                automatic={editor.mapAuto}
                 maps={catalog.maps}
                 onChange={(next) => patchLocation({
                   ...(next.mapId !== undefined ? { mapId: next.mapId } : {}),
                   ...(next.x !== undefined ? { mapX: next.x } : {}),
-                  ...(next.y !== undefined ? { mapY: next.y } : {})
+                  ...(next.y !== undefined ? { mapY: next.y } : {}),
+                  ...(next.automatic !== undefined ? { mapAuto: next.automatic } : {})
                 })}
               />
               {applyButton('location', applyLocation)}

@@ -42,7 +42,13 @@ type InteractionMode = "healer" | StoreMode;
 
 type SellableStoreItem = {
   inventoryItem: InventoryItem;
-  storeItem: RuntimeNpcStoreItem;
+  sellPrice: number;
+};
+
+type StoreSellQuote = {
+  itemId: string;
+  itemName: string;
+  quantity: number;
   sellPrice: number;
 };
 
@@ -406,6 +412,7 @@ export function NpcInteractionOverlay({
   const [selectedSellItemId, setSelectedSellItemId] = useState<string | null>(null);
   const [buyQuantity, setBuyQuantity] = useState(1);
   const [sellQuantity, setSellQuantity] = useState(1);
+  const [sellQuotes, setSellQuotes] = useState<StoreSellQuote[] | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
 
@@ -450,35 +457,71 @@ export function NpcInteractionOverlay({
   const storeReady =
     effectiveNpcType === "store" && (Boolean(npcDefinition) || storeItems.length > 0);
 
+  // Quotes belong to one clerk: drop them when the overlay switches targets
+  // (keyed on the id so quote arrivals can't retrigger this).
+  const npcPlacementId = npcPlacement?.id ?? null;
+
+  useEffect(() => {
+    setSellQuotes(null);
+  }, [npcPlacementId]);
+
+  // Ask the server what this store pays for the player's items: stores buy
+  // anything sellable (not just their own stock), and only the server holds
+  // the item catalog with prices and the MO/MT/quest-item exclusions.
+  useEffect(() => {
+    if (!npcPlacement || effectiveNpcType !== "store" || !gameSocket) {
+      return;
+    }
+
+    const placementId = npcPlacement.id;
+    const handleSellQuotes = (payload: {
+      npcPlacementId: string;
+      quotes: StoreSellQuote[];
+    }) => {
+      if (payload?.npcPlacementId === placementId && Array.isArray(payload.quotes)) {
+        setSellQuotes(payload.quotes);
+      }
+    };
+
+    gameSocket.on("npc:store-sell-quotes", handleSellQuotes);
+    gameSocket.emit("npc:store-sell-quotes", { npcPlacementId: placementId });
+
+    return () => {
+      gameSocket.off("npc:store-sell-quotes", handleSellQuotes);
+    };
+    // user?.inventory: re-quote after every buy/sell so quantities stay honest.
+  }, [effectiveNpcType, gameSocket, npcPlacement, user?.inventory]);
+
   const sellableItems = useMemo<SellableStoreItem[]>(() => {
     if (effectiveNpcType !== "store") {
       return [];
     }
 
     const inventory = user?.inventory ?? [];
+    // Until the server quotes arrive, fall back to the old in-stock matching
+    // so the list still works against servers without the quotes socket.
+    const quotes: Array<{ itemId: string; sellPrice: number }> =
+      sellQuotes ??
+      storeItems.map((storeItem) => ({
+        itemId: storeItem.itemId,
+        sellPrice: getStoreSellPrice(storeItem),
+      }));
 
-    return inventory
-      .map((inventoryItem) => {
-        const matchingStoreItem = storeItems.find((storeItem) => storeItem.itemId === inventoryItem.id);
+    return quotes
+      .map((quote) => {
+        const inventoryItem = inventory.find((item) => item.id === quote.itemId);
 
-        if (!matchingStoreItem) {
-          return null;
-        }
-
-        const sellPrice = getStoreSellPrice(matchingStoreItem);
-
-        if (sellPrice <= 0 || inventoryItem.quantity <= 0) {
+        if (!inventoryItem || inventoryItem.quantity <= 0 || quote.sellPrice <= 0) {
           return null;
         }
 
         return {
           inventoryItem,
-          storeItem: matchingStoreItem,
-          sellPrice,
+          sellPrice: quote.sellPrice,
         };
       })
       .filter((item): item is SellableStoreItem => Boolean(item));
-  }, [effectiveNpcType, storeItems, user?.inventory]);
+  }, [effectiveNpcType, sellQuotes, storeItems, user?.inventory]);
 
   const selectedStoreItem = useMemo(
     () => storeItems.find((item) => item.itemId === selectedStoreItemId) ?? null,
@@ -728,7 +771,7 @@ export function NpcInteractionOverlay({
   } else if (selectedSellItem) {
     dialogueText = `Sell ${selectedSellItem.inventoryItem.name} x${sellQuantity} for ${normalizeMoney(selectedSellItem.sellPrice * sellQuantity)}?`;
   } else {
-    dialogueText = "I only buy items that I keep in stock.";
+    dialogueText = "You have nothing I can buy right now.";
   }
 
   if (typeof document === "undefined") {

@@ -2,6 +2,7 @@ import {
   Badge,
   Box,
   Button,
+  Checkbox,
   FormControl,
   FormLabel,
   HStack,
@@ -25,11 +26,12 @@ type MapLocationEditorProps = {
   mapId: string
   x: string
   y: string
+  automatic: boolean
   maps: AdminMapCatalogEntry[]
-  onChange: (next: { mapId?: string; x?: string; y?: string }) => void
+  onChange: (next: { mapId?: string; x?: string; y?: string; automatic?: boolean }) => void
 }
 
-export default function MapLocationEditor({ mapId, x, y, maps, onChange }: MapLocationEditorProps) {
+export default function MapLocationEditor({ mapId, x, y, automatic, maps, onChange }: MapLocationEditorProps) {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [query, setQuery] = useState('');
 
@@ -112,15 +114,36 @@ export default function MapLocationEditor({ mapId, x, y, maps, onChange }: MapLo
         </FormControl>
         <FormControl>
           <FormLabel fontSize="sm">X</FormLabel>
-          <Input bg="white" value={x} onChange={(event) => onChange({ x: event.target.value })} />
+          <Input
+            bg="white"
+            value={x}
+            isDisabled={automatic}
+            onChange={(event) => onChange({ x: event.target.value })}
+          />
         </FormControl>
         <FormControl>
           <FormLabel fontSize="sm">Y</FormLabel>
-          <Input bg="white" value={y} onChange={(event) => onChange({ y: event.target.value })} />
+          <Input
+            bg="white"
+            value={y}
+            isDisabled={automatic}
+            onChange={(event) => onChange({ y: event.target.value })}
+          />
         </FormControl>
       </SimpleGrid>
-      <Text fontSize="xs" color="#8a9782" mt={2}>
-        Saving a new location teleports the trainer instantly if they are online.
+
+      <Checkbox
+        mt={3}
+        colorScheme="green"
+        isChecked={automatic}
+        onChange={(event) => onChange({ automatic: event.target.checked })}
+      >
+        <Text fontSize="sm" fontWeight="600">Automatic placement</Text>
+      </Checkbox>
+      <Text fontSize="xs" color="#8a9782" mt={1}>
+        {automatic
+          ? 'The server drops the trainer on a safe, non-stuck cell on the chosen map. The X / Y above are ignored.'
+          : 'Saving a new location teleports the trainer instantly if they are online.'}
       </Text>
     </Box>
   );
