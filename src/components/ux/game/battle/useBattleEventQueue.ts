@@ -114,6 +114,32 @@ export function useBattleEventQueue({
   const animationKeyRef = useRef(0);
   const configRef = useRef(config);
   const selfSideRef = useRef(selfSideId);
+  // Last values the player has actually SEEN per pokemon. battle:state
+  // carries the final post-turn numbers the moment events start playing; if a
+  // bar ever rendered those, replaying the per-hit events would run it
+  // backwards (a multi-hit looked like the target being healed between
+  // hits). Fresh events pre-seed the display overrides from here instead.
+  const settledRef = useRef<{
+    hp: Record<string, BattleHpOverride>;
+    exp: Record<string, BattleExpOverride>;
+    level: Record<string, number>;
+  }>({ hp: {}, exp: {}, level: {} });
+
+  const recordSettledFromBattle = useCallback((state: BattlePublicState | null) => {
+    if (!state) {
+      return;
+    }
+    for (const sideParty of [state.self.party, state.opponent.party]) {
+      for (const pokemon of sideParty) {
+        settledRef.current.hp[pokemon.id] = { hp: pokemon.hp, maxHp: pokemon.maxHp };
+        settledRef.current.level[pokemon.id] = pokemon.level;
+        settledRef.current.exp[pokemon.id] = {
+          experience: pokemon.experience ?? 0,
+          nextLevelExperience: pokemon.nextLevelExperience ?? 0
+        };
+      }
+    }
+  }, []);
 
   configRef.current = config;
   selfSideRef.current = selfSideId;
@@ -178,6 +204,31 @@ export function useBattleEventQueue({
 
   const handleEvent = useCallback(
     async (event: BattleSequencedEvent) => {
+      // Keep the "seen" values in sync as each event plays out.
+      if (event.kind === "damage" || event.kind === "heal") {
+        settledRef.current.hp[event.pokemonId] = { hp: event.hpAfter, maxHp: event.maxHp };
+      } else if (event.kind === "exp-gain") {
+        settledRef.current.exp[event.pokemonId] = {
+          experience: event.experience,
+          nextLevelExperience: event.nextLevelExperience
+        };
+      } else if (event.kind === "level-up") {
+        settledRef.current.level[event.pokemonId] = event.level;
+        settledRef.current.hp[event.pokemonId] = {
+          hp: Math.min(
+            (settledRef.current.hp[event.pokemonId]?.hp ?? event.statGains.hp.after) +
+              event.statGains.hp.gain,
+            event.statGains.hp.after
+          ),
+          maxHp: event.statGains.hp.after
+        };
+      } else if (event.kind === "switch") {
+        settledRef.current.hp[event.pokemon.id] = {
+          hp: event.pokemon.hp,
+          maxHp: event.pokemon.maxHp
+        };
+      }
+
       switch (event.kind) {
         case "battle-start": {
           // Kill any fanfare still ringing from the previous battle.
@@ -543,13 +594,21 @@ export function useBattleEventQueue({
       setPlayback(INITIAL_PLAYBACK);
     }
 
+    settledRef.current = { hp: {}, exp: {}, level: {} };
+    recordSettledFromBattle(battle);
+
     if (!battleId) {
       battleAudio.stopBgm();
       gameAudio.resumeBgm();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [battle?.id]);
 
-  // Feed fresh events into the queue.
+  // Feed fresh events into the queue. Before they play, freeze the affected
+  // bars at their last-seen values: the accompanying battle:state already
+  // holds the final numbers, and without an override the bar would jump to
+  // the end result and then replay the events backwards (multi-hit moves
+  // looked like they were healing the target between hits).
   useEffect(() => {
     const fresh = events.filter((event) => event.seq > lastSeqRef.current);
     if (fresh.length === 0) {
@@ -557,9 +616,64 @@ export function useBattleEventQueue({
     }
 
     lastSeqRef.current = fresh[fresh.length - 1].seq;
+
+    update((previous) => {
+      const hpAdds: Record<string, BattleHpOverride> = {};
+      const expAdds: Record<string, BattleExpOverride> = {};
+      const levelAdds: Record<string, number> = {};
+
+      for (const event of fresh) {
+        if (
+          (event.kind === "damage" || event.kind === "heal") &&
+          !(event.pokemonId in previous.displayHp) &&
+          !(event.pokemonId in hpAdds)
+        ) {
+          const settled = settledRef.current.hp[event.pokemonId];
+          if (settled) {
+            hpAdds[event.pokemonId] = settled;
+          }
+        }
+        if (
+          event.kind === "exp-gain" &&
+          !(event.pokemonId in previous.displayExp) &&
+          !(event.pokemonId in expAdds)
+        ) {
+          const settled = settledRef.current.exp[event.pokemonId];
+          if (settled) {
+            expAdds[event.pokemonId] = settled;
+          }
+        }
+        if (
+          event.kind === "level-up" &&
+          !(event.pokemonId in previous.displayLevel) &&
+          !(event.pokemonId in levelAdds)
+        ) {
+          const settled = settledRef.current.level[event.pokemonId];
+          if (settled !== undefined) {
+            levelAdds[event.pokemonId] = settled;
+          }
+        }
+      }
+
+      if (
+        Object.keys(hpAdds).length === 0 &&
+        Object.keys(expAdds).length === 0 &&
+        Object.keys(levelAdds).length === 0
+      ) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        displayHp: { ...hpAdds, ...previous.displayHp },
+        displayExp: { ...expAdds, ...previous.displayExp },
+        displayLevel: { ...levelAdds, ...previous.displayLevel }
+      };
+    });
+
     queueRef.current.push(...fresh);
     void processQueue();
-  }, [events, processQueue]);
+  }, [events, processQueue, update]);
 
   useEffect(() => {
     cancelledRef.current = false;
@@ -570,9 +684,11 @@ export function useBattleEventQueue({
     };
   }, []);
 
-  // When the queue is idle, the authoritative battle state wins again.
+  // When the queue is idle, the authoritative battle state wins again (and
+  // becomes the new "seen" baseline for the next event batch).
   useEffect(() => {
-    if (!playback.queueBusy && queueRef.current.length === 0) {
+    if (!playback.queueBusy && !processingRef.current && queueRef.current.length === 0) {
+      recordSettledFromBattle(battle);
       update((previous) =>
         Object.keys(previous.displayHp).length > 0 ||
         Object.keys(previous.displayExp).length > 0 ||
@@ -582,7 +698,7 @@ export function useBattleEventQueue({
           : previous
       );
     }
-  }, [battle, playback.queueBusy, update]);
+  }, [battle, playback.queueBusy, update, recordSettledFromBattle]);
 
   return useMemo(
     () => ({ playback, dismissLevelUp, dismissLearnPrompt }),
