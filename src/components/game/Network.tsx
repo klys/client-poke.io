@@ -381,6 +381,10 @@ const Network = () => {
                     switches: data.switches ?? {},
                     variables: data.variables ?? {},
                     selfSwitches: data.selfSwitches ?? {},
+                    // Session temp switches + server clock for script-switch
+                    // page conditions (day/night NPCs, door templates).
+                    tempSwitches: data.tempSwitches ?? {},
+                    env: data.env ?? undefined,
                 })
             }
         })

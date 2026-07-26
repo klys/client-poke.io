@@ -41,6 +41,13 @@ export type PlayableMapsStateSnapshot = {
   categories: string[];
   items: DesignerItemSeed[];
   editorDataByMapId: Record<string, ReturnType<typeof sanitizePlayableMapEditorData>>;
+  /** Imported System.rxdata data: script-switch expressions ("s:" switches)
+   * used by RMXP page-condition evaluation, plus display names. */
+  essentialsSystem?: {
+    scriptSwitches: Record<string, string>;
+    switchNames?: Record<string, string>;
+    variableNames?: Record<string, string>;
+  };
 };
 
 export type PlayableMapsSyncPayload = {
@@ -308,10 +315,25 @@ export function sanitizePlayableMapsSnapshot(value: unknown): PlayableMapsStateS
     | undefined;
   const mapsState = sanitizePlayableMapsState(candidate);
 
+  const scriptSwitches =
+    candidate?.essentialsSystem &&
+    typeof candidate.essentialsSystem === "object" &&
+    candidate.essentialsSystem.scriptSwitches &&
+    typeof candidate.essentialsSystem.scriptSwitches === "object"
+      ? Object.fromEntries(
+          Object.entries(candidate.essentialsSystem.scriptSwitches).filter(
+            (entry): entry is [string, string] => typeof entry[1] === "string"
+          )
+        )
+      : null;
+
   return {
     categories: mapsState.categories,
     items: mapsState.items,
     editorDataByMapId: sanitizePlayableMapEditorDataByMapId(candidate?.editorDataByMapId),
+    ...(scriptSwitches && Object.keys(scriptSwitches).length > 0
+      ? { essentialsSystem: { scriptSwitches } }
+      : {}),
   };
 }
 

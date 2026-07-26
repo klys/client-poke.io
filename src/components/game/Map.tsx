@@ -127,6 +127,7 @@ const Map = ({children}:{children:any}) => {
         getInitialPlayableMap(playableMapsState);
     const activeMapConfig = activeMap?.config ?? null;
     const activeMapEditorData = activeMap?.editorData ?? null;
+    const scriptSwitches = playableMapsState?.essentialsSystem?.scriptSwitches;
     const mapPixelWidth = activeMapConfig ? activeMapConfig.width * activeMapConfig.cellSize : 3200;
     const mapPixelHeight = activeMapConfig ? activeMapConfig.height * activeMapConfig.cellSize : 3200;
     const activeTileMap = activeMapEditorData?.tileMap?.baked ? activeMapEditorData.tileMap : null;
@@ -308,7 +309,7 @@ const Map = ({children}:{children:any}) => {
         for (const npc of candidates) {
             const essentialsEvent = (npc as { essentialsEvent?: EssentialsEvent }).essentialsEvent;
             if (essentialsEvent) {
-                const activePage = selectActiveEventPage(essentialsEvent, playerEventState);
+                const activePage = selectActiveEventPage(essentialsEvent, playerEventState, scriptSwitches);
                 if (!activePage) {
                     continue;
                 }
@@ -398,7 +399,7 @@ const Map = ({children}:{children:any}) => {
                     // conditionally-hidden events (cutscene actors, later story NPCs)
                     // don't appear before their story beat.
                     if (essentialsEvent) {
-                        const activePage = selectActiveEventPage(essentialsEvent, playerEventState);
+                        const activePage = selectActiveEventPage(essentialsEvent, playerEventState, scriptSwitches);
                         if (!activePage) {
                             return null;
                         }
