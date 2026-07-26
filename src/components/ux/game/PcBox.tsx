@@ -119,13 +119,29 @@ export default function PcBoxOverlay({
     () => (user?.pokemonStorage?.length ? user.pokemonStorage : [FALLBACK_BOX]),
     [user?.pokemonStorage]
   );
-  const activeBox = boxes[Math.min(boxIndex, boxes.length - 1)];
+
+  // Once the last real box has anything in it, offer one extra empty box to
+  // page into so players can always start a fresh box. It is virtual until the
+  // first deposit, which the server materializes as the next sequential box
+  // (`box-<n+1>`); the cap of one pending box avoids a chain of empties.
+  const boxCapacity = boxes[0]?.capacity ?? FALLBACK_BOX.capacity;
+  const canOpenNewBox = boxes[boxes.length - 1].pokemon.length > 0;
+  const boxCount = boxes.length + (canOpenNewBox ? 1 : 0);
+  const isVirtualBox = boxIndex >= boxes.length;
+  const activeBox: PokemonStorageBox = isVirtualBox
+    ? {
+        id: `box-${boxes.length + 1}`,
+        name: `Box ${boxes.length + 1}`,
+        capacity: boxCapacity,
+        pokemon: [],
+      }
+    : boxes[Math.min(boxIndex, boxes.length - 1)];
 
   useEffect(() => {
-    if (boxIndex > boxes.length - 1) {
-      setBoxIndex(boxes.length - 1);
+    if (boxIndex > boxCount - 1) {
+      setBoxIndex(boxCount - 1);
     }
-  }, [boxIndex, boxes.length]);
+  }, [boxIndex, boxCount]);
 
   // A server response (fresh user or an error toast) ends the pending move.
   useEffect(() => {
@@ -224,7 +240,7 @@ export default function PcBoxOverlay({
       py={compact ? 2 : 4}
       maxH="100dvh"
       overflowY="auto"
-      style={{ zoom: gameSettings.uiScale.dialogs } as CSSProperties}
+      style={{ zoom: gameSettings.uiScale.interface } as CSSProperties}
     >
       <Box pointerEvents="auto" width={compact ? "100%" : "min(96vw, 920px)"}>
         <RetroPanel maxWidth="100%">
@@ -272,9 +288,9 @@ export default function PcBoxOverlay({
                   variant="outline"
                   borderColor="#5d5a7b"
                   color="#4a4964"
-                  isDisabled={boxIndex >= boxes.length - 1}
+                  isDisabled={boxIndex >= boxCount - 1}
                   onClick={() => {
-                    setBoxIndex((index) => Math.min(boxes.length - 1, index + 1));
+                    setBoxIndex((index) => Math.min(boxCount - 1, index + 1));
                     setSelection((current) => (current?.source === "box" ? null : current));
                   }}
                 >

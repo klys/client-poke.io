@@ -67,10 +67,14 @@ import {
   type DesignerSectionKey,
 } from "./designerSections";
 import {
+  DESIGNER_CACHE_UPDATED_EVENT,
   getDesignerSectionStorageKey,
   getLegacyDesignerSectionStorageKey,
   persistStoredDesignerSectionPayload,
+  readStoredDesignerSectionPayload,
+  type DesignerCacheUpdateDetail,
 } from "./designerCache";
+import { ensureDesignerSectionOverHttp } from "./designerSectionHttp";
 
 interface DesignerSectionState {
   categories: string[];
@@ -1986,55 +1990,16 @@ function sanitizeSectionState(
   };
 }
 
+// Delegates to the shared designer cache (memory first, then localStorage):
+// heavy sections (assets, tilesets, battleBackgrounds) exceed the storage
+// quota and only ever exist in the memory cache, seeded by the HTTP download.
 function readStoredPayload(sectionKey: DesignerSectionKey): StoredDesignerSectionPayload {
-  const fallback = buildInitialState(sectionKey);
+  const payload = readStoredDesignerSectionPayload(sectionKey);
 
-  if (typeof window === "undefined") {
-    return {
-      state: fallback,
-      version: null,
-      updatedAt: null,
-      updatedByUsername: null,
-    };
-  }
-
-  try {
-    const raw =
-      window.localStorage.getItem(getDesignerSectionStorageKey(sectionKey)) ??
-      window.localStorage.getItem(getLegacyDesignerSectionStorageKey(sectionKey));
-    if (!raw) {
-      return {
-        state: fallback,
-        version: null,
-        updatedAt: null,
-        updatedByUsername: null,
-      };
-    }
-
-    const parsed = JSON.parse(raw);
-    const stateCandidate =
-      parsed && typeof parsed === "object" && "state" in parsed
-        ? (parsed as { state?: unknown }).state
-        : parsed;
-
-    return {
-      state: sanitizeSectionState(sectionKey, stateCandidate),
-      version:
-        typeof parsed?.version === "number" && Number.isFinite(parsed.version)
-          ? Math.round(parsed.version)
-          : null,
-      updatedAt: typeof parsed?.updatedAt === "string" ? parsed.updatedAt : null,
-      updatedByUsername:
-        typeof parsed?.updatedByUsername === "string" ? parsed.updatedByUsername : null,
-    };
-  } catch {
-    return {
-      state: fallback,
-      version: null,
-      updatedAt: null,
-      updatedByUsername: null,
-    };
-  }
+  return {
+    ...payload,
+    state: sanitizeSectionState(sectionKey, payload.state),
+  };
 }
 
 function loadStoredState(sectionKey: DesignerSectionKey): DesignerSectionState {
@@ -2102,6 +2067,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const isAssetsSection = sectionKey === "assets";
   const isBattleBackgroundsSection = sectionKey === "battleBackgrounds";
   const isMigrationProfileSection = isMigrationProfileSectionKey(sectionKey);
+  // Heavy media catalogs never receive state over the socket (the join only
+  // subscribes to version stubs); their state arrives via the HTTP download
+  // into the shared designer cache.
+  const isHeavyMediaSection =
+    isAssetsSection || isBattleBackgroundsSection || sectionKey === "tilesets";
   const isGenericRealtimeSection = !isMapsSection;
   const isRealtimeSection = true;
   const toast = useToast();
@@ -2344,6 +2314,51 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     });
   }, [objectsSyncMeta.updatedAt, objectsSyncMeta.updatedByUsername, sectionCacheVersion, sectionKey, sectionState]);
 
+  // Heavy sections hydrate from the shared designer cache: the HTTP download
+  // (kicked off on join, or by the bootstrap when a version stub announces a
+  // change) persists there and fires the cache-updated event. The identity
+  // guard stops the persist-effect echo of our own state from looping.
+  useEffect(() => {
+    if (!isHeavyMediaSection) {
+      return;
+    }
+
+    const hydrateFromCache = () => {
+      const payload = readStoredDesignerSectionPayload(sectionKey);
+
+      if (payload.version === null || payload.state === latestSectionStateRef.current) {
+        return;
+      }
+
+      shouldBroadcastRef.current = false;
+      const nextState = sanitizeSectionState(sectionKey, payload.state);
+
+      latestSectionStateRef.current = nextState;
+      setSectionState(nextState);
+      setSectionCacheVersion(payload.version);
+      setObjectsSyncMeta({
+        updatedAt: payload.updatedAt,
+        updatedByUsername: payload.updatedByUsername,
+      });
+      setIsObjectsStateHydrated(true);
+    };
+
+    const handleCacheUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<DesignerCacheUpdateDetail>).detail;
+
+      if (detail?.sectionKey === sectionKey) {
+        hydrateFromCache();
+      }
+    };
+
+    hydrateFromCache();
+    window.addEventListener(DESIGNER_CACHE_UPDATED_EVENT, handleCacheUpdate);
+
+    return () => {
+      window.removeEventListener(DESIGNER_CACHE_UPDATED_EVENT, handleCacheUpdate);
+    };
+  }, [isHeavyMediaSection, sectionKey]);
+
   useEffect(() => {
     if (!isRealtimeSection || !shouldBroadcastRef.current) {
       return;
@@ -2383,8 +2398,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       socket.emit("designer:section:join", {
         sectionKey,
         version: storedPayload.version,
+        // Heavy sections never seed over the socket — the payload runs to
+        // tens of MB and the HTTP endpoint is the source of truth.
         seedState:
-          storedPayload.version === null && storedPayload.state.items.length > 0
+          !isHeavyMediaSection &&
+          storedPayload.version === null &&
+          storedPayload.state.items.length > 0
             ? storedPayload.state
             : undefined,
       });
@@ -2544,6 +2563,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       joinSectionRoom();
     }
 
+    if (isHeavyMediaSection) {
+      void ensureDesignerSectionOverHttp(sectionKey);
+    }
+
     return () => {
       socket.emit("designer:section:leave", { sectionKey });
       if (isPokemonSection || isItemsSection) {
@@ -2562,7 +2585,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       socket.off("designer:section:error", handleObjectsError);
       socket.off("connect", joinSectionRoom);
     };
-  }, [authReady, authenticated, isGenericRealtimeSection, isItemsSection, isNpcsSection, isPokemonSection, isSkillsSection, sectionKey, socket, toast]);
+  }, [authReady, authenticated, isGenericRealtimeSection, isHeavyMediaSection, isItemsSection, isNpcsSection, isPokemonSection, isSkillsSection, sectionKey, socket, toast]);
 
   useEffect(() => {
     if (!isMapsSection) {

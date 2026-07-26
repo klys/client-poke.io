@@ -117,6 +117,44 @@ export interface MapEditorGrassPlacement {
   sourceEncounterId?: string;
 }
 
+export type MapEditorFishingRodTier = "old" | "good" | "super";
+
+export const FISHING_ROD_TIERS: MapEditorFishingRodTier[] = ["old", "good", "super"];
+
+// Encounter table methods present in the migrated Essentials data; the server
+// stores encounterMethod as an opaque string, so these mirror the data source.
+export const GRASS_ENCOUNTER_METHODS = [
+  "Land",
+  "Cave",
+  "Water",
+  "OldRod",
+  "GoodRod",
+  "SuperRod",
+];
+
+export interface MapEditorFishingSpot {
+  id: string;
+  x: number;
+  y: number;
+  pokemonIds: string[];
+  minLevel: number;
+  maxLevel: number;
+  /** Minimum rod tier required; omitted = any rod. */
+  rod?: MapEditorFishingRodTier;
+  encounterRows?: Array<{
+    weight: number;
+    pokemonId: string;
+    minLevel: number;
+    maxLevel: number;
+  }>;
+}
+
+export interface MapEditorBoulder {
+  id: string;
+  x: number;
+  y: number;
+}
+
 export interface MapEditorNpcStoreItem {
   itemId: string;
   itemName: string;
@@ -240,6 +278,8 @@ export interface PlayableMapEditorData {
   objects: MapEditorObjectPlacement[];
   portals: MapEditorPortalPlacement[];
   grass: MapEditorGrassPlacement[];
+  fishingSpots?: MapEditorFishingSpot[];
+  boulders?: MapEditorBoulder[];
   npcs: MapEditorNpcPlacement[];
   tileMap?: PlayableMapTileMapProfile;
   essentials?: {
@@ -283,7 +323,7 @@ interface PlayableMapEditorCanvasProps {
   isDirty: boolean;
 }
 
-type EditorTool = "selector" | "object" | "portal" | "grass" | "npc";
+type EditorTool = "selector" | "object" | "portal" | "grass" | "fishing" | "boulder" | "npc";
 
 interface GridCell {
   x: number;
@@ -317,6 +357,16 @@ interface ClipboardGrassPlacement extends MapEditorGrassPlacement {
   offsetY: number;
 }
 
+interface ClipboardFishingSpotPlacement extends MapEditorFishingSpot {
+  offsetX: number;
+  offsetY: number;
+}
+
+interface ClipboardBoulderPlacement extends MapEditorBoulder {
+  offsetX: number;
+  offsetY: number;
+}
+
 interface ClipboardNpcPlacement extends MapEditorNpcPlacement {
   offsetX: number;
   offsetY: number;
@@ -328,6 +378,8 @@ interface MapEditorClipboard {
   objects: ClipboardObjectPlacement[];
   portals: ClipboardPortalPlacement[];
   grass: ClipboardGrassPlacement[];
+  fishingSpots: ClipboardFishingSpotPlacement[];
+  boulders: ClipboardBoulderPlacement[];
   npcs: ClipboardNpcPlacement[];
 }
 
@@ -413,6 +465,8 @@ function createEmptyEditorData(): PlayableMapEditorData {
     objects: [],
     portals: [],
     grass: [],
+    fishingSpots: [],
+    boulders: [],
     npcs: [],
     essentials: undefined,
   };
@@ -448,6 +502,20 @@ function buildClipboardFromBounds(
         offsetX: item.x - bounds.startX,
         offsetY: item.y - bounds.startY,
       })),
+    fishingSpots: (data.fishingSpots ?? [])
+      .filter((item) => isCellInsideBounds({ x: item.x, y: item.y }, bounds))
+      .map((item) => ({
+        ...item,
+        offsetX: item.x - bounds.startX,
+        offsetY: item.y - bounds.startY,
+      })),
+    boulders: (data.boulders ?? [])
+      .filter((item) => isCellInsideBounds({ x: item.x, y: item.y }, bounds))
+      .map((item) => ({
+        ...item,
+        offsetX: item.x - bounds.startX,
+        offsetY: item.y - bounds.startY,
+      })),
     npcs: data.npcs
       .filter((item) => isCellInsideBounds({ x: item.x, y: item.y }, bounds))
       .map((item) => ({
@@ -471,6 +539,12 @@ function removeItemsInsideBounds(
       (item) => !isCellInsideBounds({ x: item.x, y: item.y }, bounds)
     ),
     grass: data.grass.filter(
+      (item) => !isCellInsideBounds({ x: item.x, y: item.y }, bounds)
+    ),
+    fishingSpots: (data.fishingSpots ?? []).filter(
+      (item) => !isCellInsideBounds({ x: item.x, y: item.y }, bounds)
+    ),
+    boulders: (data.boulders ?? []).filter(
       (item) => !isCellInsideBounds({ x: item.x, y: item.y }, bounds)
     ),
     npcs: data.npcs.filter(
@@ -607,6 +681,68 @@ export function sanitizePlayableMapEditorData(value: unknown): PlayableMapEditor
           encounterRate: clampEncounterRate(item.encounterRate),
         }))
     : [];
+  const fishingSpots = Array.isArray(candidate.fishingSpots)
+    ? candidate.fishingSpots
+        .filter(
+          (item): item is MapEditorFishingSpot =>
+            typeof item?.id === "string" &&
+            typeof item?.x === "number" &&
+            typeof item?.y === "number"
+        )
+        .map((item) => {
+          const minLevel = clampLevel(
+            typeof item.minLevel === "number" && Number.isFinite(item.minLevel)
+              ? item.minLevel
+              : 1
+          );
+
+          return {
+            id: item.id,
+            x: Math.max(0, Math.round(item.x)),
+            y: Math.max(0, Math.round(item.y)),
+            pokemonIds: Array.isArray(item.pokemonIds)
+              ? item.pokemonIds.filter(
+                  (pokemonId): pokemonId is string => typeof pokemonId === "string"
+                )
+              : [],
+            minLevel,
+            maxLevel: Math.max(
+              minLevel,
+              clampLevel(
+                typeof item.maxLevel === "number" && Number.isFinite(item.maxLevel)
+                  ? item.maxLevel
+                  : 1
+              )
+            ),
+            rod:
+              item.rod === "old" || item.rod === "good" || item.rod === "super"
+                ? item.rod
+                : undefined,
+            encounterRows: Array.isArray(item.encounterRows)
+              ? item.encounterRows.filter(
+                  (row) =>
+                    row &&
+                    typeof row.pokemonId === "string" &&
+                    typeof row.weight === "number"
+                )
+              : undefined,
+          };
+        })
+    : [];
+  const boulders = Array.isArray(candidate.boulders)
+    ? candidate.boulders
+        .filter(
+          (item): item is MapEditorBoulder =>
+            typeof item?.id === "string" &&
+            typeof item?.x === "number" &&
+            typeof item?.y === "number"
+        )
+        .map((item) => ({
+          id: item.id,
+          x: Math.max(0, Math.round(item.x)),
+          y: Math.max(0, Math.round(item.y)),
+        }))
+    : [];
   const npcs = Array.isArray(candidate.npcs)
     ? candidate.npcs
         .filter(
@@ -650,6 +786,8 @@ export function sanitizePlayableMapEditorData(value: unknown): PlayableMapEditor
     objects,
     portals,
     grass,
+    fishingSpots,
+    boulders,
     npcs,
     tileMap: sanitizeTileMapProfile(candidate.tileMap),
     essentials,
@@ -681,12 +819,16 @@ export default function PlayableMapEditorCanvas({
   const [pendingTransform, setPendingTransform] = useState<PendingTransform | null>(null);
   const [selectedPortalId, setSelectedPortalId] = useState<string | null>(null);
   const [selectedGrassId, setSelectedGrassId] = useState<string | null>(null);
+  const [selectedFishingSpotId, setSelectedFishingSpotId] = useState<string | null>(null);
+  const [selectedBoulderId, setSelectedBoulderId] = useState<string | null>(null);
   const [selectedNpcId, setSelectedNpcId] = useState<string | null>(null);
   const [showTiles, setShowTiles] = useState(true);
   // The baked tile-map chunks are the actual rendered map graphics. Rendering
   // them here lets designers see where their placements land instead of the
   // blank/black surface the live-game iframe left behind.
   const bakedTileMap = value.tileMap?.baked ? value.tileMap : null;
+  const fishingSpots = value.fishingSpots ?? [];
+  const boulders = value.boulders ?? [];
   const objectCategories = useMemo(
     () => Array.from(new Set(objectCatalog.map((item) => item.category))).sort(),
     [objectCatalog]
@@ -721,6 +863,13 @@ export default function PlayableMapEditorCanvas({
   const [activeGrassMinLevel, setActiveGrassMinLevel] = useState("5");
   const [activeGrassMaxLevel, setActiveGrassMaxLevel] = useState("8");
   const [activeGrassEncounterRate, setActiveGrassEncounterRate] = useState("30");
+  const [activeGrassEncounterMethod, setActiveGrassEncounterMethod] = useState("");
+  const [activeFishingPokemonIds, setActiveFishingPokemonIds] = useState<string[]>(
+    pokemonCatalog[0] ? [pokemonCatalog[0].id] : []
+  );
+  const [activeFishingMinLevel, setActiveFishingMinLevel] = useState("5");
+  const [activeFishingMaxLevel, setActiveFishingMaxLevel] = useState("8");
+  const [activeFishingRod, setActiveFishingRod] = useState("");
   const pokemonCategories = useMemo(
     () => Array.from(new Set(pokemonCatalog.map((pokemon) => pokemon.category))).sort(),
     [pokemonCatalog]
@@ -771,6 +920,24 @@ export default function PlayableMapEditorCanvas({
   }, [selectedGrassId, value.grass]);
 
   useEffect(() => {
+    if (
+      selectedFishingSpotId &&
+      !(value.fishingSpots ?? []).some((spot) => spot.id === selectedFishingSpotId)
+    ) {
+      setSelectedFishingSpotId(null);
+    }
+  }, [selectedFishingSpotId, value.fishingSpots]);
+
+  useEffect(() => {
+    if (
+      selectedBoulderId &&
+      !(value.boulders ?? []).some((boulder) => boulder.id === selectedBoulderId)
+    ) {
+      setSelectedBoulderId(null);
+    }
+  }, [selectedBoulderId, value.boulders]);
+
+  useEffect(() => {
     if (selectedNpcId && !value.npcs.some((npc) => npc.id === selectedNpcId)) {
       setSelectedNpcId(null);
     }
@@ -783,6 +950,21 @@ export default function PlayableMapEditorCanvas({
     }
 
     setActiveGrassPokemonIds((current) => {
+      const nextIds = current.filter((id) =>
+        pokemonCatalog.some((pokemon) => pokemon.id === id)
+      );
+
+      return nextIds.length > 0 ? nextIds : [pokemonCatalog[0].id];
+    });
+  }, [pokemonCatalog]);
+
+  useEffect(() => {
+    if (pokemonCatalog.length === 0) {
+      setActiveFishingPokemonIds([]);
+      return;
+    }
+
+    setActiveFishingPokemonIds((current) => {
       const nextIds = current.filter((id) =>
         pokemonCatalog.some((pokemon) => pokemon.id === id)
       );
@@ -836,6 +1018,16 @@ export default function PlayableMapEditorCanvas({
   const selectedGrass = useMemo(
     () => value.grass.find((grassCell) => grassCell.id === selectedGrassId) ?? null,
     [selectedGrassId, value.grass]
+  );
+  const selectedFishingSpot = useMemo(
+    () =>
+      (value.fishingSpots ?? []).find((spot) => spot.id === selectedFishingSpotId) ?? null,
+    [selectedFishingSpotId, value.fishingSpots]
+  );
+  const selectedBoulder = useMemo(
+    () =>
+      (value.boulders ?? []).find((boulder) => boulder.id === selectedBoulderId) ?? null,
+    [selectedBoulderId, value.boulders]
   );
   const selectedNpc = useMemo(
     () => value.npcs.find((npc) => npc.id === selectedNpcId) ?? null,
@@ -955,6 +1147,20 @@ export default function PlayableMapEditorCanvas({
     encounterRate: clampEncounterRate(
       sanitizeCoordinate(activeGrassEncounterRate || "0")
     ),
+    encounterMethod: activeGrassEncounterMethod || undefined,
+  };
+
+  const activeFishingSettings = {
+    pokemonIds: activeFishingPokemonIds,
+    minLevel: clampLevel(sanitizeCoordinate(activeFishingMinLevel || "1")),
+    maxLevel: Math.max(
+      clampLevel(sanitizeCoordinate(activeFishingMinLevel || "1")),
+      clampLevel(sanitizeCoordinate(activeFishingMaxLevel || activeFishingMinLevel || "1"))
+    ),
+    rod:
+      activeFishingRod === "old" || activeFishingRod === "good" || activeFishingRod === "super"
+        ? (activeFishingRod as MapEditorFishingRodTier)
+        : undefined,
   };
 
   const handleCopySelection = () => {
@@ -1047,6 +1253,24 @@ export default function PlayableMapEditorCanvas({
       }))
       .filter((item) => item.x >= 0 && item.y >= 0 && item.x < mapWidth && item.y < mapHeight)
       .map(({ offsetX: _offsetX, offsetY: _offsetY, ...item }) => item);
+    const nextFishingSpots = pendingTransform.clipboard.fishingSpots
+      .map((item) => ({
+        ...item,
+        id: pendingTransform.type === "move" ? item.id : createEditorId("fishing"),
+        x: targetCell.x + item.offsetX,
+        y: targetCell.y + item.offsetY,
+      }))
+      .filter((item) => item.x >= 0 && item.y >= 0 && item.x < mapWidth && item.y < mapHeight)
+      .map(({ offsetX: _offsetX, offsetY: _offsetY, ...item }) => item);
+    const nextBoulders = pendingTransform.clipboard.boulders
+      .map((item) => ({
+        ...item,
+        id: pendingTransform.type === "move" ? item.id : createEditorId("boulder"),
+        x: targetCell.x + item.offsetX,
+        y: targetCell.y + item.offsetY,
+      }))
+      .filter((item) => item.x >= 0 && item.y >= 0 && item.x < mapWidth && item.y < mapHeight)
+      .map(({ offsetX: _offsetX, offsetY: _offsetY, ...item }) => item);
     const nextNpcs = pendingTransform.clipboard.npcs
       .map((item) => ({
         ...item,
@@ -1059,6 +1283,10 @@ export default function PlayableMapEditorCanvas({
     const objectTargetKeys = new Set(nextObjects.map((item) => getCellKey(item.x, item.y)));
     const portalTargetKeys = new Set(nextPortals.map((item) => getCellKey(item.x, item.y)));
     const grassTargetKeys = new Set(nextGrass.map((item) => getCellKey(item.x, item.y)));
+    const fishingTargetKeys = new Set(
+      nextFishingSpots.map((item) => getCellKey(item.x, item.y))
+    );
+    const boulderTargetKeys = new Set(nextBoulders.map((item) => getCellKey(item.x, item.y)));
     const npcTargetKeys = new Set(nextNpcs.map((item) => getCellKey(item.x, item.y)));
 
     setNextValue({
@@ -1080,6 +1308,18 @@ export default function PlayableMapEditorCanvas({
           (item) => !grassTargetKeys.has(getCellKey(item.x, item.y))
         ),
         ...nextGrass,
+      ],
+      fishingSpots: [
+        ...(baseValue.fishingSpots ?? []).filter(
+          (item) => !fishingTargetKeys.has(getCellKey(item.x, item.y))
+        ),
+        ...nextFishingSpots,
+      ],
+      boulders: [
+        ...(baseValue.boulders ?? []).filter(
+          (item) => !boulderTargetKeys.has(getCellKey(item.x, item.y))
+        ),
+        ...nextBoulders,
       ],
       npcs: [
         ...baseValue.npcs.filter((item) => !npcTargetKeys.has(getCellKey(item.x, item.y))),
@@ -1169,6 +1409,8 @@ export default function PlayableMapEditorCanvas({
       setSelectedNpcId(existingNpc.id);
       setSelectedPortalId(null);
       setSelectedGrassId(null);
+      setSelectedFishingSpotId(null);
+      setSelectedBoulderId(null);
       setSelectionBounds({
         startX: cell.x,
         startY: cell.y,
@@ -1206,6 +1448,8 @@ export default function PlayableMapEditorCanvas({
     setSelectedNpcId(nextNpc.id);
     setSelectedPortalId(null);
     setSelectedGrassId(null);
+    setSelectedFishingSpotId(null);
+    setSelectedBoulderId(null);
     setSelectionBounds({
       startX: cell.x,
       startY: cell.y,
@@ -1227,6 +1471,7 @@ export default function PlayableMapEditorCanvas({
           minLevel: activeGrassSettings.minLevel,
           maxLevel: activeGrassSettings.maxLevel,
           encounterRate: activeGrassSettings.encounterRate,
+          encounterMethod: activeGrassSettings.encounterMethod,
         });
       }
     }
@@ -1255,6 +1500,94 @@ export default function PlayableMapEditorCanvas({
       setSelectedGrassId(null);
       setSelectedNpcId(null);
     }
+  };
+
+  const placeOrSelectFishingSpotAtCell = (cell: GridCell) => {
+    const existingSpot =
+      fishingSpots.find((item) => item.x === cell.x && item.y === cell.y) ?? null;
+
+    if (existingSpot) {
+      setSelectedFishingSpotId(existingSpot.id);
+      setSelectedPortalId(null);
+      setSelectedGrassId(null);
+      setSelectedBoulderId(null);
+      setSelectedNpcId(null);
+      setSelectionBounds({
+        startX: cell.x,
+        startY: cell.y,
+        endX: cell.x,
+        endY: cell.y,
+      });
+      return;
+    }
+
+    const nextSpot: MapEditorFishingSpot = {
+      id: createEditorId("fishing"),
+      x: cell.x,
+      y: cell.y,
+      pokemonIds: [...activeFishingSettings.pokemonIds],
+      minLevel: activeFishingSettings.minLevel,
+      maxLevel: activeFishingSettings.maxLevel,
+      rod: activeFishingSettings.rod,
+    };
+
+    setNextValue({
+      ...value,
+      fishingSpots: [
+        ...fishingSpots.filter(
+          (item) => getCellKey(item.x, item.y) !== getCellKey(cell.x, cell.y)
+        ),
+        nextSpot,
+      ],
+    });
+    setSelectedFishingSpotId(nextSpot.id);
+    setSelectedPortalId(null);
+    setSelectedGrassId(null);
+    setSelectedBoulderId(null);
+    setSelectedNpcId(null);
+    setSelectionBounds({
+      startX: cell.x,
+      startY: cell.y,
+      endX: cell.x,
+      endY: cell.y,
+    });
+  };
+
+  // Click places a boulder; clicking an existing one removes it again.
+  const placeOrToggleBoulderAtCell = (cell: GridCell) => {
+    const existingBoulder =
+      boulders.find((item) => item.x === cell.x && item.y === cell.y) ?? null;
+
+    if (existingBoulder) {
+      setNextValue({
+        ...value,
+        boulders: boulders.filter((item) => item.id !== existingBoulder.id),
+      });
+      setSelectedBoulderId(null);
+      return;
+    }
+
+    const nextBoulder: MapEditorBoulder = {
+      id: createEditorId("boulder"),
+      x: cell.x,
+      y: cell.y,
+    };
+
+    setNextValue({
+      ...value,
+      boulders: [...boulders, nextBoulder],
+    });
+    setSelectedBoulderId(nextBoulder.id);
+    setSelectedPortalId(null);
+    setSelectedGrassId(null);
+    setSelectedFishingSpotId(null);
+    setSelectedNpcId(null);
+    setSelectionBounds({
+      startX: cell.x,
+      startY: cell.y,
+      endX: cell.x,
+      endY: cell.y,
+    });
   };
 
   const updateSelectedPortal = (
@@ -1309,6 +1642,45 @@ export default function PlayableMapEditorCanvas({
       grass: value.grass.filter((grassCell) => grassCell.id !== selectedGrassId),
     });
     setSelectedGrassId(null);
+  };
+
+  const updateSelectedFishingSpot = (
+    updater: (spot: MapEditorFishingSpot) => MapEditorFishingSpot
+  ) => {
+    if (!selectedFishingSpotId) {
+      return;
+    }
+
+    setNextValue({
+      ...value,
+      fishingSpots: fishingSpots.map((spot) =>
+        spot.id === selectedFishingSpotId ? updater(spot) : spot
+      ),
+    });
+  };
+
+  const removeSelectedFishingSpot = () => {
+    if (!selectedFishingSpotId) {
+      return;
+    }
+
+    setNextValue({
+      ...value,
+      fishingSpots: fishingSpots.filter((spot) => spot.id !== selectedFishingSpotId),
+    });
+    setSelectedFishingSpotId(null);
+  };
+
+  const removeSelectedBoulder = () => {
+    if (!selectedBoulderId) {
+      return;
+    }
+
+    setNextValue({
+      ...value,
+      boulders: boulders.filter((boulder) => boulder.id !== selectedBoulderId),
+    });
+    setSelectedBoulderId(null);
   };
 
   const updateSelectedNpc = (
@@ -1392,8 +1764,20 @@ export default function PlayableMapEditorCanvas({
         current: cell,
       });
       setSelectedPortalId(null);
+      setSelectedFishingSpotId(null);
+      setSelectedBoulderId(null);
       setSelectedNpcId(null);
       event.currentTarget.setPointerCapture(event.pointerId);
+      return;
+    }
+
+    if (activeTool === "fishing") {
+      placeOrSelectFishingSpotAtCell(cell);
+      return;
+    }
+
+    if (activeTool === "boulder") {
+      placeOrToggleBoulderAtCell(cell);
       return;
     }
 
@@ -1462,6 +1846,19 @@ export default function PlayableMapEditorCanvas({
               grassCell.x === nextBounds.startX && grassCell.y === nextBounds.startY
           ) ?? null
         : null;
+    const fishingSpotAtSelection =
+      nextBounds.startX === nextBounds.endX && nextBounds.startY === nextBounds.endY
+        ? fishingSpots.find(
+            (spot) => spot.x === nextBounds.startX && spot.y === nextBounds.startY
+          ) ?? null
+        : null;
+    const boulderAtSelection =
+      nextBounds.startX === nextBounds.endX && nextBounds.startY === nextBounds.endY
+        ? boulders.find(
+            (boulder) =>
+              boulder.x === nextBounds.startX && boulder.y === nextBounds.startY
+          ) ?? null
+        : null;
     const npcAtSelection =
       nextBounds.startX === nextBounds.endX && nextBounds.startY === nextBounds.endY
         ? value.npcs.find(
@@ -1471,6 +1868,8 @@ export default function PlayableMapEditorCanvas({
 
     setSelectedPortalId(portalAtSelection?.id ?? null);
     setSelectedGrassId(grassAtSelection?.id ?? null);
+    setSelectedFishingSpotId(fishingSpotAtSelection?.id ?? null);
+    setSelectedBoulderId(boulderAtSelection?.id ?? null);
     setSelectedNpcId(npcAtSelection?.id ?? null);
   };
 
@@ -1489,9 +1888,13 @@ export default function PlayableMapEditorCanvas({
           ? "Click a cell to place or select a portal cell."
           : activeTool === "grass"
             ? "Drag to paint grass cells with the active encounter setup."
-            : activeNpc
-              ? `Click to place ${activeNpc.name}.`
-              : "Create an NPC in the designer, then place it here.";
+            : activeTool === "fishing"
+              ? "Click a cell to place or select a fishing spot."
+              : activeTool === "boulder"
+                ? "Click a cell to place a Strength boulder; click it again to remove it."
+                : activeNpc
+                  ? `Click to place ${activeNpc.name}.`
+                  : "Create an NPC in the designer, then place it here.";
 
   return (
     <Flex direction={{ base: "column", xl: "row" }} gap={5}>
@@ -1546,6 +1949,22 @@ export default function PlayableMapEditorCanvas({
                 onClick={() => setActiveTool("grass")}
               >
                 Grass
+              </Button>
+              <Button
+                size="sm"
+                colorScheme={activeTool === "fishing" ? "green" : undefined}
+                variant={activeTool === "fishing" ? "solid" : "outline"}
+                onClick={() => setActiveTool("fishing")}
+              >
+                Fishing
+              </Button>
+              <Button
+                size="sm"
+                colorScheme={activeTool === "boulder" ? "green" : undefined}
+                variant={activeTool === "boulder" ? "solid" : "outline"}
+                onClick={() => setActiveTool("boulder")}
+              >
+                Boulders
               </Button>
               <Button
                 size="sm"
@@ -1626,6 +2045,8 @@ export default function PlayableMapEditorCanvas({
                   setPendingTransform(null);
                   setSelectedPortalId(null);
                   setSelectedGrassId(null);
+                  setSelectedFishingSpotId(null);
+                  setSelectedBoulderId(null);
                   setSelectedNpcId(null);
                 }}
               >
@@ -1634,7 +2055,7 @@ export default function PlayableMapEditorCanvas({
             </SimpleGrid>
             <Text mt={3} fontSize="sm" color="editor.textSubtle">
               {activeSelectionBounds
-                ? `${getBoundsSize(activeSelectionBounds).width} x ${getBoundsSize(activeSelectionBounds).height} cells selected • ${selectedContents?.objects.length ?? 0} objects • ${selectedContents?.portals.length ?? 0} portals • ${selectedContents?.grass.length ?? 0} grass • ${selectedContents?.npcs.length ?? 0} NPCs`
+                ? `${getBoundsSize(activeSelectionBounds).width} x ${getBoundsSize(activeSelectionBounds).height} cells selected • ${selectedContents?.objects.length ?? 0} objects • ${selectedContents?.portals.length ?? 0} portals • ${selectedContents?.grass.length ?? 0} grass • ${selectedContents?.fishingSpots.length ?? 0} fishing • ${selectedContents?.boulders.length ?? 0} boulders • ${selectedContents?.npcs.length ?? 0} NPCs`
                 : "No selection yet."}
             </Text>
           </Box>
@@ -1955,8 +2376,165 @@ export default function PlayableMapEditorCanvas({
                       onChange={(event) => setActiveGrassEncounterRate(event.target.value)}
                     />
                   </FormControl>
+                  <FormControl>
+                    <FormLabel>Encounter Method</FormLabel>
+                    <Select
+                      value={activeGrassEncounterMethod}
+                      onChange={(event) => setActiveGrassEncounterMethod(event.target.value)}
+                    >
+                      <option value="">Default (Land)</option>
+                      {GRASS_ENCOUNTER_METHODS.map((method) => (
+                        <option key={method} value={method}>
+                          {method}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormControl>
                   <Text fontSize="sm" color="editor.textSubtle">
                     Selected Pokemon: {getPokemonNames(activeGrassPokemonIds, pokemonCatalog).join(", ") || "None"}
+                  </Text>
+                </Stack>
+              </Box>
+            </>
+          ) : null}
+
+          {activeTool === "fishing" ? (
+            <>
+              <Divider />
+              <Box>
+                <Text
+                  fontSize="xs"
+                  fontWeight="700"
+                  textTransform="uppercase"
+                  letterSpacing="0.14em"
+                  color="editor.accentMuted"
+                  mb={2}
+                >
+                  Fishing Tool
+                </Text>
+                <Text fontSize="sm" color="editor.textSubtle" mb={3}>
+                  Click a water cell to place a fishing spot with this encounter setup.
+                </Text>
+                <Stack spacing={3}>
+                  <SimpleGrid columns={2} spacing={3}>
+                    <FormControl>
+                      <FormLabel>Pokemon Category</FormLabel>
+                      <Select
+                        value={activePokemonCategoryFilter}
+                        onChange={(event) =>
+                          setActivePokemonCategoryFilter(event.target.value)
+                        }
+                      >
+                        <option value="">All Categories</option>
+                        {pokemonCategories.map((category) => (
+                          <option key={category} value={category}>
+                            {category}
+                          </option>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>Search Name</FormLabel>
+                      <Input
+                        value={pokemonSearchTerm}
+                        onChange={(event) => setPokemonSearchTerm(event.target.value)}
+                        placeholder="Search pokemon"
+                      />
+                    </FormControl>
+                  </SimpleGrid>
+                  <Box>
+                    <Text fontSize="sm" fontWeight="700" color="editor.heading" mb={2}>
+                      Pokemon Encounters
+                    </Text>
+                    <Stack spacing={2} maxH="220px" overflowY="auto">
+                      {filteredPokemonCatalog.map((pokemon) => {
+                        const isSelected = activeFishingPokemonIds.includes(pokemon.id);
+
+                        return (
+                          <Flex
+                            key={pokemon.id}
+                            align="center"
+                            justify="space-between"
+                            gap={3}
+                            p={2.5}
+                            borderRadius="14px"
+                            borderWidth="1px"
+                            borderColor={
+                              isSelected
+                                ? "editor.cardSelectedBorder"
+                                : "editor.borderMuted"
+                            }
+                            bg={
+                              isSelected
+                                ? "editor.cardSelected"
+                                : "editor.card"
+                            }
+                            cursor="pointer"
+                            onClick={() =>
+                              setActiveFishingPokemonIds((current) => {
+                                if (current.includes(pokemon.id)) {
+                                  return current.length === 1
+                                    ? current
+                                    : current.filter((id) => id !== pokemon.id);
+                                }
+
+                                return [...current, pokemon.id];
+                              })
+                            }
+                          >
+                            <Box minW={0}>
+                              <Text fontWeight="700" color="editor.heading" noOfLines={1}>
+                                {pokemon.name}
+                              </Text>
+                              <Text fontSize="sm" color="editor.textSubtle">
+                                {pokemon.category}
+                              </Text>
+                            </Box>
+                            <Text fontSize="xs" fontWeight="700" color="editor.accent">
+                              {isSelected ? "On" : "Off"}
+                            </Text>
+                          </Flex>
+                        );
+                      })}
+                      {filteredPokemonCatalog.length === 0 ? (
+                        <Text fontSize="sm" color="editor.textSubtle">
+                          No Pokemon match this category/search.
+                        </Text>
+                      ) : null}
+                    </Stack>
+                  </Box>
+                  <SimpleGrid columns={2} spacing={3}>
+                    <FormControl>
+                      <FormLabel>Min Level</FormLabel>
+                      <Input
+                        value={activeFishingMinLevel}
+                        onChange={(event) => setActiveFishingMinLevel(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>Max Level</FormLabel>
+                      <Input
+                        value={activeFishingMaxLevel}
+                        onChange={(event) => setActiveFishingMaxLevel(event.target.value)}
+                      />
+                    </FormControl>
+                  </SimpleGrid>
+                  <FormControl>
+                    <FormLabel>Required Rod</FormLabel>
+                    <Select
+                      value={activeFishingRod}
+                      onChange={(event) => setActiveFishingRod(event.target.value)}
+                    >
+                      <option value="">Any Rod</option>
+                      {FISHING_ROD_TIERS.map((tier) => (
+                        <option key={tier} value={tier}>
+                          {tier === "old" ? "Old Rod" : tier === "good" ? "Good Rod" : "Super Rod"}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <Text fontSize="sm" color="editor.textSubtle">
+                    Selected Pokemon: {getPokemonNames(activeFishingPokemonIds, pokemonCatalog).join(", ") || "None"}
                   </Text>
                 </Stack>
               </Box>
@@ -2254,11 +2832,238 @@ export default function PlayableMapEditorCanvas({
                       }
                     />
                   </FormControl>
+                  <FormControl>
+                    <FormLabel>Encounter Method</FormLabel>
+                    <Select
+                      value={selectedGrass.encounterMethod ?? ""}
+                      onChange={(event) =>
+                        updateSelectedGrass((grassCell) => ({
+                          ...grassCell,
+                          encounterMethod: event.target.value || undefined,
+                        }))
+                      }
+                    >
+                      <option value="">Default (Land)</option>
+                      {GRASS_ENCOUNTER_METHODS.map((method) => (
+                        <option key={method} value={method}>
+                          {method}
+                        </option>
+                      ))}
+                      {selectedGrass.encounterMethod &&
+                      !GRASS_ENCOUNTER_METHODS.includes(selectedGrass.encounterMethod) ? (
+                        <option value={selectedGrass.encounterMethod}>
+                          {selectedGrass.encounterMethod}
+                        </option>
+                      ) : null}
+                    </Select>
+                  </FormControl>
                   <Text fontSize="sm" color="editor.textSubtle">
                     Pokemon: {getPokemonNames(selectedGrass.pokemonIds, pokemonCatalog).join(", ") || "None"}
                   </Text>
                   <Button colorScheme="red" variant="outline" onClick={removeSelectedGrass}>
                     Remove Grass
+                  </Button>
+                </Stack>
+              </Box>
+            </>
+          ) : null}
+
+          {selectedFishingSpot ? (
+            <>
+              <Divider />
+              <Box>
+                <Text
+                  fontSize="xs"
+                  fontWeight="700"
+                  textTransform="uppercase"
+                  letterSpacing="0.14em"
+                  color="editor.accentMuted"
+                  mb={2}
+                >
+                  Fishing Spot
+                </Text>
+                <Text fontSize="sm" color="editor.textSubtle" mb={3}>
+                  Cell X {selectedFishingSpot.x}, Y {selectedFishingSpot.y}
+                </Text>
+                <Stack spacing={3}>
+                  <SimpleGrid columns={2} spacing={3}>
+                    <FormControl>
+                      <FormLabel>Pokemon Category</FormLabel>
+                      <Select
+                        value={activePokemonCategoryFilter}
+                        onChange={(event) =>
+                          setActivePokemonCategoryFilter(event.target.value)
+                        }
+                      >
+                        <option value="">All Categories</option>
+                        {pokemonCategories.map((category) => (
+                          <option key={category} value={category}>
+                            {category}
+                          </option>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>Search Name</FormLabel>
+                      <Input
+                        value={pokemonSearchTerm}
+                        onChange={(event) => setPokemonSearchTerm(event.target.value)}
+                        placeholder="Search pokemon"
+                      />
+                    </FormControl>
+                  </SimpleGrid>
+                  <Box>
+                    <Text fontSize="sm" fontWeight="700" color="editor.heading" mb={2}>
+                      Pokemon Encounters
+                    </Text>
+                    <Stack spacing={2} maxH="220px" overflowY="auto">
+                      {filteredPokemonCatalog.map((pokemon) => {
+                        const isSelected = selectedFishingSpot.pokemonIds.includes(pokemon.id);
+
+                        return (
+                          <Flex
+                            key={pokemon.id}
+                            align="center"
+                            justify="space-between"
+                            gap={3}
+                            p={2.5}
+                            borderRadius="14px"
+                            borderWidth="1px"
+                            borderColor={
+                              isSelected
+                                ? "editor.cardSelectedBorder"
+                                : "editor.borderMuted"
+                            }
+                            bg={
+                              isSelected
+                                ? "editor.cardSelected"
+                                : "editor.card"
+                            }
+                            cursor="pointer"
+                            onClick={() =>
+                              updateSelectedFishingSpot((spot) => ({
+                                ...spot,
+                                pokemonIds: spot.pokemonIds.includes(pokemon.id)
+                                  ? spot.pokemonIds.length === 1
+                                    ? spot.pokemonIds
+                                    : spot.pokemonIds.filter((id) => id !== pokemon.id)
+                                  : [...spot.pokemonIds, pokemon.id],
+                              }))
+                            }
+                          >
+                            <Box minW={0}>
+                              <Text fontWeight="700" color="editor.heading" noOfLines={1}>
+                                {pokemon.name}
+                              </Text>
+                              <Text fontSize="sm" color="editor.textSubtle">
+                                {pokemon.category}
+                              </Text>
+                            </Box>
+                            <Text fontSize="xs" fontWeight="700" color="editor.accent">
+                              {isSelected ? "On" : "Off"}
+                            </Text>
+                          </Flex>
+                        );
+                      })}
+                      {filteredPokemonCatalog.length === 0 ? (
+                        <Text fontSize="sm" color="editor.textSubtle">
+                          No Pokemon match this category/search.
+                        </Text>
+                      ) : null}
+                    </Stack>
+                  </Box>
+                  <SimpleGrid columns={2} spacing={3}>
+                    <FormControl>
+                      <FormLabel>Min Level</FormLabel>
+                      <Input
+                        value={String(selectedFishingSpot.minLevel)}
+                        onChange={(event) =>
+                          updateSelectedFishingSpot((spot) => ({
+                            ...spot,
+                            minLevel: clampLevel(sanitizeCoordinate(event.target.value)),
+                            maxLevel: Math.max(
+                              clampLevel(sanitizeCoordinate(event.target.value)),
+                              spot.maxLevel
+                            ),
+                          }))
+                        }
+                      />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>Max Level</FormLabel>
+                      <Input
+                        value={String(selectedFishingSpot.maxLevel)}
+                        onChange={(event) =>
+                          updateSelectedFishingSpot((spot) => ({
+                            ...spot,
+                            maxLevel: Math.max(
+                              spot.minLevel,
+                              clampLevel(sanitizeCoordinate(event.target.value))
+                            ),
+                          }))
+                        }
+                      />
+                    </FormControl>
+                  </SimpleGrid>
+                  <FormControl>
+                    <FormLabel>Required Rod</FormLabel>
+                    <Select
+                      value={selectedFishingSpot.rod ?? ""}
+                      onChange={(event) =>
+                        updateSelectedFishingSpot((spot) => ({
+                          ...spot,
+                          rod:
+                            event.target.value === "old" ||
+                            event.target.value === "good" ||
+                            event.target.value === "super"
+                              ? event.target.value
+                              : undefined,
+                        }))
+                      }
+                    >
+                      <option value="">Any Rod</option>
+                      {FISHING_ROD_TIERS.map((tier) => (
+                        <option key={tier} value={tier}>
+                          {tier === "old" ? "Old Rod" : tier === "good" ? "Good Rod" : "Super Rod"}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <Text fontSize="sm" color="editor.textSubtle">
+                    Pokemon: {getPokemonNames(selectedFishingSpot.pokemonIds, pokemonCatalog).join(", ") || "None"}
+                  </Text>
+                  <Button colorScheme="red" variant="outline" onClick={removeSelectedFishingSpot}>
+                    Remove Fishing Spot
+                  </Button>
+                </Stack>
+              </Box>
+            </>
+          ) : null}
+
+          {selectedBoulder ? (
+            <>
+              <Divider />
+              <Box>
+                <Text
+                  fontSize="xs"
+                  fontWeight="700"
+                  textTransform="uppercase"
+                  letterSpacing="0.14em"
+                  color="editor.accentMuted"
+                  mb={2}
+                >
+                  Strength Boulder
+                </Text>
+                <Text fontSize="sm" color="editor.textSubtle" mb={3}>
+                  Cell X {selectedBoulder.x}, Y {selectedBoulder.y}
+                </Text>
+                <Stack spacing={3}>
+                  <Text fontSize="sm" color="editor.textSubtle">
+                    Players push this boulder one cell at a time with the Strength field
+                    skill.
+                  </Text>
+                  <Button colorScheme="red" variant="outline" onClick={removeSelectedBoulder}>
+                    Remove Boulder
                   </Button>
                 </Stack>
               </Box>
@@ -2525,6 +3330,12 @@ export default function PlayableMapEditorCanvas({
               Grass cells: {value.grass.length}
             </Text>
             <Text fontSize="sm" color="editor.textSubtle">
+              Fishing spots: {fishingSpots.length}
+            </Text>
+            <Text fontSize="sm" color="editor.textSubtle">
+              Boulders: {boulders.length}
+            </Text>
+            <Text fontSize="sm" color="editor.textSubtle">
               NPCs: {value.npcs.length}
             </Text>
             <Text fontSize="sm" color={isDirty ? "editor.warning" : "editor.textSubtle"}>
@@ -2698,6 +3509,63 @@ export default function PlayableMapEditorCanvas({
                   backgroundImage:
                     "repeating-linear-gradient(45deg, rgba(57, 255, 20, 0.55) 0 4px, rgba(190, 255, 120, 0.2) 4px 8px)",
                 }}
+              />
+            ))}
+
+            {fishingSpots.map((spot) => (
+              <Flex
+                key={spot.id}
+                position="absolute"
+                left={`${spot.x * cellSize}px`}
+                top={`${spot.y * cellSize}px`}
+                width={`${cellSize}px`}
+                height={`${cellSize}px`}
+                align="center"
+                justify="center"
+                pointerEvents="none"
+                zIndex={2}
+              >
+                <Box
+                  width="62%"
+                  height="62%"
+                  transform="rotate(45deg)"
+                  border={
+                    spot.id === selectedFishingSpotId
+                      ? "2px solid rgba(190, 235, 255, 1)"
+                      : "2px solid rgba(0, 170, 255, 0.95)"
+                  }
+                  bg={
+                    spot.id === selectedFishingSpotId
+                      ? "rgba(0, 170, 255, 0.6)"
+                      : "rgba(0, 170, 255, 0.45)"
+                  }
+                  boxShadow="0 0 9px rgba(0, 170, 255, 0.95), inset 0 0 5px rgba(190, 235, 255, 0.6)"
+                />
+              </Flex>
+            ))}
+
+            {boulders.map((boulder) => (
+              <Box
+                key={boulder.id}
+                position="absolute"
+                left={`${boulder.x * cellSize}px`}
+                top={`${boulder.y * cellSize}px`}
+                width={`${cellSize}px`}
+                height={`${cellSize}px`}
+                borderRadius="6px"
+                border={
+                  boulder.id === selectedBoulderId
+                    ? "2px solid rgba(255, 214, 170, 1)"
+                    : "2px solid rgba(181, 136, 99, 0.95)"
+                }
+                bg={
+                  boulder.id === selectedBoulderId
+                    ? "rgba(140, 110, 86, 0.65)"
+                    : "rgba(120, 100, 82, 0.55)"
+                }
+                boxShadow="0 0 8px rgba(181, 136, 99, 0.9), inset 0 0 5px rgba(70, 55, 42, 0.8)"
+                pointerEvents="none"
+                zIndex={2}
               />
             ))}
 

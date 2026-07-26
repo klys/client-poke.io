@@ -14,6 +14,7 @@ import {
   ModalFooter,
   ModalHeader,
   ModalOverlay,
+  Progress,
   Select,
   SimpleGrid,
   Stack,
@@ -48,6 +49,7 @@ import {
   type DesignerPlayableMapBackgroundImageMode,
   type DesignerPlayableMapConfig,
   type DesignerPlayableMapType,
+  type PlayableMapConnection,
 } from "./designerSections";
 import {
   DESIGNER_CACHE_UPDATED_EVENT,
@@ -55,6 +57,13 @@ import {
   readStoredDesignerSectionPayload,
   type DesignerCacheUpdateDetail,
 } from "./designerCache";
+import {
+  ensureDesignerSectionOverHttp,
+  fetchDesignerSectionOverHttp,
+  getDesignerSectionLoadProgress,
+  subscribeDesignerSectionLoad,
+  type DesignerSectionLoadProgress,
+} from "./designerSectionHttp";
 import {
   getCharacterSkinPreview,
   loadCharacterSkinCatalog,
@@ -88,6 +97,12 @@ const MAP_SIZE_OPTIONS: Array<{
   { value: "medium", label: "Medium (500 x 500)", width: 500, height: 500 },
   { value: "large", label: "Large (2000 x 2000)", width: 2000, height: 2000 },
   { value: "custom", label: "Custom Size", width: null, height: null },
+];
+const MAP_CONNECTION_DIRECTIONS: PlayableMapConnection["direction"][] = [
+  "north",
+  "south",
+  "east",
+  "west",
 ];
 const MAP_TYPES: DesignerPlayableMapType[] = [
   "grassland",
@@ -540,6 +555,10 @@ function readBackgroundImage(
   reader.readAsDataURL(file);
 }
 
+function formatMegabytes(bytes: number) {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function loadRegionNames() {
   const fallback: string[] = [];
 
@@ -610,6 +629,12 @@ export default function MapEditorPage() {
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
   const [editorMode, setEditorMode] = useState<"tiles" | "placements">("placements");
   const [isSaving, setIsSaving] = useState(false);
+  // True once the maps room delivered its first sync — before that, an empty
+  // local cache means "still loading", not "map not found".
+  const [hasMapsSync, setHasMapsSync] = useState(false);
+  const [tilesetLoad, setTilesetLoad] = useState<DesignerSectionLoadProgress | null>(
+    () => getDesignerSectionLoadProgress("tilesets")
+  );
   const [editorData, setEditorData] = useState<PlayableMapEditorData>(() =>
     loadMapEditorData(mapId)
   );
@@ -659,6 +684,31 @@ export default function MapEditorPage() {
   const [backgroundImageMode, setBackgroundImageMode] =
     useState<DesignerPlayableMapBackgroundImageMode>(initialConfig.backgroundImageMode);
   const [isInitialMap, setIsInitialMap] = useState(initialConfig.isInitialMap);
+  const [bgm, setBgm] = useState(initialConfig.bgm ?? "");
+  const [bgs, setBgs] = useState(initialConfig.bgs ?? "");
+  const [battleBack, setBattleBack] = useState(initialConfig.battleBack ?? "");
+  const [environment, setEnvironment] = useState(initialConfig.environment ?? "");
+  const [outdoor, setOutdoor] = useState(initialConfig.outdoor === true);
+  const [showArea, setShowArea] = useState(initialConfig.showArea === true);
+  const [mapFlags, setMapFlags] = useState((initialConfig.flags ?? []).join(", "));
+  const [mapPositionX, setMapPositionX] = useState(
+    initialConfig.mapPosition ? String(initialConfig.mapPosition.x) : ""
+  );
+  const [mapPositionY, setMapPositionY] = useState(
+    initialConfig.mapPosition ? String(initialConfig.mapPosition.y) : ""
+  );
+  const [healingSpotMapId, setHealingSpotMapId] = useState(
+    initialConfig.healingSpot?.mapId ?? ""
+  );
+  const [healingSpotX, setHealingSpotX] = useState(
+    initialConfig.healingSpot ? String(initialConfig.healingSpot.x) : ""
+  );
+  const [healingSpotY, setHealingSpotY] = useState(
+    initialConfig.healingSpot ? String(initialConfig.healingSpot.y) : ""
+  );
+  const [connections, setConnections] = useState<PlayableMapConnection[]>(
+    initialConfig.connections ?? []
+  );
 
   useEffect(() => {
     const nextConfig = normalizePlayableMapConfig(mapItem?.playableMapConfig, regionNames);
@@ -682,6 +732,19 @@ export default function MapEditorPage() {
     setBackgroundImageSrc(nextConfig.backgroundImageSrc);
     setBackgroundImageMode(nextConfig.backgroundImageMode);
     setIsInitialMap(nextConfig.isInitialMap);
+    setBgm(nextConfig.bgm ?? "");
+    setBgs(nextConfig.bgs ?? "");
+    setBattleBack(nextConfig.battleBack ?? "");
+    setEnvironment(nextConfig.environment ?? "");
+    setOutdoor(nextConfig.outdoor === true);
+    setShowArea(nextConfig.showArea === true);
+    setMapFlags((nextConfig.flags ?? []).join(", "));
+    setMapPositionX(nextConfig.mapPosition ? String(nextConfig.mapPosition.x) : "");
+    setMapPositionY(nextConfig.mapPosition ? String(nextConfig.mapPosition.y) : "");
+    setHealingSpotMapId(nextConfig.healingSpot?.mapId ?? "");
+    setHealingSpotX(nextConfig.healingSpot ? String(nextConfig.healingSpot.x) : "");
+    setHealingSpotY(nextConfig.healingSpot ? String(nextConfig.healingSpot.y) : "");
+    setConnections(nextConfig.connections ?? []);
   }, [initialConfig, mapItem, regionNames]);
 
   useEffect(() => {
@@ -806,6 +869,7 @@ export default function MapEditorPage() {
         return;
       }
 
+      setHasMapsSync(true);
       persistPlayableMapsSyncPayload(syncPayload);
 
       const nextMapsState = {
@@ -853,26 +917,20 @@ export default function MapEditorPage() {
   }, [authReady, authenticated, mapId, socket, toast]);
 
   // The tile editor and the save-time bake read tileset profiles from the
-  // designer cache, but tilesets are a heavy on-demand section that only the
-  // Tilesets page joined — a fresh session opening the map editor directly
-  // got an empty palette and a blank tile canvas. Join the section here too;
-  // DesignerDataBootstrap persists the incoming state and the cache-updated
-  // event refreshes TileMapEditor.
+  // designer cache. Tilesets are a heavy section (~36MB of inline images)
+  // that never travels the websocket: the socket join only subscribes to
+  // version stubs, the state itself is downloaded from the HTTP endpoint
+  // (DesignerDataBootstrap refetches it when a stub announces a new
+  // version). The cache-updated event then refreshes TileMapEditor.
   useEffect(() => {
     if (!authReady || !authenticated || !socket) {
       return;
     }
 
     const joinTilesetsRoom = () => {
-      const storedPayload = readStoredDesignerSectionPayload("tilesets");
-
       socket.emit("designer:section:join", {
         sectionKey: "tilesets",
-        version: storedPayload.version,
-        seedState:
-          storedPayload.version === null && storedPayload.state.items.length > 0
-            ? storedPayload.state
-            : undefined,
+        version: readStoredDesignerSectionPayload("tilesets").version,
       });
     };
 
@@ -882,11 +940,21 @@ export default function MapEditorPage() {
       joinTilesetsRoom();
     }
 
+    void ensureDesignerSectionOverHttp("tilesets");
+
     return () => {
       socket.emit("designer:section:leave", { sectionKey: "tilesets" });
       socket.off("connect", joinTilesetsRoom);
     };
   }, [authReady, authenticated, socket]);
+
+  useEffect(() => {
+    return subscribeDesignerSectionLoad((progress) => {
+      if (progress.sectionKey === "tilesets") {
+        setTilesetLoad(progress);
+      }
+    });
+  }, []);
 
   const publishMapsState = (nextMapsState: DesignerSectionState) => {
     if (!socket || !authenticated) {
@@ -967,7 +1035,22 @@ export default function MapEditorPage() {
       return;
     }
 
+    const previousConfig: Partial<DesignerPlayableMapConfig> =
+      mapItem.playableMapConfig ?? {};
+    const parsedMapPositionX = parseOptionalMapCoordinate(mapPositionX);
+    const parsedMapPositionY = parseOptionalMapCoordinate(mapPositionY);
+    const parsedHealingSpotX = parseOptionalMapCoordinate(healingSpotX);
+    const parsedHealingSpotY = parseOptionalMapCoordinate(healingSpotY);
+    const parsedFlags = mapFlags
+      .split(",")
+      .map((flag) => flag.trim())
+      .filter(Boolean);
+
+    // Spread the stored config first: fields without a form control here
+    // (essentials provenance, tileset linkage, ...) must survive a
+    // properties save instead of being silently wiped.
     const nextConfig: DesignerPlayableMapConfig = {
+      ...previousConfig,
       cellSize: Number.parseInt(cellSize, 10),
       sizePreset,
       width: resolvedDimensions.width,
@@ -982,6 +1065,31 @@ export default function MapEditorPage() {
       backgroundColor: normalizeBackgroundColor(backgroundColor),
       backgroundImageSrc,
       backgroundImageMode,
+      bgm: bgm.trim() || undefined,
+      bgs: bgs.trim() || undefined,
+      battleBack: battleBack.trim() || undefined,
+      environment: environment.trim() || undefined,
+      outdoor,
+      showArea,
+      flags: parsedFlags.length > 0 ? parsedFlags : undefined,
+      mapPosition:
+        parsedMapPositionX !== null && parsedMapPositionY !== null
+          ? {
+              regionId: previousConfig.mapPosition?.regionId,
+              x: parsedMapPositionX,
+              y: parsedMapPositionY,
+            }
+          : undefined,
+      healingSpot:
+        healingSpotMapId && parsedHealingSpotX !== null && parsedHealingSpotY !== null
+          ? {
+              mapId: healingSpotMapId,
+              x: parsedHealingSpotX,
+              y: parsedHealingSpotY,
+              direction: previousConfig.healingSpot?.direction,
+            }
+          : undefined,
+      connections: connections.filter((connection) => connection.targetMapId),
     };
 
     const nextItems = mapsState.items.map((item) =>
@@ -1019,6 +1127,25 @@ export default function MapEditorPage() {
   };
 
   if (!mapItem) {
+    // An empty local cache before the first maps sync means the data is
+    // still on its way, not that the map is missing.
+    if (!hasMapsSync) {
+      return (
+        <Box minH="100vh" bg="editor.pageMuted" px={6} py={8}>
+          <Heading size="md" color="editor.heading" mb={4}>
+            Loading map data...
+          </Heading>
+          <Progress
+            size="sm"
+            maxW="420px"
+            borderRadius="full"
+            colorScheme="green"
+            isIndeterminate
+          />
+        </Box>
+      );
+    }
+
     return (
       <Box minH="100vh" bg="editor.pageMuted" px={6} py={8}>
         <Heading size="md" color="editor.heading" mb={4}>
@@ -1102,6 +1229,53 @@ export default function MapEditorPage() {
           </Button>
         </Flex>
       </Flex>
+
+      {tilesetLoad && tilesetLoad.phase !== "done" ? (
+        <Box px={{ base: 4, md: 6 }} pt={4}>
+          <Box
+            borderRadius="16px"
+            border="1px solid"
+            borderColor="editor.borderFaint"
+            bg="editor.surface"
+            px={4}
+            py={3}
+          >
+            <Flex justify="space-between" align="center" gap={3} mb={2}>
+              <Text fontSize="sm" color="editor.text">
+                {tilesetLoad.phase === "error"
+                  ? "Unable to load the tileset catalog."
+                  : tilesetLoad.phase === "parsing"
+                    ? "Preparing tilesets..."
+                    : tilesetLoad.totalBytes
+                      ? `Loading tilesets — ${formatMegabytes(tilesetLoad.loadedBytes)} of ${formatMegabytes(tilesetLoad.totalBytes)}`
+                      : `Loading tilesets — ${formatMegabytes(tilesetLoad.loadedBytes)}`}
+              </Text>
+              {tilesetLoad.phase === "error" ? (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() => void fetchDesignerSectionOverHttp("tilesets")}
+                >
+                  Retry
+                </Button>
+              ) : null}
+            </Flex>
+            {tilesetLoad.phase === "error" ? null : (
+              <Progress
+                size="sm"
+                borderRadius="full"
+                colorScheme="green"
+                isIndeterminate={tilesetLoad.phase === "parsing" || !tilesetLoad.totalBytes}
+                value={
+                  tilesetLoad.totalBytes
+                    ? (tilesetLoad.loadedBytes / tilesetLoad.totalBytes) * 100
+                    : undefined
+                }
+              />
+            )}
+          </Box>
+        </Box>
+      ) : null}
 
       <Box px={{ base: 4, md: 6 }} py={6}>
         <Box
@@ -1436,6 +1610,278 @@ export default function MapEditorPage() {
                   backgroundImageMode,
                 })}
               />
+
+              <Heading size="sm" color="editor.heading" pt={2}>
+                Audio & Battle
+              </Heading>
+              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                <FormControl>
+                  <FormLabel>Background Music (BGM)</FormLabel>
+                  <Input
+                    value={bgm}
+                    onChange={(event) => setBgm(event.target.value)}
+                    placeholder="Audio track name, blank for none"
+                  />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Background Sound (BGS)</FormLabel>
+                  <Input
+                    value={bgs}
+                    onChange={(event) => setBgs(event.target.value)}
+                    placeholder="Ambient loop name, blank for none"
+                  />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Battle Background</FormLabel>
+                  <Input
+                    value={battleBack}
+                    onChange={(event) => setBattleBack(event.target.value)}
+                    placeholder="battleBack name, blank for map-type default"
+                  />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Environment</FormLabel>
+                  <Input
+                    value={environment}
+                    onChange={(event) => setEnvironment(event.target.value)}
+                    placeholder="Grass, Cave, Sand... blank for none"
+                  />
+                </FormControl>
+              </SimpleGrid>
+              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                <FormControl display="flex" alignItems="center" justifyContent="space-between">
+                  <FormLabel mb={0}>Outdoor Map</FormLabel>
+                  <Switch
+                    colorScheme="green"
+                    isChecked={outdoor}
+                    onChange={(event) => setOutdoor(event.target.checked)}
+                  />
+                </FormControl>
+                <FormControl display="flex" alignItems="center" justifyContent="space-between">
+                  <FormLabel mb={0}>Show Area Name</FormLabel>
+                  <Switch
+                    colorScheme="green"
+                    isChecked={showArea}
+                    onChange={(event) => setShowArea(event.target.checked)}
+                  />
+                </FormControl>
+              </SimpleGrid>
+              <FormControl>
+                <FormLabel>Flags</FormLabel>
+                <Input
+                  value={mapFlags}
+                  onChange={(event) => setMapFlags(event.target.value)}
+                  placeholder="Comma-separated map flags"
+                />
+              </FormControl>
+
+              <Heading size="sm" color="editor.heading" pt={2}>
+                Town Map & Healing
+              </Heading>
+              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                <FormControl
+                  isInvalid={
+                    mapPositionX.trim() !== "" &&
+                    parseOptionalMapCoordinate(mapPositionX) === null
+                  }
+                >
+                  <FormLabel>Town Map X</FormLabel>
+                  <Input
+                    type="number"
+                    step={1}
+                    value={mapPositionX}
+                    onChange={(event) => setMapPositionX(event.target.value)}
+                    placeholder="Blank to hide from the town map"
+                  />
+                </FormControl>
+                <FormControl
+                  isInvalid={
+                    mapPositionY.trim() !== "" &&
+                    parseOptionalMapCoordinate(mapPositionY) === null
+                  }
+                >
+                  <FormLabel>Town Map Y</FormLabel>
+                  <Input
+                    type="number"
+                    step={1}
+                    value={mapPositionY}
+                    onChange={(event) => setMapPositionY(event.target.value)}
+                    placeholder="Blank to hide from the town map"
+                  />
+                </FormControl>
+              </SimpleGrid>
+              <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+                <FormControl>
+                  <FormLabel>Healing Spot Map</FormLabel>
+                  <Select
+                    value={healingSpotMapId}
+                    onChange={(event) => setHealingSpotMapId(event.target.value)}
+                  >
+                    <option value="">None</option>
+                    {mapSummaries.map((summary) => (
+                      <option key={summary.id} value={summary.id}>
+                        {summary.name}
+                      </option>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Healing Spot X</FormLabel>
+                  <Input
+                    type="number"
+                    step={1}
+                    value={healingSpotX}
+                    onChange={(event) => setHealingSpotX(event.target.value)}
+                  />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Healing Spot Y</FormLabel>
+                  <Input
+                    type="number"
+                    step={1}
+                    value={healingSpotY}
+                    onChange={(event) => setHealingSpotY(event.target.value)}
+                  />
+                </FormControl>
+              </SimpleGrid>
+              {healingSpotMapId &&
+              (parseOptionalMapCoordinate(healingSpotX) === null ||
+                parseOptionalMapCoordinate(healingSpotY) === null) ? (
+                <Text fontSize="sm" color="editor.danger">
+                  Enter both healing spot coordinates, or set the map to None to clear it.
+                </Text>
+              ) : null}
+
+              <Heading size="sm" color="editor.heading" pt={2}>
+                Map Connections
+              </Heading>
+              <Text fontSize="sm" color="editor.textSubtle">
+                Stitch neighboring maps edge to edge. The offset is the neighbor's
+                top-left cell relative to this map's top-left cell.
+              </Text>
+              {connections.map((connection, index) => (
+                <Flex key={index} gap={3} align="flex-end" wrap="wrap">
+                  <FormControl maxW="120px">
+                    <FormLabel>Direction</FormLabel>
+                    <Select
+                      value={connection.direction}
+                      onChange={(event) =>
+                        setConnections((current) =>
+                          current.map((entry, entryIndex) =>
+                            entryIndex === index
+                              ? {
+                                  ...entry,
+                                  direction: event.target
+                                    .value as PlayableMapConnection["direction"],
+                                }
+                              : entry
+                          )
+                        )
+                      }
+                    >
+                      {MAP_CONNECTION_DIRECTIONS.map((direction) => (
+                        <option key={direction} value={direction}>
+                          {direction}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <FormControl flex="1" minW="160px">
+                    <FormLabel>Target Map</FormLabel>
+                    <Select
+                      value={connection.targetMapId}
+                      onChange={(event) =>
+                        setConnections((current) =>
+                          current.map((entry, entryIndex) =>
+                            entryIndex === index
+                              ? { ...entry, targetMapId: event.target.value }
+                              : entry
+                          )
+                        )
+                      }
+                    >
+                      <option value="">Select a map</option>
+                      {mapSummaries
+                        .filter((summary) => summary.id !== mapId)
+                        .map((summary) => (
+                          <option key={summary.id} value={summary.id}>
+                            {summary.name}
+                          </option>
+                        ))}
+                    </Select>
+                  </FormControl>
+                  <FormControl maxW="110px">
+                    <FormLabel>Offset X</FormLabel>
+                    <Input
+                      type="number"
+                      step={1}
+                      value={String(connection.offsetXCells)}
+                      onChange={(event) =>
+                        setConnections((current) =>
+                          current.map((entry, entryIndex) =>
+                            entryIndex === index
+                              ? {
+                                  ...entry,
+                                  offsetXCells: parseMapCoordinate(event.target.value),
+                                }
+                              : entry
+                          )
+                        )
+                      }
+                    />
+                  </FormControl>
+                  <FormControl maxW="110px">
+                    <FormLabel>Offset Y</FormLabel>
+                    <Input
+                      type="number"
+                      step={1}
+                      value={String(connection.offsetYCells)}
+                      onChange={(event) =>
+                        setConnections((current) =>
+                          current.map((entry, entryIndex) =>
+                            entryIndex === index
+                              ? {
+                                  ...entry,
+                                  offsetYCells: parseMapCoordinate(event.target.value),
+                                }
+                              : entry
+                          )
+                        )
+                      }
+                    />
+                  </FormControl>
+                  <Button
+                    variant="outline"
+                    colorScheme="red"
+                    onClick={() =>
+                      setConnections((current) =>
+                        current.filter((_, entryIndex) => entryIndex !== index)
+                      )
+                    }
+                  >
+                    Remove
+                  </Button>
+                </Flex>
+              ))}
+              <Button
+                alignSelf="flex-start"
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  setConnections((current) => [
+                    ...current,
+                    {
+                      direction: "north",
+                      targetMapId: "",
+                      offsetXCells: 0,
+                      offsetYCells: 0,
+                    },
+                  ])
+                }
+              >
+                Add Connection
+              </Button>
+
               <Text fontSize="sm" color="editor.textSubtle">
                 Initial game map: {isInitialMap ? "Yes" : "No"}
               </Text>

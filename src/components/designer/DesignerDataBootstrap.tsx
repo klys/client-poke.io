@@ -4,7 +4,6 @@ import {
   persistPlayableMapsSyncPayload,
   sanitizePlayableMapsSyncPayload,
 } from "../game/playableMapRuntime";
-import { getBackendBaseUrl } from "../game/backendConfig";
 import {
   designerSectionsByKey,
   type DesignerSectionKey,
@@ -13,16 +12,12 @@ import {
   cleanupStaleDesignerStorage,
   persistStoredDesignerSectionPayload,
   readStoredDesignerSectionPayload,
-  type DesignerSectionState,
 } from "./designerCache";
-
-type DesignerSectionStatePayload = {
-  sectionKey: DesignerSectionKey;
-  state: unknown;
-  version: number;
-  updatedAt: string | null;
-  updatedByUsername: string | null;
-};
+import {
+  fetchDesignerSectionOverHttp,
+  sanitizeBootstrapSectionState,
+  sanitizeSectionStatePayload,
+} from "./designerSectionHttp";
 
 type DesignerSectionVersionPayload = {
   sectionKey: DesignerSectionKey;
@@ -113,62 +108,6 @@ function ensureBundledSectionsSeeded(): Promise<void> {
   return bundledSectionsSeedPromise;
 }
 
-function sanitizeBootstrapSectionState(
-  sectionKey: DesignerSectionKey,
-  value: unknown
-): DesignerSectionState {
-  const fallback = readStoredDesignerSectionPayload(sectionKey).state;
-
-  if (!value || typeof value !== "object") {
-    return fallback;
-  }
-
-  const candidate = value as Partial<DesignerSectionState>;
-  const items = Array.isArray(candidate.items)
-    ? candidate.items.filter(
-        (item): item is DesignerSectionState["items"][number] =>
-          typeof item?.id === "string" &&
-          typeof item?.name === "string" &&
-          typeof item?.category === "string" &&
-          Array.isArray(item?.details)
-      )
-    : fallback.items;
-
-  return {
-    categories: Array.isArray(candidate.categories)
-      ? candidate.categories.filter(
-          (category): category is string => typeof category === "string"
-        )
-      : fallback.categories,
-    items,
-  };
-}
-
-function sanitizeSectionStatePayload(value: unknown): DesignerSectionStatePayload | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const candidate = value as Partial<DesignerSectionStatePayload>;
-
-  if (
-    !isDesignerSectionKey(candidate.sectionKey) ||
-    typeof candidate.version !== "number" ||
-    !Number.isFinite(candidate.version)
-  ) {
-    return null;
-  }
-
-  return {
-    sectionKey: candidate.sectionKey,
-    state: candidate.state,
-    version: Math.max(1, Math.round(candidate.version)),
-    updatedAt: typeof candidate.updatedAt === "string" ? candidate.updatedAt : null,
-    updatedByUsername:
-      typeof candidate.updatedByUsername === "string" ? candidate.updatedByUsername : null,
-  };
-}
-
 function sanitizeSectionVersionPayload(value: unknown): DesignerSectionVersionPayload | null {
   if (!value || typeof value !== "object") {
     return null;
@@ -190,37 +129,6 @@ function sanitizeSectionVersionPayload(value: unknown): DesignerSectionVersionPa
   };
 }
 
-// The server answers game clients (no designer access) with version stubs
-// only — full section catalogs never travel the websocket. This fetches the
-// announced state from the cacheable HTTP endpoint instead.
-async function fetchSharedSectionOverHttp(sectionKey: DesignerSectionKey) {
-  try {
-    const response = await fetch(
-      `${getBackendBaseUrl()}/designer-sections/${sectionKey}.json`
-    );
-
-    if (!response.ok) {
-      return false;
-    }
-
-    const payload = sanitizeSectionStatePayload(await response.json());
-
-    if (!payload || payload.sectionKey !== sectionKey) {
-      return false;
-    }
-
-    persistStoredDesignerSectionPayload(sectionKey, {
-      state: sanitizeBootstrapSectionState(sectionKey, payload.state),
-      version: payload.version,
-      updatedAt: payload.updatedAt,
-      updatedByUsername: payload.updatedByUsername,
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export default function DesignerDataBootstrap() {
   const { authReady, authenticated, hasPermission, socket } = useAuth();
   const canAccessDesigner = hasPermission("designer.access");
@@ -240,9 +148,13 @@ export default function DesignerDataBootstrap() {
     // The server only ever answers game clients with version stubs; when the
     // announced version differs from the cache, refresh the section over the
     // HTTP endpoint (a few retries with backoff — the cached/bundled copy
-    // keeps the game playable in the meantime).
+    // keeps the game playable in the meantime). Heavy sections work the same
+    // way for everyone, designers included.
     const scheduleSectionRefresh = (sectionKey: DesignerSectionKey) => {
-      if (!PUBLIC_DESIGNER_SECTION_KEYS.includes(sectionKey)) {
+      if (
+        !PUBLIC_DESIGNER_SECTION_KEYS.includes(sectionKey) &&
+        !HEAVY_DESIGNER_SECTION_KEYS.includes(sectionKey)
+      ) {
         return;
       }
 
@@ -257,7 +169,7 @@ export default function DesignerDataBootstrap() {
       const run = async () => {
         entry.timer = null;
 
-        if (await fetchSharedSectionOverHttp(sectionKey)) {
+        if (await fetchDesignerSectionOverHttp(sectionKey)) {
           entry.attempts = 0;
           return;
         }
@@ -285,7 +197,7 @@ export default function DesignerDataBootstrap() {
       await Promise.all(
         PUBLIC_DESIGNER_SECTION_KEYS.map(async (sectionKey) => {
           if (readStoredDesignerSectionPayload(sectionKey).version === null) {
-            await fetchSharedSectionOverHttp(sectionKey);
+            await fetchDesignerSectionOverHttp(sectionKey);
           }
         })
       );
