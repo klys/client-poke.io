@@ -57,6 +57,7 @@ import type { DesignerItemSeed, DesignerPokemonProfile } from '../../designer/de
 import { getPokemonDisplayName, validatePokemonNickname } from '../game/pokemonName';
 import { classifyInventoryItem, type ItemUsage } from '../game/itemUsage';
 import { getBackendBaseUrl } from '../../game/backendConfig';
+import { isEquipableBonusItem } from '../game/equipableItems';
 import GamepadSettings from './GamepadSettings';
 import {
   AudioSettingsSection,
@@ -1858,13 +1859,90 @@ function PokemonStatsWindow({
   );
 }
 
+/**
+ * Small picker for choosing an item from the bag to hand to a venomon —
+ * replaces the old numbered window.prompt flow for berries and also powers
+ * the "Equip Item" flow for battle-bonus hold items.
+ */
+function HeldItemSelectModal({
+  pokemon,
+  title,
+  hint,
+  items,
+  emptyText,
+  onSelect,
+  onCancel
+}: {
+  pokemon: PokemonSummary;
+  title: string;
+  hint: string;
+  items: InventoryItem[];
+  emptyText: string;
+  onSelect: (itemId: string) => void;
+  onCancel: () => void;
+}) {
+  return (
+    <Modal isOpen onClose={onCancel} isCentered size="sm" scrollBehavior="inside">
+      <ModalOverlay />
+      <ModalContent bg="#1f2937" color="white" onClick={stopUxEvent}>
+        <ModalHeader>{`${title} — ${getPokemonDisplayName(pokemon)}`}</ModalHeader>
+        <ModalCloseButton />
+        <ModalBody>
+          <VStack align="stretch" spacing={2}>
+            <Text color="gray.400" fontSize="xs">{hint}</Text>
+            {pokemon.heldItemName ? (
+              <Text color="purple.200" fontSize="xs">
+                {`Currently holding ${pokemon.heldItemName} — it will return to your bag.`}
+              </Text>
+            ) : null}
+            {items.length === 0 ? (
+              <Text color="gray.300">{emptyText}</Text>
+            ) : (
+              items.map((item) => (
+                <Button
+                  key={item.id}
+                  variant="outline"
+                  borderColor="whiteAlpha.300"
+                  justifyContent="space-between"
+                  whiteSpace="normal"
+                  h="auto"
+                  py={2}
+                  onClick={() => onSelect(item.id)}
+                >
+                  <Box textAlign="left" minW={0}>
+                    <Text fontSize="sm" fontWeight="700" noOfLines={1}>{item.name}</Text>
+                    {item.description ? (
+                      <Text fontSize="xs" color="gray.400" fontWeight="400" noOfLines={2}>
+                        {item.description}
+                      </Text>
+                    ) : null}
+                  </Box>
+                  <Badge ml={2} flexShrink={0}>x{item.quantity}</Badge>
+                </Button>
+              ))
+            )}
+          </VStack>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="outline" borderColor="whiteAlpha.400" onClick={onCancel}>
+            Cancel
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
+
 function PokemonCard({
   pokemon,
   catalogEntry,
   partyIndex,
   partySize,
   onOpenStats,
-  onMoveInParty
+  onMoveInParty,
+  onSetLeader,
+  onGiveBerry,
+  onEquipItem
 }: {
   pokemon: PokemonSummary;
   catalogEntry: PokemonCatalogEntry | null;
@@ -1872,34 +1950,12 @@ function PokemonCard({
   partySize: number;
   onOpenStats: (pokemonId: string) => void;
   onMoveInParty: (partyIndex: number, direction: -1 | 1) => void;
+  onSetLeader: (partyIndex: number) => void;
+  onGiveBerry: (pokemonId: string) => void;
+  onEquipItem: (pokemonId: string) => void;
 }) {
-  const { user, namePokemon, holdInventoryItem, takeHeldItem } = useAuth();
+  const { namePokemon, takeHeldItem } = useAuth();
   const t = useT();
-
-  const handleGiveHeldItem = () => {
-    const berries = (user?.inventory ?? []).filter(
-      (item) => item.category === 'berries' && item.quantity > 0
-    );
-
-    if (berries.length === 0) {
-      window.alert('You do not have any berries to give.');
-      return;
-    }
-
-    const promptText = berries
-      .map((item, index) => `${index + 1}. ${item.name} x${item.quantity}`)
-      .join('\n');
-    const selection = window.prompt(
-      `Select a berry for ${getPokemonDisplayName(pokemon)} to hold.\n`
-        + `It will be used automatically during battle when its condition is met:\n${promptText}`
-    );
-    const selectedIndex = selection ? Number.parseInt(selection, 10) - 1 : -1;
-    const item = berries[selectedIndex];
-
-    if (item) {
-      holdInventoryItem({ pokemonId: pokemon.id, itemId: item.id });
-    }
-  };
 
   const handleTakeHeldItem = () => {
     takeHeldItem({ pokemonId: pokemon.id });
@@ -1986,6 +2042,9 @@ function PokemonCard({
             <MenuList color="gray.900">
               <MenuItem onClick={() => onOpenStats(pokemon.id)}>Stats</MenuItem>
               <MenuItem onClick={handleSelectName}>{pokemon.nickname ? 'Rename' : 'Select Name'}</MenuItem>
+              <MenuItem isDisabled={partyIndex === 0} onClick={() => onSetLeader(partyIndex)}>
+                Set as Leader
+              </MenuItem>
               <MenuItem isDisabled={partyIndex === 0} onClick={() => onMoveInParty(partyIndex, -1)}>
                 Move Up
               </MenuItem>
@@ -1995,9 +2054,10 @@ function PokemonCard({
               >
                 Move Down
               </MenuItem>
-              <MenuItem onClick={handleGiveHeldItem}>
+              <MenuItem onClick={() => onGiveBerry(pokemon.id)}>
                 {pokemon.heldItemName ? 'Swap Held Berry' : 'Give Berry to Hold'}
               </MenuItem>
+              <MenuItem onClick={() => onEquipItem(pokemon.id)}>Equip Item</MenuItem>
               {pokemon.heldItemName ? (
                 <MenuItem onClick={handleTakeHeldItem}>Take Held Item</MenuItem>
               ) : null}
@@ -2021,7 +2081,9 @@ function PokemonCard({
         borderRadius="8px"
       />
       <Text mt={3} fontSize="xs" color="gray.400">{t('party.moves')}</Text>
-      <Text fontSize="sm">
+      {/* One line keeps every card the same height so the whole team fits
+          on screen; the full move list lives in the Stats window. */}
+      <Text fontSize="sm" noOfLines={1}>
         {pokemon.moves
           .map((move) => typeof pokemon.movePp?.[move] === 'number' ? `${move} (${pokemon.movePp[move]} PP)` : move)
           .join(', ') || t('party.noMoves')}
@@ -2039,8 +2101,9 @@ function PokemonsWindow({
   pokemonCatalog: Map<string, PokemonCatalogEntry>;
   onOpenStats: (pokemonId: string) => void;
 }) {
-  const { reorderPokemonParty } = useAuth();
+  const { user, reorderPokemonParty, holdInventoryItem } = useAuth();
   const t = useT();
+  const [itemPicker, setItemPicker] = useState<{ pokemonId: string; kind: 'berry' | 'equip' } | null>(null);
 
   const handleMoveInParty = (partyIndex: number, direction: -1 | 1) => {
     const targetIndex = partyIndex + direction;
@@ -2053,13 +2116,41 @@ function PokemonsWindow({
     reorderPokemonParty({ order });
   };
 
+  const handleSetLeader = (partyIndex: number) => {
+    if (partyIndex <= 0 || partyIndex >= party.length) {
+      return;
+    }
+
+    const order = party.map((pokemon) => pokemon.id);
+    const [leader] = order.splice(partyIndex, 1);
+    reorderPokemonParty({ order: [leader, ...order] });
+  };
+
+  const pickerPokemon = itemPicker
+    ? party.find((pokemon) => pokemon.id === itemPicker.pokemonId) ?? null
+    : null;
+  const pickerItems = !itemPicker
+    ? []
+    : (user?.inventory ?? []).filter((item) =>
+        itemPicker.kind === 'berry'
+          ? item.category === 'berries' && item.quantity > 0
+          : isEquipableBonusItem(item)
+      );
+
+  const handlePickItem = (itemId: string) => {
+    if (itemPicker) {
+      holdInventoryItem({ pokemonId: itemPicker.pokemonId, itemId });
+    }
+    setItemPicker(null);
+  };
+
   return (
     <VStack align="stretch" spacing={3}>
       <Text color="gray.300">{t('party.onHand')} {party.length}/6</Text>
       <Text color="gray.500" fontSize="xs">
         {t('party.orderHint')}
       </Text>
-      <Grid templateColumns={{ base: '1fr', sm: '1fr 1fr' }} gap={3}>
+      <Grid templateColumns={{ base: '1fr', sm: '1fr 1fr', lg: '1fr 1fr 1fr' }} gap={3}>
         {party.map((pokemon, index) => (
           <PokemonCard
             key={pokemon.id}
@@ -2069,10 +2160,32 @@ function PokemonsWindow({
             partySize={party.length}
             onOpenStats={onOpenStats}
             onMoveInParty={handleMoveInParty}
+            onSetLeader={handleSetLeader}
+            onGiveBerry={(pokemonId) => setItemPicker({ pokemonId, kind: 'berry' })}
+            onEquipItem={(pokemonId) => setItemPicker({ pokemonId, kind: 'equip' })}
           />
         ))}
       </Grid>
       {party.length === 0 ? <Text color="gray.400">{t('party.empty')}</Text> : null}
+      {itemPicker && pickerPokemon ? (
+        <HeldItemSelectModal
+          pokemon={pickerPokemon}
+          title={itemPicker.kind === 'berry' ? 'Give Berry to Hold' : 'Equip Item'}
+          hint={
+            itemPicker.kind === 'berry'
+              ? 'The berry is used automatically during battle when its condition is met.'
+              : 'The equipped item grants its bonus while this venomon holds it in battle.'
+          }
+          items={pickerItems}
+          emptyText={
+            itemPicker.kind === 'berry'
+              ? 'You do not have any berries to give.'
+              : 'You do not have any equipable items.'
+          }
+          onSelect={handlePickItem}
+          onCancel={() => setItemPicker(null)}
+        />
+      ) : null}
     </VStack>
   );
 }
@@ -2253,6 +2366,12 @@ const AccountMenu = () => {
 
     if (isPrivateChatWindowId(windowKey)) {
       return '420px';
+    }
+
+    // Wide enough for a 3-column party grid so the whole team fits on screen
+    // without scrolling on medium/large displays.
+    if (windowKey === 'pokemons') {
+      return '1020px';
     }
 
     return windowKey === 'map' ? '540px' : '460px';
