@@ -79,10 +79,16 @@ import {
   loadCharacterSkinCatalog,
   type CharacterSkinCatalogItem
 } from '../game/characterSkinCatalog';
+import FriendsWindow from '../game/social/FriendsWindow';
+import PrivateChatWindow from '../game/social/PrivateChatWindow';
+import NotificationsBell from '../game/social/NotificationsBell';
+import { useSocial } from '../game/social/SocialContext';
+import { ChatSettingsSection } from './GameSettingsSections';
 
-type WindowKey = 'account' | 'settings' | 'bag' | 'pokemons' | 'map' | 'trainerCard' | 'battleHistory';
+type WindowKey = 'account' | 'settings' | 'bag' | 'pokemons' | 'map' | 'trainerCard' | 'battleHistory' | 'friends';
 type PokemonStatsWindowId = `pokemonStats:${string}`;
-type OpenWindowId = WindowKey | PokemonStatsWindowId;
+type PrivateChatWindowId = `privateChat:${string}`;
+type OpenWindowId = WindowKey | PokemonStatsWindowId | PrivateChatWindowId;
 
 type WindowPosition = {
   x: number;
@@ -110,7 +116,8 @@ const WINDOW_TITLE_KEYS: Record<WindowKey, string> = {
   pokemons: 'menu.pokemons',
   map: 'menu.map',
   trainerCard: 'menu.trainerCard',
-  battleHistory: 'menu.battleHistory'
+  battleHistory: 'menu.battleHistory',
+  friends: 'menu.friends'
 };
 
 const DEFAULT_POSITIONS: Record<WindowKey, WindowPosition> = {
@@ -120,7 +127,8 @@ const DEFAULT_POSITIONS: Record<WindowKey, WindowPosition> = {
   pokemons: { x: 168, y: 120 },
   map: { x: 120, y: 72 },
   trainerCard: { x: 210, y: 156 },
-  battleHistory: { x: 246, y: 192 }
+  battleHistory: { x: 246, y: 192 },
+  friends: { x: 282, y: 108 }
 };
 
 const WINDOW_POSITIONS_KEY = 'client-poke.io.ux.windowPositions';
@@ -213,13 +221,16 @@ function PokemonStatTile({ label, value }: { label: string; value: string }) {
   );
 }
 
-// Per-venomon stats windows (`pokemonStats:<uuid>`) must never reach
-// localStorage: party members change constantly, so persisting them grew the
-// windowPositions blob without bound until any setItem on this origin threw
-// QuotaExceededError (the designer cache shares the same ~5MB budget).
+// Per-venomon stats windows (`pokemonStats:<uuid>`) and per-conversation chat
+// windows (`privateChat:<uuid>`) must never reach localStorage: their ids
+// change constantly, so persisting them grew the windowPositions blob without
+// bound until any setItem on this origin threw QuotaExceededError (the
+// designer cache shares the same ~5MB budget).
 function withoutPokemonStatsPositions(positions: Record<string, WindowPosition>) {
   return Object.fromEntries(
-    Object.entries(positions).filter(([key]) => !isPokemonStatsWindowId(key as OpenWindowId))
+    Object.entries(positions).filter(([key]) => (
+      !isPokemonStatsWindowId(key as OpenWindowId) && !isPrivateChatWindowId(key as OpenWindowId)
+    ))
   );
 }
 
@@ -266,6 +277,18 @@ function isPokemonStatsWindowId(value: OpenWindowId): value is PokemonStatsWindo
 
 function getPokemonIdFromStatsWindow(value: PokemonStatsWindowId) {
   return value.slice('pokemonStats:'.length);
+}
+
+function createPrivateChatWindowId(chatId: string): PrivateChatWindowId {
+  return `privateChat:${chatId}`;
+}
+
+function isPrivateChatWindowId(value: OpenWindowId): value is PrivateChatWindowId {
+  return value.startsWith('privateChat:');
+}
+
+function getChatIdFromWindow(value: PrivateChatWindowId) {
+  return value.slice('privateChat:'.length);
 }
 
 function DraggableWindow({
@@ -801,6 +824,11 @@ function SettingsWindow({
       key: 'controls',
       label: t('settings.controls.title'),
       content: <ControlsSettingsSection />
+    },
+    {
+      key: 'chat',
+      label: t('settings.chat.title'),
+      content: <ChatSettingsSection />
     },
     {
       key: 'language',
@@ -2066,6 +2094,7 @@ const AccountMenu = () => {
   const toast = useToast();
   const t = useT();
   const { hasPermission, logout, user } = useAuth();
+  const social = useSocial();
   const pokemonCatalog = usePokemonCatalog();
   const party = (user?.pokemonParty ?? []).slice(0, 6);
   const [openWindows, setOpenWindows] = useState<OpenWindowId[]>([]);
@@ -2166,7 +2195,49 @@ const AccountMenu = () => {
     });
   }, [party]);
 
+  // A new private chat (created here or joined via invitation) opens its own
+  // window; explicit re-focus requests (Friends -> Private Chat) do too.
+  useEffect(() => {
+    if (!social.focusChat) {
+      return;
+    }
+    const windowId = createPrivateChatWindowId(social.focusChat.chatId);
+    setPositions((current) => {
+      if (current[windowId]) {
+        return current;
+      }
+      const chatWindowCount = openWindows.filter(isPrivateChatWindowId).length;
+      return {
+        ...current,
+        [windowId]: {
+          x: Math.max(8, Math.min(180 + chatWindowCount * POKEMON_STATS_WINDOW_OFFSET, Math.max(8, window.innerWidth - 460))),
+          y: Math.max(8, Math.min(140 + chatWindowCount * POKEMON_STATS_WINDOW_OFFSET, Math.max(8, window.innerHeight - 260)))
+        }
+      };
+    });
+    openWindow(windowId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [social.focusChat?.nonce]);
+
+  // Close chat windows whose conversation ended (left / disposed).
+  useEffect(() => {
+    setOpenWindows((current) => {
+      const next = current.filter((windowId) => (
+        !isPrivateChatWindowId(windowId) || Boolean(social.privateChats[getChatIdFromWindow(windowId)])
+      ));
+      return next.length === current.length ? current : next;
+    });
+  }, [social.privateChats]);
+
   const getWindowTitle = (windowKey: OpenWindowId) => {
+    if (isPrivateChatWindowId(windowKey)) {
+      const chat = social.privateChats[getChatIdFromWindow(windowKey)];
+      const others = (chat?.members ?? []).filter((member) => member.userId !== social.myUserId);
+      return others.length > 0
+        ? `${t('chat.privateChat')}: ${others.map((member) => member.username).join(', ')}`
+        : t('chat.privateChat');
+    }
+
     if (!isPokemonStatsWindowId(windowKey)) {
       return t(WINDOW_TITLE_KEYS[windowKey]);
     }
@@ -2180,10 +2251,22 @@ const AccountMenu = () => {
       return '760px';
     }
 
+    if (isPrivateChatWindowId(windowKey)) {
+      return '420px';
+    }
+
     return windowKey === 'map' ? '540px' : '460px';
   };
 
   const renderWindow = (windowKey: OpenWindowId) => {
+    if (isPrivateChatWindowId(windowKey)) {
+      return <PrivateChatWindow chatId={getChatIdFromWindow(windowKey)} />;
+    }
+
+    if (windowKey === 'friends') {
+      return <FriendsWindow />;
+    }
+
     if (isPokemonStatsWindowId(windowKey)) {
       const pokemonId = getPokemonIdFromStatsWindow(windowKey);
       const pokemon = party.find((entry) => entry.id === pokemonId) ?? null;
@@ -2251,6 +2334,8 @@ const AccountMenu = () => {
       onPointerDown={stopUxEvent}
       data-game-ux="true"
     >
+      <HStack spacing={2} align="flex-start">
+      <NotificationsBell />
       <Menu>
         <MenuButton as={Button} colorScheme="teal" variant="solid" boxShadow="lg">
           <Text as="span" display={{ base: 'none', sm: 'inline' }}>
@@ -2268,6 +2353,14 @@ const AccountMenu = () => {
           <MenuItem onClick={() => openWindow('pokemons')}>{t('menu.pokemons')}</MenuItem>
           <MenuItem onClick={() => openWindow('map')}>{t('menu.map')}</MenuItem>
           <MenuItem onClick={() => openWindow('trainerCard')}>{t('menu.trainerCard')}</MenuItem>
+          <MenuItem onClick={() => openWindow('friends')}>
+            {t('menu.friends')}
+            {social.incoming.length > 0 ? (
+              <Badge ml={2} borderRadius="full" colorScheme="red" variant="solid" fontSize="0.7em">
+                {social.incoming.length}
+              </Badge>
+            ) : null}
+          </MenuItem>
           <MenuItem onClick={() => openWindow('battleHistory')}>{t('menu.battleHistory')}</MenuItem>
           {hasPermission('designer.access') ? (
             <MenuItem as={RouterLink} to="/designer">{t('menu.designer')}</MenuItem>
@@ -2281,6 +2374,7 @@ const AccountMenu = () => {
           <MenuItem color="red.500" onClick={logout}>{t('menu.logout')}</MenuItem>
         </MenuList>
       </Menu>
+      </HStack>
       {orderedWindows.map((windowKey) => (
         <DraggableWindow
           key={windowKey}

@@ -10,6 +10,7 @@ import {
   getCharacterSkinSprite,
   loadCharacterSkinCatalog,
 } from "../ux/game/characterSkinCatalog";
+import { SocialContext } from "../ux/game/social/SocialContext";
 
 type Position = {
   x: number
@@ -353,6 +354,11 @@ const Player = (props: any) => {
   const isVisibleOnActiveMap = !activeMapId || pos.currentMapId === activeMapId;
   const trainerName = playerInfo.username || playerInfo.name || "Trainer";
   const isCurrentPlayer = myplayer === playerId;
+  // Speech bubble for this player's latest same-map chat message. Direct
+  // useContext (not useSocial) so Player still renders if the social provider
+  // is absent (e.g. isolated tests).
+  const social = useContext(SocialContext);
+  const chatBubble = social?.bubbles?.[playerId] ?? null;
 
   return (
     <div
@@ -386,7 +392,49 @@ const Player = (props: any) => {
         cursor: isCurrentPlayer ? "default" : "pointer"
       }}
     >
-      {!isCurrentPlayer && isHovered ? (
+      {chatBubble ? (
+        <div
+          data-chat-bubble={playerId}
+          style={{
+            position: "absolute",
+            bottom: "34px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            maxWidth: "160px",
+            width: "max-content",
+            padding: "4px 8px",
+            borderRadius: "8px",
+            background: "rgba(255,255,255,0.96)",
+            border: "1px solid rgba(17,24,39,0.35)",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+            color: "#111827",
+            fontSize: "11px",
+            fontWeight: 600,
+            lineHeight: 1.25,
+            textAlign: "center",
+            whiteSpace: "normal",
+            overflowWrap: "break-word",
+            pointerEvents: "none",
+            zIndex: 2
+          }}
+        >
+          {chatBubble.text}
+          <div
+            style={{
+              position: "absolute",
+              bottom: "-5px",
+              left: "50%",
+              transform: "translateX(-50%) rotate(45deg)",
+              width: "8px",
+              height: "8px",
+              background: "rgba(255,255,255,0.96)",
+              borderRight: "1px solid rgba(17,24,39,0.35)",
+              borderBottom: "1px solid rgba(17,24,39,0.35)"
+            }}
+          />
+        </div>
+      ) : null}
+      {!isCurrentPlayer && isHovered && !chatBubble ? (
         <div
           style={{
             position: "absolute",

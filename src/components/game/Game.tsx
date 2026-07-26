@@ -15,6 +15,8 @@ import BattleScene from "../ux/game/battle/BattleScene";
 import EventDialog from "../ux/game/EventDialog";
 import MapMusic from "./MapMusic";
 import { BattlePrompts, TrainerInteractionCard } from "../ux/game/TrainerInteractions";
+import { SocialProvider } from "../ux/game/social/SocialContext";
+import ChatBar from "../ux/game/social/ChatBar";
 
 
 const Game = ({ socketUrl }:{ socketUrl:string }) => {
@@ -31,6 +33,7 @@ const Game = ({ socketUrl }:{ socketUrl:string }) => {
             }}
         >
         <Provider socketUrl={socketUrl}>
+        <SocialProvider>
             <AccountMenu />
 
             <Network />
@@ -57,9 +60,11 @@ const Game = ({ socketUrl }:{ socketUrl:string }) => {
             <BattlePrompts />
             <BattleScene />
             <EventDialog />
+            <ChatBar />
             <VirtualControls />
             <GamepadControls />
 
+        </SocialProvider>
         </Provider>
         </div>
     )

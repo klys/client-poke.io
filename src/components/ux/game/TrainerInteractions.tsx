@@ -12,10 +12,12 @@ import { AppContext } from "../../../context/appContext";
 import { useGameSettings } from "../../../settings/gameSettings";
 import { useT } from "../../../i18n";
 import { TrainerCardView, type TrainerCardTeamMember } from "./TrainerCard";
+import { useSocial } from "./social/SocialContext";
 
 /** The public trainer card the server returns for another player. */
 type FetchedTrainerCard = {
   playerId: string;
+  userId: number | null;
   name: string;
   username: string;
   description: string;
@@ -33,6 +35,7 @@ export function TrainerInteractionCard() {
   const { socket, selectedTrainer, setSelectedTrainer } = useContext(AppContext);
   const [gameSettings] = useGameSettings();
   const t = useT();
+  const social = useSocial();
   const [card, setCard] = useState<FetchedTrainerCard | null>(null);
 
   const targetPlayerId: string | undefined = selectedTrainer?.playerId;
@@ -107,6 +110,52 @@ export function TrainerInteractionCard() {
           <Text color="gray.300" fontSize="sm">{t('trainer.loadingCard')}</Text>
         </HStackCentered>
       ) : null}
+      {(() => {
+        // Friendship status + actions once the card (with userId) arrived.
+        const targetUserId = card?.userId ?? null;
+        if (targetUserId === null || targetUserId === social.myUserId) {
+          return null;
+        }
+        const isFriend = social.friends.some((friend) => friend.userId === targetUserId);
+        const requestPending =
+          social.outgoing.some((request) => request.userId === targetUserId) ||
+          social.incoming.some((request) => request.userId === targetUserId);
+        return (
+          <VStack mt={4} spacing={2} align="stretch">
+            {isFriend ? (
+              <Text color="green.300" fontSize="sm" fontWeight="700" textAlign="center">
+                {t('trainer.isFriend')}
+              </Text>
+            ) : (
+              <Button
+                colorScheme="teal"
+                variant={requestPending ? 'outline' : 'solid'}
+                isDisabled={requestPending}
+                onClick={() => {
+                  if (card?.username) {
+                    social.requestFriend(card.username);
+                  }
+                }}
+              >
+                {requestPending ? t('trainer.friendRequestPending') : t('trainer.addFriend')}
+              </Button>
+            )}
+            {isFriend ? (
+              <Button
+                variant="outline"
+                color="white"
+                borderColor="whiteAlpha.500"
+                onClick={() => {
+                  social.createPrivateChat([targetUserId]);
+                  setSelectedTrainer(null);
+                }}
+              >
+                {t('trainer.privateChat')}
+              </Button>
+            ) : null}
+          </VStack>
+        );
+      })()}
       <VStack mt={4} spacing={3} align="stretch">
         <Button
           colorScheme="red"

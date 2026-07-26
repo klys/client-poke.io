@@ -275,6 +275,111 @@ const STRINGS: Record<string, Entry> = {
   'skin.notEnough': { en: 'You need ${price} to change your skin.', es: 'Necesitas ${price} para cambiar de apariencia.' },
   'card.intro': { en: 'Pick a background color for your Trainer Card.', es: 'Elige un color de fondo para tu Tarjeta de Entrenador.' },
   'card.preview': { en: 'Preview', es: 'Vista previa' },
+
+  // --- Friends / social ---
+  'menu.friends': { en: 'Friends', es: 'Amigos' },
+  'friends.tab.friends': { en: 'Friends', es: 'Amigos' },
+  'friends.tab.requests': { en: 'Requests', es: 'Solicitudes' },
+  'friends.tab.add': { en: 'Add', es: 'Agregar' },
+  'friends.tab.config': { en: 'Config', es: 'Configuración' },
+  'friends.actions': { en: 'Actions', es: 'Acciones' },
+  'friends.online': { en: 'Online', es: 'En línea' },
+  'friends.offline': { en: 'Offline', es: 'Desconectado' },
+  'friends.onSameMap': { en: 'Online — on your map', es: 'En línea — en tu mapa' },
+  'friends.privateChat': { en: 'Private Chat', es: 'Chat privado' },
+  'friends.teleportTo': { en: 'Teleport to friend', es: 'Teletransportarte a tu amigo' },
+  'friends.challenge': { en: 'Challenge to Battle', es: 'Retar a batalla' },
+  'friends.trade': { en: 'Trade Request', es: 'Solicitar intercambio' },
+  'friends.sameMapOnly': { en: 'same map only', es: 'solo en el mismo mapa' },
+  'friends.unfriend': { en: 'Unfriend', es: 'Eliminar amigo' },
+  'friends.emptyList': {
+    en: 'No friends yet. Use the Add tab to send a friend request.',
+    es: 'Aún no tienes amigos. Usa la pestaña Agregar para enviar una solicitud.'
+  },
+  'friends.incomingRequests': { en: 'Incoming requests', es: 'Solicitudes recibidas' },
+  'friends.outgoingRequests': { en: 'Sent requests', es: 'Solicitudes enviadas' },
+  'friends.noIncoming': { en: 'No pending requests.', es: 'No hay solicitudes pendientes.' },
+  'friends.noOutgoing': { en: 'You have not sent any requests.', es: 'No has enviado solicitudes.' },
+  'friends.cancelRequest': { en: 'Cancel', es: 'Cancelar' },
+  'friends.addHint': {
+    en: 'Type the exact username of the trainer you want to befriend. They must accept your request.',
+    es: 'Escribe el nombre de usuario exacto del entrenador que quieres agregar. Deberá aceptar tu solicitud.'
+  },
+  'friends.usernamePlaceholder': { en: 'Username', es: 'Nombre de usuario' },
+  'friends.sendRequest': { en: 'Send', es: 'Enviar' },
+  'friends.configHint': {
+    en: 'Control what other trainers can send you.',
+    es: 'Controla lo que otros entrenadores pueden enviarte.'
+  },
+  'friends.allowRequests': { en: 'Accept friend requests', es: 'Aceptar solicitudes de amistad' },
+  'friends.allowTeleports': { en: 'Accept teleport requests', es: 'Aceptar teletransportes' },
+  'friends.allowChatInvites': { en: 'Accept chat invitations', es: 'Aceptar invitaciones de chat' },
+
+  // --- Notification center ---
+  'social.notifications': { en: 'Notifications', es: 'Notificaciones' },
+  'social.notificationTitle': { en: 'PokeCraft', es: 'PokeCraft' },
+  'social.close': { en: 'Close', es: 'Cerrar' },
+  'social.noNotifications': { en: 'Nothing new right now.', es: 'No hay nada nuevo por ahora.' },
+  'social.accept': { en: 'Accept', es: 'Aceptar' },
+  'social.decline': { en: 'Decline', es: 'Rechazar' },
+  'social.dismiss': { en: 'Dismiss', es: 'Descartar' },
+  'social.friendRequestFrom': { en: '{name} sent you a friend request.', es: '{name} te envió una solicitud de amistad.' },
+  'social.friendAcceptedBy': { en: '{name} accepted your friend request.', es: '{name} aceptó tu solicitud de amistad.' },
+  'social.teleportRequestFrom': { en: '{name} wants to teleport to you.', es: '{name} quiere teletransportarse hacia ti.' },
+  'social.chatInviteFrom': { en: '{name} invited you to a private chat.', es: '{name} te invitó a un chat privado.' },
+  'social.teleportAccepted': { en: '{name} accepted your teleport request.', es: '{name} aceptó tu teletransporte.' },
+  'social.teleportDeclined': { en: '{name} declined your teleport request.', es: '{name} rechazó tu teletransporte.' },
+  'social.teleportExpired': { en: 'Your teleport request expired.', es: 'Tu solicitud de teletransporte expiró.' },
+  'social.chatInviteDeclined': { en: '{name} declined your chat invitation.', es: '{name} rechazó tu invitación de chat.' },
+  'social.chatInviteExpired': { en: 'A chat invitation expired.', es: 'Una invitación de chat expiró.' },
+  'social.genericError': { en: 'Something went wrong.', es: 'Algo salió mal.' },
+  'social.native.friendRequest': { en: 'Friend request from {name}', es: 'Solicitud de amistad de {name}' },
+  'social.native.friendAccepted': { en: '{name} accepted your friend request', es: '{name} aceptó tu solicitud de amistad' },
+  'social.native.teleportRequest': { en: '{name} wants to teleport to you', es: '{name} quiere teletransportarse hacia ti' },
+  'social.native.chatInvite': { en: '{name} invited you to a chat', es: '{name} te invitó a un chat' },
+  'social.native.whisper': { en: 'Whisper from {name}', es: 'Susurro de {name}' },
+  'social.native.privateMessage': { en: 'New message from {name}', es: 'Nuevo mensaje de {name}' },
+
+  // --- Chat ---
+  'chat.mapChat': { en: 'Map chat', es: 'Chat del mapa' },
+  'chat.open': { en: 'Open chat', es: 'Abrir chat' },
+  'chat.hide': { en: 'Hide', es: 'Ocultar' },
+  'chat.empty': { en: 'No messages yet.', es: 'Aún no hay mensajes.' },
+  'chat.placeholder': { en: 'Message or /command…', es: 'Mensaje o /comando…' },
+  'chat.send': { en: 'Send', es: 'Enviar' },
+  'chat.globalTag': { en: 'GLOBAL', es: 'GLOBAL' },
+  'chat.whisperTag': { en: '[Whisper] {from} → {to}:', es: '[Susurro] {from} → {to}:' },
+  'chat.privateChat': { en: 'Private Chat', es: 'Chat privado' },
+  'chat.privateClosed': {
+    en: 'This chat has ended. You can close this window.',
+    es: 'Este chat terminó. Puedes cerrar esta ventana.'
+  },
+  'chat.withMembers': { en: 'With: {names}', es: 'Con: {names}' },
+  'chat.waitingForMembers': {
+    en: 'Waiting for others to accept the invitation…',
+    es: 'Esperando a que acepten la invitación…'
+  },
+  'chat.pendingInvites': { en: 'Invited: {names}', es: 'Invitados: {names}' },
+  'chat.invite': { en: 'Invite friend', es: 'Invitar amigo' },
+  'chat.leave': { en: 'Leave chat', es: 'Salir del chat' },
+
+  // --- Settings -> Chat tab ---
+  'settings.chat.title': { en: 'Chat', es: 'Chat' },
+  'settings.chat.enabled': { en: 'Show map chat', es: 'Mostrar chat del mapa' },
+  'settings.chat.timestamps': { en: 'Show timestamps', es: 'Mostrar hora' },
+  'settings.chat.nativeNotifications': { en: 'Native notifications', es: 'Notificaciones nativas' },
+  'settings.chat.bubbles': { en: 'Same-map player chat bubbles', es: 'Burbujas de chat sobre los jugadores' },
+  'settings.chat.bubbleDuration': { en: 'Bubble duration', es: 'Duración de la burbuja' },
+  'settings.chat.help': {
+    en: 'Commands: /w <user> <message> to whisper, /help to return to the last Venomon Center.',
+    es: 'Comandos: /w <usuario> <mensaje> para susurrar, /ayuda para volver al último Centro Venomon.'
+  },
+
+  // --- Trainer card friendship ---
+  'trainer.isFriend': { en: 'You are friends', es: 'Son amigos' },
+  'trainer.addFriend': { en: 'Send friend request', es: 'Enviar solicitud de amistad' },
+  'trainer.friendRequestPending': { en: 'Request pending', es: 'Solicitud pendiente' },
+  'trainer.privateChat': { en: 'Private Chat', es: 'Chat privado' },
 };
 
 export function translate(key: string, language: Language, params?: Record<string, string>): string {

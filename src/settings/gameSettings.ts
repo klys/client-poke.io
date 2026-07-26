@@ -38,6 +38,18 @@ export interface GameSettings {
     /** Tap/click on the map walks the player there. Off = keyboard/pad only. */
     touchMoveEnabled: boolean;
   };
+  chat: {
+    /** Show the map chat bar at all. Off hides the bar and its toggle. */
+    enabled: boolean;
+    /** Prefix each chat message with its time. */
+    showTimestamps: boolean;
+    /** Fire OS/native notifications for friend requests, invites, whispers. */
+    nativeNotifications: boolean;
+    /** Show speech bubbles over same-map players when they chat. */
+    bubblesEnabled: boolean;
+    /** How long a chat bubble stays visible, in seconds. */
+    bubbleDurationSeconds: number;
+  };
 }
 
 export const DEFAULT_GAME_SETTINGS: GameSettings = {
@@ -58,7 +70,17 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   controls: {
     touchMoveEnabled: true,
   },
+  chat: {
+    enabled: true,
+    showTimestamps: false,
+    nativeNotifications: true,
+    bubblesEnabled: true,
+    bubbleDurationSeconds: 5,
+  },
 };
+
+export const CHAT_BUBBLE_DURATION_MIN = 2;
+export const CHAT_BUBBLE_DURATION_MAX = 15;
 
 export const UI_SCALE_MIN = 0.75;
 export const UI_SCALE_MAX = 1.5;
@@ -84,6 +106,7 @@ function normalizeSettings(raw: unknown): GameSettings {
     uiScale?: Partial<GameSettings['uiScale']>;
     language?: unknown;
     controls?: Partial<GameSettings['controls']>;
+    chat?: Partial<GameSettings['chat']>;
   };
 
   return {
@@ -104,6 +127,16 @@ function normalizeSettings(raw: unknown): GameSettings {
         : base.language,
     controls: {
       touchMoveEnabled: toBool(input.controls?.touchMoveEnabled, base.controls.touchMoveEnabled),
+    },
+    chat: {
+      enabled: toBool(input.chat?.enabled, base.chat.enabled),
+      showTimestamps: toBool(input.chat?.showTimestamps, base.chat.showTimestamps),
+      nativeNotifications: toBool(input.chat?.nativeNotifications, base.chat.nativeNotifications),
+      bubblesEnabled: toBool(input.chat?.bubblesEnabled, base.chat.bubblesEnabled),
+      bubbleDurationSeconds:
+        typeof input.chat?.bubbleDurationSeconds === 'number' && Number.isFinite(input.chat.bubbleDurationSeconds)
+          ? clamp(input.chat.bubbleDurationSeconds, CHAT_BUBBLE_DURATION_MIN, CHAT_BUBBLE_DURATION_MAX)
+          : base.chat.bubbleDurationSeconds,
     },
   };
 }
@@ -150,6 +183,7 @@ export function useGameSettings(): [GameSettings, (patch: Partial<GameSettings>)
       audio: { ...current.audio, ...patch.audio },
       uiScale: { ...current.uiScale, ...patch.uiScale },
       controls: { ...current.controls, ...patch.controls },
+      chat: { ...current.chat, ...patch.chat },
     });
     saveGameSettings(next);
   }, []);

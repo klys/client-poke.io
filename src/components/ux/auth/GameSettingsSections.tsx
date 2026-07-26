@@ -8,6 +8,8 @@ import {
   VStack,
 } from '@chakra-ui/react';
 import {
+  CHAT_BUBBLE_DURATION_MAX,
+  CHAT_BUBBLE_DURATION_MIN,
   UI_SCALE_MAX,
   UI_SCALE_MIN,
   useGameSettings,
@@ -15,6 +17,7 @@ import {
 } from '../../../settings/gameSettings';
 import { detectSystemLanguage, useT } from '../../../i18n';
 import { SettingSlider } from './GamepadSettings';
+import { ensureNotificationPermission } from '../game/social/notify';
 
 /**
  * "Audio", "Display", "Controls" and "Language" tabs of the Settings window
@@ -124,6 +127,72 @@ export const ControlsSettingsSection = () => {
       </FormControl>
       <Text mt={-2} fontSize="sm" color="gray.500">
         {t('settings.controls.touchMoveHelp')}
+      </Text>
+    </VStack>
+  );
+};
+
+export const ChatSettingsSection = () => {
+  const [settings, update] = useGameSettings();
+  const t = useT();
+
+  return (
+    <VStack align="stretch" spacing={4}>
+      <FormControl display="flex" alignItems="center" justifyContent="space-between">
+        <FormLabel mb={0}>{t('settings.chat.enabled')}</FormLabel>
+        <Switch
+          colorScheme="teal"
+          isChecked={settings.chat.enabled}
+          onChange={(event) => update({ chat: { ...settings.chat, enabled: event.target.checked } })}
+        />
+      </FormControl>
+      <FormControl display="flex" alignItems="center" justifyContent="space-between">
+        <FormLabel mb={0}>{t('settings.chat.timestamps')}</FormLabel>
+        <Switch
+          colorScheme="teal"
+          isChecked={settings.chat.showTimestamps}
+          onChange={(event) => update({ chat: { ...settings.chat, showTimestamps: event.target.checked } })}
+        />
+      </FormControl>
+      <FormControl display="flex" alignItems="center" justifyContent="space-between">
+        <FormLabel mb={0}>{t('settings.chat.bubbles')}</FormLabel>
+        <Switch
+          colorScheme="teal"
+          isChecked={settings.chat.bubblesEnabled}
+          onChange={(event) => update({ chat: { ...settings.chat, bubblesEnabled: event.target.checked } })}
+        />
+      </FormControl>
+      {settings.chat.bubblesEnabled ? (
+        <SettingSlider
+          label={t('settings.chat.bubbleDuration')}
+          value={settings.chat.bubbleDurationSeconds}
+          min={CHAT_BUBBLE_DURATION_MIN}
+          max={CHAT_BUBBLE_DURATION_MAX}
+          step={1}
+          format={(value) => `${Math.round(value)}s`}
+          onChange={(bubbleDurationSeconds) =>
+            update({ chat: { ...settings.chat, bubbleDurationSeconds } })
+          }
+        />
+      ) : null}
+      <FormControl display="flex" alignItems="center" justifyContent="space-between">
+        <FormLabel mb={0}>{t('settings.chat.nativeNotifications')}</FormLabel>
+        <Switch
+          colorScheme="teal"
+          isChecked={settings.chat.nativeNotifications}
+          onChange={(event) => {
+            const enabled = event.target.checked;
+            update({ chat: { ...settings.chat, nativeNotifications: enabled } });
+            if (enabled) {
+              // Prompt the platform permission right away so the first friend
+              // request can actually surface a native notification.
+              void ensureNotificationPermission();
+            }
+          }}
+        />
+      </FormControl>
+      <Text mt={-2} fontSize="sm" color="gray.500">
+        {t('settings.chat.help')}
       </Text>
     </VStack>
   );
