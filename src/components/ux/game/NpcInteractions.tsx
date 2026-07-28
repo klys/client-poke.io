@@ -255,11 +255,13 @@ export function MenuChoiceButton({
   children,
   onClick,
   isDisabled,
+  onMouseEnter,
 }: {
   active?: boolean;
   children: ReactNode;
   onClick?: () => void;
   isDisabled?: boolean;
+  onMouseEnter?: () => void;
 }) {
   const compact = useCompactUx();
 
@@ -285,6 +287,7 @@ export function MenuChoiceButton({
       opacity={isDisabled ? 0.45 : 1}
       cursor={isDisabled ? "not-allowed" : "pointer"}
       onClick={isDisabled ? undefined : onClick}
+      onMouseEnter={onMouseEnter}
     >
       {children}
     </Button>

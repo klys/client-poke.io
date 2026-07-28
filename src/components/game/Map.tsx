@@ -7,7 +7,8 @@ import MapNeighbors from "./MapNeighbors";
 import TileMapSurface, { tileMapChunkKey } from "./TileMapSurface";
 import { setMapLoadWaiting, startMapLoad } from "./mapLoadProgress";
 import NpcInteractionOverlay from "../ux/game/NpcInteractions";
-import FishingController from "./FishingController";
+import WaterInteractionController, { WATER_MENU_EVENT } from "./WaterInteractionController";
+import { isFishableWaterCell } from "./fishing";
 import NpcSprite from "./NpcSprite";
 import { assetUrl, resolveServerAssetUrl } from "../tilemap/serverAssets";
 import {
@@ -318,8 +319,23 @@ const Map = ({children}:{children:any}) => {
             return;
         }
 
+        // Facing water with nothing to talk to: open the contextual water menu
+        // (Fish / Surf / Dive) — the same one clicks and taps open, so every
+        // input method shares one interaction path.
+        const tileMap = activeMapEditorData.tileMap ?? null;
+        if (
+            activeMapId &&
+            tileMap &&
+            isFishableWaterCell(activeMapId, tileMap, targetX, targetY)
+        ) {
+            window.dispatchEvent(
+                new CustomEvent(WATER_MENU_EVENT, { detail: { x: targetX, y: targetY } })
+            );
+            return;
+        }
+
         // Nothing to talk to in front: let the server try a terrain field skill
-        // (Surf onto water, Dive under it, climb a Waterfall, push a boulder).
+        // (climb a Waterfall, push a boulder, Surf/Dive fallback).
         socket.emit("player:field-interact");
     };
 
@@ -489,7 +505,7 @@ const Map = ({children}:{children:any}) => {
             npcPlacement={activeNpcInteraction}
             onClose={() => setActiveNpcInteraction(null)}
         />
-        <FishingController
+        <WaterInteractionController
             socket={socket}
             player={currentPlayer}
             mapId={activeMapId}

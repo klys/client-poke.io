@@ -33,11 +33,14 @@ import {
 } from '../../game/playableMapRuntime';
 import TileMapSurface from '../../game/TileMapSurface';
 
-export const FLY_MOVE_NAME = 'volar';
+// Fly's localized names — the current skill catalog uses "Vuelo"; "volar"
+// covers parties saved before the catalog rename (the old hardcode only
+// matched "volar", so mons knowing Vuelo couldn't fly).
+export const FLY_MOVE_NAMES = ['vuelo', 'volar', 'fly'];
 
 export function partyKnowsFly(party: Array<{ moves?: string[] }>): boolean {
   return party.some((pokemon) =>
-    (pokemon.moves ?? []).some((move) => move.trim().toLowerCase() === FLY_MOVE_NAME)
+    (pokemon.moves ?? []).some((move) => FLY_MOVE_NAMES.includes(move.trim().toLowerCase()))
   );
 }
 

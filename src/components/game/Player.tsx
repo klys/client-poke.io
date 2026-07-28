@@ -11,6 +11,7 @@ import {
   loadCharacterSkinCatalog,
 } from "../ux/game/characterSkinCatalog";
 import { SocialContext } from "../ux/game/social/SocialContext";
+import { getPoseSheet, poseRowForDirection, type OverworldPose } from "./overworldPoses";
 
 type Position = {
   x: number
@@ -91,6 +92,11 @@ const Player = (props: any) => {
   const [direction, setDirection] = useState<Direction>(() => getDirectionFromAngle(initialPosition.angle));
   const [isWalking, setIsWalking] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  // Traversal/pose state, server-authoritative: seeded from the addPlayer
+  // snapshot and kept fresh by player:surf-state / player:pose broadcasts, so
+  // local, remote, and reconnecting clients all render the same mount.
+  const [isSurfing, setIsSurfing] = useState(() => playerInfo.isSurfing === true);
+  const [fishingPose, setFishingPose] = useState(false);
   const [characterSkinCatalog, setCharacterSkinCatalog] = useState(() =>
     loadCharacterSkinCatalog()
   );
@@ -310,17 +316,41 @@ const Player = (props: any) => {
       setDeath(false);
     };
 
+    const handleSurfState = (data: any) => {
+      if (data?.playerId !== playerId) {
+        return;
+      }
+      setIsSurfing(data.surfing === true);
+    };
+
+    const handlePose = (data: any) => {
+      if (data?.playerId !== playerId) {
+        return;
+      }
+      setFishingPose(data.pose === "fishing");
+    };
+
     socket.on(`move${playerId}`, handlePlayerMove);
     socket.on(`playerDeath${playerId}`, handlePlayerDeath);
     socket.on(`playerReborn${playerId}`, handlePlayerReborn);
+    socket.on("player:surf-state", handleSurfState);
+    socket.on("player:pose", handlePose);
 
     return () => {
       socket.off(`move${playerId}`, handlePlayerMove);
       socket.off(`playerDeath${playerId}`, handlePlayerDeath);
       socket.off(`playerReborn${playerId}`, handlePlayerReborn);
+      socket.off("player:surf-state", handleSurfState);
+      socket.off("player:pose", handlePose);
       stopMovement();
     };
   }, [playerId, playerIndex, processMoveQueue, socket, stopMovement]);
+
+  // Re-seed traversal state whenever the server re-presents this player
+  // (map change, reconnect, visibility refresh).
+  useEffect(() => {
+    setIsSurfing(playerInfo.isSurfing === true);
+  }, [playerInfo.isSurfing]);
 
   useEffect(() => {
     if (myplayer !== playerId) {
@@ -341,6 +371,36 @@ const Player = (props: any) => {
       window.removeEventListener("resize", reapplyCamera);
     };
   }, [myplayer, playerId]);
+
+  // Active overworld pose: the pose charsets draw the trainer ON the mount /
+  // with the rod, so they replace the walk sprite while active (the original
+  // Essentials vehicle behavior — mount and player can never desync).
+  const activePose: OverworldPose | null = fishingPose
+    ? isSurfing
+      ? "fishsurf"
+      : "fish"
+    : isSurfing
+      ? "surf"
+      : null;
+  const poseSheet = activePose ? getPoseSheet(activePose, playerInfo.characterSkinId) : null;
+  const [poseFrame, setPoseFrame] = useState(0);
+
+  useEffect(() => {
+    setPoseFrame(0);
+    if (!activePose) {
+      return undefined;
+    }
+    // Surf mounts bob continuously; the fishing cast plays once and holds.
+    const interval = window.setInterval(
+      () => {
+        setPoseFrame((frame) =>
+          activePose === "surf" ? (frame + 1) % 4 : Math.min(frame + 1, 3)
+        );
+      },
+      activePose === "surf" ? 220 : 160
+    );
+    return () => window.clearInterval(interval);
+  }, [activePose]);
 
   const characterSkinProfile = useMemo(
     () =>
@@ -457,20 +517,46 @@ const Player = (props: any) => {
       ) : null}
       {/* Skins are 32x48 (taller than the 32x32 logical cell). Render at
           natural aspect anchored to the cell's bottom edge so feet stay on
-          the tile — the old fixed 32x32 box squished every skin. */}
-      <img
-        src={spritePath}
-        alt={`Player ${spriteLabel}`}
-        width={32}
-        style={{
-          position: "absolute",
-          bottom: 0,
-          left: 0,
-          width: "32px",
-          height: "auto",
-          imageRendering: "pixelated",
-        }}
-      />
+          the tile — the old fixed 32x32 box squished every skin. While a
+          traversal pose is active (Surf mount, fishing cast) the 4x4 RMXP
+          pose charset replaces the walk sprite: it already contains the
+          trainer riding/casting, centered on the cell and bottom-anchored so
+          water renders below it and overhead tiles above it. */}
+      {poseSheet ? (
+        <div
+          role="img"
+          aria-label={`Player ${activePose} ${direction}`}
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: `${Math.round((32 - poseSheet.frameWidth) / 2)}px`,
+            width: `${poseSheet.frameWidth}px`,
+            height: `${poseSheet.frameHeight}px`,
+            backgroundImage: `url(${poseSheet.src})`,
+            backgroundSize: "400% 400%",
+            backgroundPosition: `${(poseFrame * 100) / 3}% ${
+              (poseRowForDirection(direction) * 100) / 3
+            }%`,
+            backgroundRepeat: "no-repeat",
+            imageRendering: "pixelated",
+            pointerEvents: "none"
+          }}
+        />
+      ) : (
+        <img
+          src={spritePath}
+          alt={`Player ${spriteLabel}`}
+          width={32}
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            width: "32px",
+            height: "auto",
+            imageRendering: "pixelated",
+          }}
+        />
+      )}
     </div>
   );
 };

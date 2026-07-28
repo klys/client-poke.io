@@ -85,7 +85,8 @@ enum actions {
     REMOVE_BATTLE_PROMPT = 'REMOVE_BATTLE_PROMPT',
     SET_SELECTED_TRAINER = 'SET_SELECTED_TRAINER',
     SET_ACTIVE_NPC_INTERACTION = 'SET_ACTIVE_NPC_INTERACTION',
-    SET_EVENT_STATE = 'SET_EVENT_STATE'
+    SET_EVENT_STATE = 'SET_EVENT_STATE',
+    SET_PLAYER_SURFING = 'SET_PLAYER_SURFING'
 }
 
 // Actions are handle on this reducer
@@ -151,6 +152,21 @@ const reducer = (state:any, action:any) => {
                 ...state,
                 players: state.players
             }
+        case actions.SET_PLAYER_SURFING: {
+            // Mirror of player:surf-state into the shared player records so
+            // world logic (PlayerBoundaryGuard) can reason about traversal
+            // mode; the sprite itself listens to the socket directly.
+            const entry: any = Object.values(state.players).find(
+                (player: any) => player?.playerId === action.payload?.playerId
+            );
+            if (entry && typeof entry.id !== "undefined") {
+                state.players[entry.id] = { ...entry, isSurfing: action.payload.surfing === true };
+            }
+            return {
+                ...state,
+                players: state.players
+            }
+        }
         case actions.ADD_PROJECTIL:
             if (state.projectiles[action.projectilData.id] !== undefined) return state;
             state.projectiles[action.projectilData.id] = action.projectilData;
@@ -361,6 +377,9 @@ export const Provider = ({ children, socketUrl }:{children:any, socketUrl:string
         },
         movePlayer: (playerData:any) => {
             dispatch({ type: actions.MOVE_PLAYER, playerData })
+        },
+        setPlayerSurfing: (payload:{ playerId:string; surfing:boolean }) => {
+            dispatch({ type: actions.SET_PLAYER_SURFING, payload })
         },
         addProjectil: (projectilData:any) => {
             //console.log("projectil add")

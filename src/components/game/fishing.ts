@@ -13,7 +13,7 @@ const FISHABLE_WATER_TAGS = new Set([5, 6, 7]);
 
 const terrainTagCache = new globalThis.Map<string, Uint8Array | null>();
 
-function getTerrainTagCells(mapId: string, tileMap: PlayableMapTileMapProfile) {
+export function getTerrainTagCells(mapId: string, tileMap: PlayableMapTileMapProfile) {
   const encoded = tileMap.terrainTags ?? "";
   const cacheKey = `${mapId}:${encoded.length}:${encoded.slice(0, 32)}`;
   const cached = terrainTagCache.get(cacheKey);

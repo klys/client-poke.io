@@ -8,6 +8,7 @@ import {
 import { isSolidCollisionCell } from "../tilemap/collision";
 import { decodeCollisionCells } from "../tilemap/tileMapProfile";
 import type { PlayableMapTileMapProfile } from "../tilemap/tileMapTypes";
+import { isFishableWaterCell } from "./fishing";
 
 const PLAYER_SIZE = 32;
 
@@ -29,7 +30,8 @@ function getCollisionCells(mapId: string, tileMap: PlayableMapTileMapProfile) {
 function isPlayerBlockedByTileMap(
   x: number,
   y: number,
-  activeMap: PlayableMapRuntimeEntry
+  activeMap: PlayableMapRuntimeEntry,
+  surfing: boolean
 ) {
   const tileMap = activeMap.editorData.tileMap;
 
@@ -58,9 +60,16 @@ function isPlayerBlockedByTileMap(
 
   for (let row = firstRow; row <= lastRow; row += 1) {
     for (let column = firstColumn; column <= lastColumn; column += 1) {
-      if (isSolidCollisionCell(cells[row * tileMap.width + column])) {
-        return true;
+      if (!isSolidCollisionCell(cells[row * tileMap.width + column])) {
+        continue;
       }
+      // Mirror the server's passThroughWater rule: while surfing, solid cells
+      // that are surfable water are legal ground — without this the guard
+      // "corrects" every freshly-mounted surfer straight back to shore.
+      if (surfing && isFishableWaterCell(activeMap.item.id, tileMap, column, row)) {
+        continue;
+      }
+      return true;
     }
   }
 
@@ -72,6 +81,7 @@ type ActivePlayer = {
   playerId?: string;
   x?: number;
   y?: number;
+  isSurfing?: boolean;
 };
 
 type Bounds = {
@@ -107,7 +117,7 @@ function isPlayerBlocked(player: ActivePlayer, activeMap: PlayableMapRuntimeEntr
     height: PLAYER_SIZE,
   };
 
-  if (isPlayerBlockedByTileMap(playerBounds.x, playerBounds.y, activeMap)) {
+  if (isPlayerBlockedByTileMap(playerBounds.x, playerBounds.y, activeMap, player.isSurfing === true)) {
     return true;
   }
 

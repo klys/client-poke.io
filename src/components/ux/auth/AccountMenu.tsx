@@ -39,7 +39,7 @@ import {
   useDisclosure,
   useToast
 } from '@chakra-ui/react';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import PasswordInput from './PasswordInput';
 import {
@@ -56,6 +56,8 @@ import {
 import type { DesignerItemSeed, DesignerPokemonProfile } from '../../designer/designerSections';
 import { getPokemonDisplayName, validatePokemonNickname } from '../game/pokemonName';
 import { classifyInventoryItem, type ItemUsage } from '../game/itemUsage';
+import { fieldMovesForPokemon, type FieldMoveAction } from '../game/fieldMoves';
+import { AppContext } from '../../../context/appContext';
 import { getBackendBaseUrl } from '../../game/backendConfig';
 import { isEquipableBonusItem } from '../game/equipableItems';
 import GamepadSettings from './GamepadSettings';
@@ -69,7 +71,7 @@ import { useGameSettings } from '../../../settings/gameSettings';
 import { useT } from '../../../i18n';
 import { useCompactUx } from '../useCompactUx';
 import { resolveServerAssetUrl } from '../../tilemap/serverAssets';
-import WorldMapWindow, { FLY_MOVE_NAME } from '../game/WorldMapWindow';
+import WorldMapWindow, { FLY_MOVE_NAMES } from '../game/WorldMapWindow';
 import {
   TrainerCardView,
   TRAINER_CARD_COLORS,
@@ -1060,6 +1062,15 @@ function BagWindow({ onOpenWorldMap }: { onOpenWorldMap: () => void }) {
       return;
     }
 
+    // Fishing rods cast at the faced water tile through the shared water
+    // interaction flow (bobber UI + server-validated fishing:cast).
+    if (usage.clientAction === 'fishing') {
+      window.dispatchEvent(
+        new CustomEvent('pokecraft:use-rod', { detail: { itemId: item.id } })
+      );
+      return;
+    }
+
     // No target needed (Repel, Escape Rope, Sacred Ash, Poké Flute, key items).
     if (usage.target === 'none') {
       requestUseInventoryItem({ itemId: item.id });
@@ -1557,7 +1568,7 @@ function PokemonMovesTab({
                   {typeof pokemon.movePp?.[move] === 'number' ? (
                     <Badge colorScheme="teal">{pokemon.movePp[move]} PP</Badge>
                   ) : null}
-                  {move.trim().toLowerCase() === FLY_MOVE_NAME ? (
+                  {FLY_MOVE_NAMES.includes(move.trim().toLowerCase()) ? (
                     <Button size="xs" colorScheme="cyan" onClick={onOpenWorldMap}>
                       Use
                     </Button>
@@ -1942,7 +1953,8 @@ function PokemonCard({
   onMoveInParty,
   onSetLeader,
   onGiveBerry,
-  onEquipItem
+  onEquipItem,
+  onOpenWorldMap
 }: {
   pokemon: PokemonSummary;
   catalogEntry: PokemonCatalogEntry | null;
@@ -1953,9 +1965,29 @@ function PokemonCard({
   onSetLeader: (partyIndex: number) => void;
   onGiveBerry: (pokemonId: string) => void;
   onEquipItem: (pokemonId: string) => void;
+  onOpenWorldMap: () => void;
 }) {
   const { namePokemon, takeHeldItem } = useAuth();
+  const { socket } = useContext(AppContext);
   const t = useT();
+
+  // Field moves this Venomon knows (Surf, Buceo, Vuelo...). Every entry
+  // routes into the shared server-validated field-action rail; the server
+  // rejects with a specific message when the environment doesn't allow it.
+  const fieldMoves = fieldMovesForPokemon(pokemon.moves);
+  const handleFieldMove = (action: FieldMoveAction) => {
+    if (action.kind === 'open-world-map') {
+      onOpenWorldMap();
+      return;
+    }
+    if (action.kind === 'interact-front') {
+      window.dispatchEvent(new CustomEvent('pokecraft:interact-front'));
+      return;
+    }
+    if (action.socketEvent) {
+      socket.emit(action.socketEvent);
+    }
+  };
 
   const handleTakeHeldItem = () => {
     takeHeldItem({ pokemonId: pokemon.id });
@@ -2061,6 +2093,11 @@ function PokemonCard({
               {pokemon.heldItemName ? (
                 <MenuItem onClick={handleTakeHeldItem}>Take Held Item</MenuItem>
               ) : null}
+              {fieldMoves.map((action) => (
+                <MenuItem key={action.key} onClick={() => handleFieldMove(action)}>
+                  {`Usar ${action.label}`}
+                </MenuItem>
+              ))}
             </MenuList>
           </Menu>
         </HStack>
@@ -2095,11 +2132,13 @@ function PokemonCard({
 function PokemonsWindow({
   party,
   pokemonCatalog,
-  onOpenStats
+  onOpenStats,
+  onOpenWorldMap
 }: {
   party: PokemonSummary[];
   pokemonCatalog: Map<string, PokemonCatalogEntry>;
   onOpenStats: (pokemonId: string) => void;
+  onOpenWorldMap: () => void;
 }) {
   const { user, reorderPokemonParty, holdInventoryItem } = useAuth();
   const t = useT();
@@ -2163,6 +2202,7 @@ function PokemonsWindow({
             onSetLeader={handleSetLeader}
             onGiveBerry={(pokemonId) => setItemPicker({ pokemonId, kind: 'berry' })}
             onEquipItem={(pokemonId) => setItemPicker({ pokemonId, kind: 'equip' })}
+            onOpenWorldMap={onOpenWorldMap}
           />
         ))}
       </Grid>
@@ -2427,6 +2467,7 @@ const AccountMenu = () => {
           party={party}
           pokemonCatalog={pokemonCatalog}
           onOpenStats={openPokemonStatsWindow}
+          onOpenWorldMap={() => openWindow('map')}
         />
       );
     }

@@ -43,9 +43,12 @@ const Network = () => {
         addBattlePrompt,
         removeBattlePrompt,
         setEventState,
+        setPlayerSurfing,
     } = useContext(AppContext);
     const setEventStateRef = useRef(setEventState);
     setEventStateRef.current = setEventState;
+    const setPlayerSurfingRef = useRef(setPlayerSurfing);
+    setPlayerSurfingRef.current = setPlayerSurfing;
     const addPlayerRef = useRef(addPlayer);
     const removePlayerRef = useRef(removePlayer);
     const addProjectilRef = useRef(addProjectil);
@@ -360,6 +363,29 @@ const Network = () => {
             window.dispatchEvent(new CustomEvent(AUTH_SESSION_SYNC_EVENT, { detail: data }));
         };
 
+        // Keep the shared player records' traversal mode fresh so world logic
+        // (e.g. PlayerBoundaryGuard's water passability) stays correct.
+        const handleSurfState = (data:any) => {
+            if (data?.playerId) {
+                setPlayerSurfingRef.current({ playerId: data.playerId, surfing: data.surfing === true });
+            }
+        };
+
+        // A field skill (Surf/Dive/Strength/Waterfall) was rejected — surface
+        // the server's specific reason instead of failing silently.
+        const handleFieldSkillError = (data:any) => {
+            if (!data?.message) {
+                return;
+            }
+            toast({
+                title: data.message,
+                status: "warning",
+                duration: 3000,
+                isClosable: true,
+                position: "top"
+            });
+        };
+
         if (socket.connected) {
             joinGame();
         }
@@ -400,6 +426,8 @@ const Network = () => {
         socket.on("battle:trade-declined", handleTradeClosed)
         socket.on("battle:trade-expired", handleTradeClosed)
         socket.on("auth:session", handleAuthSession)
+        socket.on("player:field-skill-error", handleFieldSkillError)
+        socket.on("player:surf-state", handleSurfState)
 
         return () => {
             socket.off("connect", joinGame)
@@ -425,6 +453,8 @@ const Network = () => {
             socket.off("battle:trade-declined", handleTradeClosed)
             socket.off("battle:trade-expired", handleTradeClosed)
             socket.off("auth:session", handleAuthSession)
+            socket.off("player:field-skill-error", handleFieldSkillError)
+            socket.off("player:surf-state", handleSurfState)
             if (battleClearTimerRef.current !== null) {
                 window.clearTimeout(battleClearTimerRef.current);
                 battleClearTimerRef.current = null;

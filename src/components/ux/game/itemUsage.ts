@@ -14,7 +14,7 @@ import type { InventoryItem } from "../../../context/authContext";
 export type ItemTargetKind = "pokemon" | "pokemon-move" | "none";
 
 /** A key item the client resolves without touching the server. */
-export type ClientKeyAction = "town-map";
+export type ClientKeyAction = "town-map" | "fishing";
 
 export interface ItemUsage {
   /** What the modal must collect before the item is used. */
@@ -94,6 +94,11 @@ function classifyByEssentialsId(essentialsId: string, healHp: number, category: 
   }
   if (id === "TOWNMAP") {
     return { target: "none", usable: true, clientAction: "town-map" };
+  }
+  if (FISHING_ROD_TIERS[id]) {
+    // Rods cast at the faced water tile through the shared water-interaction
+    // flow (bobber UI + fishing:cast); the server validates everything.
+    return { target: "none", usable: true, clientAction: "fishing" };
   }
   if (SERVER_KEY_ITEM_IDS.has(id)) {
     return { target: "none", usable: true };
