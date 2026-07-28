@@ -17,6 +17,8 @@ import MapMusic from "./MapMusic";
 import { BattlePrompts, TrainerInteractionCard } from "../ux/game/TrainerInteractions";
 import { SocialProvider } from "../ux/game/social/SocialContext";
 import ChatBar from "../ux/game/social/ChatBar";
+import { TradeProvider } from "../ux/game/trade/TradeContext";
+import TradeWindow, { TradeRequestPrompts } from "../ux/game/trade/TradeWindow";
 
 
 const Game = ({ socketUrl }:{ socketUrl:string }) => {
@@ -34,6 +36,7 @@ const Game = ({ socketUrl }:{ socketUrl:string }) => {
         >
         <Provider socketUrl={socketUrl}>
         <SocialProvider>
+        <TradeProvider>
             <AccountMenu />
 
             <Network />
@@ -61,9 +64,12 @@ const Game = ({ socketUrl }:{ socketUrl:string }) => {
             <BattleScene />
             <EventDialog />
             <ChatBar />
+            <TradeWindow />
+            <TradeRequestPrompts />
             <VirtualControls />
             <GamepadControls />
 
+        </TradeProvider>
         </SocialProvider>
         </Provider>
         </div>

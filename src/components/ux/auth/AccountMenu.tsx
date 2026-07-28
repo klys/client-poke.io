@@ -83,12 +83,13 @@ import {
   type CharacterSkinCatalogItem
 } from '../game/characterSkinCatalog';
 import FriendsWindow from '../game/social/FriendsWindow';
+import TradeHistoryWindow from '../game/trade/TradeHistoryWindow';
 import PrivateChatWindow from '../game/social/PrivateChatWindow';
 import NotificationsBell from '../game/social/NotificationsBell';
 import { useSocial } from '../game/social/SocialContext';
 import { ChatSettingsSection } from './GameSettingsSections';
 
-type WindowKey = 'account' | 'settings' | 'bag' | 'pokemons' | 'map' | 'trainerCard' | 'battleHistory' | 'friends';
+type WindowKey = 'account' | 'settings' | 'bag' | 'pokemons' | 'map' | 'trainerCard' | 'battleHistory' | 'friends' | 'tradeHistory';
 type PokemonStatsWindowId = `pokemonStats:${string}`;
 type PrivateChatWindowId = `privateChat:${string}`;
 type OpenWindowId = WindowKey | PokemonStatsWindowId | PrivateChatWindowId;
@@ -120,7 +121,8 @@ const WINDOW_TITLE_KEYS: Record<WindowKey, string> = {
   map: 'menu.map',
   trainerCard: 'menu.trainerCard',
   battleHistory: 'menu.battleHistory',
-  friends: 'menu.friends'
+  friends: 'menu.friends',
+  tradeHistory: 'menu.tradeHistory'
 };
 
 const DEFAULT_POSITIONS: Record<WindowKey, WindowPosition> = {
@@ -131,7 +133,8 @@ const DEFAULT_POSITIONS: Record<WindowKey, WindowPosition> = {
   map: { x: 120, y: 72 },
   trainerCard: { x: 210, y: 156 },
   battleHistory: { x: 246, y: 192 },
-  friends: { x: 282, y: 108 }
+  friends: { x: 282, y: 108 },
+  tradeHistory: { x: 300, y: 150 }
 };
 
 const WINDOW_POSITIONS_KEY = 'client-poke.io.ux.windowPositions';
@@ -2414,6 +2417,10 @@ const AccountMenu = () => {
       return '1020px';
     }
 
+    if (windowKey === 'tradeHistory') {
+      return '620px';
+    }
+
     return windowKey === 'map' ? '540px' : '460px';
   };
 
@@ -2480,6 +2487,10 @@ const AccountMenu = () => {
       return <BattleHistoryWindow />;
     }
 
+    if (windowKey === 'tradeHistory') {
+      return <TradeHistoryWindow />;
+    }
+
     return <TrainerCardWindow openBattleHistory={() => openWindow('battleHistory')} />;
   };
 
@@ -2522,6 +2533,7 @@ const AccountMenu = () => {
             ) : null}
           </MenuItem>
           <MenuItem onClick={() => openWindow('battleHistory')}>{t('menu.battleHistory')}</MenuItem>
+          <MenuItem onClick={() => openWindow('tradeHistory')}>{t('menu.tradeHistory')}</MenuItem>
           {hasPermission('designer.access') ? (
             <MenuItem as={RouterLink} to="/designer">{t('menu.designer')}</MenuItem>
           ) : null}

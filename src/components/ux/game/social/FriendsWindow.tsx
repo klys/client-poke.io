@@ -95,7 +95,7 @@ function FriendRow({ friend }: { friend: FriendEntry }) {
             isDisabled={!sameMap || !friend.playerId}
             onClick={() => {
               if (friend.playerId) {
-                socket.emit('battle:trade-request', { targetPlayerId: friend.playerId });
+                socket.emit('trade:request', { targetPlayerId: friend.playerId });
               }
             }}
           >

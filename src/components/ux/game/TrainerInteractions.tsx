@@ -171,7 +171,8 @@ export function TrainerInteractionCard() {
           color="white"
           borderColor="whiteAlpha.500"
           onClick={() => {
-            socket.emit("battle:trade-request", { targetPlayerId: selectedTrainer.playerId });
+            // Opens a real trade session (TradeManager) — see the trade/ module.
+            socket.emit("trade:request", { targetPlayerId: selectedTrainer.playerId });
             setSelectedTrainer(null);
           }}
         >
