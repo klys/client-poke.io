@@ -29,6 +29,8 @@ export type AuthUser = {
   money: number
   /** 0-based gym badge indices earned (see the gym Trainer Card). */
   badges: number[]
+  /** Map ids of fly-able towns the player has entered (gates Volar/Fly). */
+  visitedTowns?: string[]
   /** Palette key chosen for the Trainer Card background. */
   trainerCardColor: string
   inventory: InventoryItem[]

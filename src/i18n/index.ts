@@ -72,6 +72,7 @@ const STRINGS: Record<string, Entry> = {
   'map.fly': { en: 'Fly', es: 'Volar' },
   'map.cancel': { en: 'Cancel', es: 'Cancelar' },
   'map.flyFailed': { en: 'Could not fly there.', es: 'No se pudo volar hasta allí.' },
+  'map.notVisited': { en: 'not visited yet', es: 'aún no visitada' },
 
   // --- Settings window: general ---
   'settings.enableDrag': { en: 'Enable draggable screen', es: 'Activar ventanas arrastrables' },

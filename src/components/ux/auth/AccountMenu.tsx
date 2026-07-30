@@ -75,6 +75,7 @@ import WorldMapWindow, { FLY_MOVE_NAMES } from '../game/WorldMapWindow';
 import {
   TrainerCardView,
   TRAINER_CARD_COLORS,
+  EGG_ICON_SRC,
   type TrainerCardTeamMember
 } from '../game/TrainerCard';
 import {
@@ -2031,7 +2032,7 @@ function PokemonCard({
               boxSize="40px"
               objectFit="contain"
               alt="Huevo"
-              src={resolveServerAssetUrl('/migration_exports/pictures/summaryEgg.PNG')}
+              src={resolveServerAssetUrl(EGG_ICON_SRC)}
               flexShrink={0}
             />
             <Box minW={0}>

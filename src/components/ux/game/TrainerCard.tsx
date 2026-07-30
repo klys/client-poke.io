@@ -31,8 +31,10 @@ export type TrainerCardTeamMember = {
   isEgg?: boolean;
 };
 
-/** Root-relative egg image on the asset server (see summaryEgg picture). */
-const EGG_ICON_SRC = '/migration_exports/pictures/summaryEgg.PNG';
+/** Root-relative egg party icon on the asset server: the animated 2-frame
+ * strip from Graphics/Icons/iconEgg.png (tools/publishEggIcon.py). Venova's
+ * summaryEgg.PNG is a PC-screen background, not an egg — don't use it. */
+export const EGG_ICON_SRC = '/migration_exports/pictures/iconEgg.gif';
 
 // -- Trainer Card background palette ---------------------------------------
 export type TrainerCardColorKey =

@@ -275,8 +275,21 @@ const WorldMapWindow = ({ onRequestClose }: { onRequestClose?: () => void }) => 
     }
   }, [currentMapId, onRequestClose]);
 
+  // Classic Fly: only towns the player has physically entered are selectable.
+  // The server enforces the same rule; being IN a town also counts (covers
+  // the session where its visit was just recorded).
+  const visitedTowns = useMemo(
+    () => new Set([...(user?.visitedTowns ?? []), ...(currentMapId ? [currentMapId] : [])]),
+    [user?.visitedTowns, currentMapId]
+  );
+
   const handleTownClick = (point: TownMapPoint) => {
-    if (!canFly || !point.fly || point.fly.mapId === currentMapId) {
+    if (
+      !canFly ||
+      !point.fly ||
+      point.fly.mapId === currentMapId ||
+      !visitedTowns.has(point.fly.mapId)
+    ) {
       return;
     }
     setSelectedTown((current) => (current?.name === point.name ? null : point));
@@ -310,13 +323,15 @@ const WorldMapWindow = ({ onRequestClose }: { onRequestClose?: () => void }) => 
             flyable towns are additionally clickable with the wing icon. */}
         {TOWN_MAP_POINTS.map((point, index) => {
           const flyable = flyableNames.has(point.name) && Boolean(point.fly);
+          const visited = flyable && visitedTowns.has(point.fly!.mapId);
           const isSelected = flyable && selectedTown?.name === point.name;
-          const clickable = flyable && canFly && point.fly!.mapId !== currentMapId;
+          const clickable = flyable && visited && canFly && point.fly!.mapId !== currentMapId;
+          const baseLabel = point.poi ? `${point.name} — ${point.poi}` : point.name;
 
           return (
             <Tooltip
               key={`${point.gridX}-${point.gridY}-${index}`}
-              label={point.poi ? `${point.name} — ${point.poi}` : point.name}
+              label={flyable && canFly && !visited ? `${baseLabel} (${t('map.notVisited')})` : baseLabel}
               placement="top"
               hasArrow
               openDelay={100}
