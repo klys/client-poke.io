@@ -18,6 +18,7 @@ import {
   ModalFooter,
   ModalHeader,
   ModalOverlay,
+  Progress,
   Select,
   SimpleGrid,
   Stack,
@@ -68,13 +69,25 @@ import {
 } from "./designerSections";
 import {
   DESIGNER_CACHE_UPDATED_EVENT,
+  applyDesignerSectionPatchOps,
+  applyDesignerSectionPatchToCache,
   getDesignerSectionStorageKey,
   getLegacyDesignerSectionStorageKey,
   persistStoredDesignerSectionPayload,
   readStoredDesignerSectionPayload,
+  sanitizeDesignerSectionPatchBroadcast,
   type DesignerCacheUpdateDetail,
+  type DesignerSectionPatchOp,
 } from "./designerCache";
-import { ensureDesignerSectionOverHttp } from "./designerSectionHttp";
+import {
+  ensureDesignerSectionOverHttp,
+  fetchDesignerSectionOverHttp,
+} from "./designerSectionHttp";
+import DesignerNav from "./shared/DesignerNav";
+import SectionLoadIndicator from "./shared/SectionLoadIndicator";
+import MigrationProfileEditor from "./shared/MigrationProfileEditor";
+import MapNpcBrowser from "./shared/MapNpcBrowser";
+import { resolveServerAssetUrl } from "../tilemap/serverAssets";
 
 interface DesignerSectionState {
   categories: string[];
@@ -255,6 +268,8 @@ const DEFAULT_POKEMON_STATS = {
   speed: "1",
 };
 const DEFAULT_SKILL_FORM_STATE = {
+  essentialsId: "",
+  effectChance: "",
   power: "0",
   powerPoint: "1",
   accuracy: "100",
@@ -297,6 +312,7 @@ const DEFAULT_NPC_MOVEMENT_INTERVAL_MAX = 60;
 const DEFAULT_NPC_MOVEMENT_STEP_MIN = 1;
 const DEFAULT_NPC_MOVEMENT_STEP_MAX = 5;
 const MIGRATION_PROFILE_SECTIONS = [
+  "regions",
   "abilities",
   "types",
   "trainers",
@@ -312,6 +328,7 @@ const MIGRATION_PROFILE_SECTIONS = [
 
 type MigrationProfileSectionKey = (typeof MIGRATION_PROFILE_SECTIONS)[number];
 type MigrationProfileKey =
+  | "regionProfile"
   | "abilityProfile"
   | "typeProfile"
   | "trainerProfile"
@@ -325,6 +342,7 @@ type MigrationProfileKey =
   | "fontProfile";
 
 const MIGRATION_PROFILE_KEY_BY_SECTION: Record<MigrationProfileSectionKey, MigrationProfileKey> = {
+  regions: "regionProfile",
   abilities: "abilityProfile",
   types: "typeProfile",
   trainers: "trainerProfile",
@@ -339,6 +357,11 @@ const MIGRATION_PROFILE_KEY_BY_SECTION: Record<MigrationProfileSectionKey, Migra
 };
 
 const MIGRATION_PROFILE_TEMPLATES: Record<MigrationProfileSectionKey, Record<string, unknown>> = {
+  regions: {
+    imageSrc: "/townmap/mapRegion0.png",
+    gridSize: 16,
+    points: [],
+  },
   abilities: {
     essentialsId: "",
     name: "",
@@ -455,6 +478,8 @@ interface PokemonSkillFormEntry {
 }
 
 interface SkillFormState {
+  essentialsId: string;
+  effectChance: string;
   elements: string[];
   power: string;
   powerPoint: string;
@@ -504,6 +529,12 @@ interface SkillGfxFormState {
 interface ItemFormState {
   iconSrc: string;
   description: string;
+  essentialsId: string;
+  namePlural: string;
+  pocket: string;
+  price: string;
+  fieldUse: string;
+  flags: string[];
   pokemonDbCategory: string;
   effectText: string;
   effectKind: DesignerGameItemProfile["effectKind"];
@@ -718,6 +749,12 @@ function createDefaultItemFormState(): ItemFormState {
   return {
     iconSrc: "",
     description: "",
+    essentialsId: "",
+    namePlural: "",
+    pocket: "",
+    price: "",
+    fieldUse: "",
+    flags: [],
     pokemonDbCategory: "Medicine",
     effectText: "",
     effectKind: "heal-hp",
@@ -2002,6 +2039,49 @@ function readStoredPayload(sectionKey: DesignerSectionKey): StoredDesignerSectio
   };
 }
 
+// Patches with more ops than this are bulk operations (imports, full
+// replaces) and fall back to the whole-state save path.
+const PATCH_OPS_EMIT_LIMIT = 80;
+
+// Computes item-level ops between two section states. Relies on the
+// immutable-update convention (unchanged items keep their identity), so a
+// normal add/edit/delete/move produces a handful of ops while a bulk import
+// naturally overflows the limit and falls back to a full save.
+function diffSectionStatesToOps(
+  previous: DesignerSectionState,
+  next: DesignerSectionState
+): DesignerSectionPatchOp[] {
+  const ops: DesignerSectionPatchOp[] = [];
+  const categoriesChanged =
+    previous.categories !== next.categories &&
+    (previous.categories.length !== next.categories.length ||
+      previous.categories.some((category, index) => category !== next.categories[index]));
+
+  if (categoriesChanged) {
+    ops.push({ kind: "setCategories", categories: next.categories });
+  }
+
+  const previousById = new Map(previous.items.map((item) => [item.id, item]));
+  const nextIds = new Set<string>();
+
+  for (const item of next.items) {
+    nextIds.add(item.id);
+    const previousItem = previousById.get(item.id);
+
+    if (!previousItem || previousItem !== item) {
+      ops.push({ kind: "upsert", item });
+    }
+  }
+
+  for (const item of previous.items) {
+    if (!nextIds.has(item.id)) {
+      ops.push({ kind: "delete", itemId: item.id });
+    }
+  }
+
+  return ops;
+}
+
 function loadStoredState(sectionKey: DesignerSectionKey): DesignerSectionState {
   return readStoredPayload(sectionKey).state;
 }
@@ -2075,7 +2155,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const isGenericRealtimeSection = !isMapsSection;
   const isRealtimeSection = true;
   const toast = useToast();
-  const { authReady, authenticated, socket } = useAuth();
+  const { authReady, authenticated, socket, user } = useAuth();
   const regionNames = useMemo(() => loadRegionNames(), []);
   const [sectionState, setSectionState] = useState<DesignerSectionState>(() =>
     loadStoredState(sectionKey)
@@ -2234,6 +2314,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const [editMapIsInitial, setEditMapIsInitial] = useState(DEFAULT_IS_INITIAL_MAP);
   const shouldBroadcastRef = useRef(false);
   const latestSectionStateRef = useRef(sectionState);
+  // State as of the last save/broadcast (or last server-applied state); local
+  // edits are diffed against it to produce item-level patch ops.
+  const lastBroadcastStateRef = useRef<DesignerSectionState | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const updateSectionState = useCallback(
@@ -2360,7 +2443,14 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   }, [isHeavyMediaSection, sectionKey]);
 
   useEffect(() => {
-    if (!isRealtimeSection || !shouldBroadcastRef.current) {
+    if (!isRealtimeSection) {
+      return;
+    }
+
+    if (!shouldBroadcastRef.current) {
+      // Server-applied or hydrated state: adopt it as the diff baseline so
+      // the next local edit produces only its own ops.
+      lastBroadcastStateRef.current = sectionState;
       return;
     }
 
@@ -2371,6 +2461,26 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     }
 
     if (isGenericRealtimeSection) {
+      const previousState = lastBroadcastStateRef.current;
+      const ops =
+        previousState && sectionCacheVersion !== null
+          ? diffSectionStatesToOps(previousState, sectionState)
+          : null;
+
+      lastBroadcastStateRef.current = sectionState;
+
+      if (ops && ops.length === 0) {
+        return;
+      }
+
+      // Small change sets travel as item-level patches; bulk changes
+      // (imports, first save of an unseeded section) fall back to the
+      // full-state update.
+      if (ops && ops.length <= PATCH_OPS_EMIT_LIMIT) {
+        socket.emit("designer:section:patch", { sectionKey, ops });
+        return;
+      }
+
       socket.emit("designer:section:update", {
         sectionKey,
         state: sectionState,
@@ -2378,10 +2488,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       return;
     }
 
+    lastBroadcastStateRef.current = sectionState;
     socket.emit("designer:maps:update", {
       state: buildPlayableMapsSnapshot(sectionState),
     });
-  }, [authenticated, isGenericRealtimeSection, isRealtimeSection, sectionKey, sectionState, socket]);
+  }, [authenticated, isGenericRealtimeSection, isRealtimeSection, sectionCacheVersion, sectionKey, sectionState, socket]);
 
   useEffect(() => {
     if (!isGenericRealtimeSection) {
@@ -2552,8 +2663,80 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       });
     };
 
+    const handleSectionPatched = (raw: unknown) => {
+      const broadcast = sanitizeDesignerSectionPatchBroadcast(raw);
+
+      if (!broadcast) {
+        return;
+      }
+
+      if (broadcast.sectionKey !== sectionKey) {
+        // Sibling catalog rooms (skills for creatures/items, etc.): keep the
+        // cache and the in-memory catalog in sync with the small patch.
+        const outcome = applyDesignerSectionPatchToCache(broadcast);
+
+        if (outcome === "gap") {
+          void fetchDesignerSectionOverHttp(broadcast.sectionKey);
+          return;
+        }
+
+        if (outcome !== "applied") {
+          return;
+        }
+
+        const nextCatalogState = loadStoredState(broadcast.sectionKey);
+
+        if ((isPokemonSection || isItemsSection) && broadcast.sectionKey === "skills") {
+          setSkillCatalogState(nextCatalogState);
+        } else if (isSkillsSection && broadcast.sectionKey === "skillsGfx") {
+          setSkillGfxCatalogState(nextCatalogState);
+        } else if (isSkillsSection && broadcast.sectionKey === "passiveStates") {
+          setPassiveStateCatalogState(nextCatalogState);
+        } else if (isNpcsSection && broadcast.sectionKey === "items") {
+          setItemCatalogState(nextCatalogState);
+        } else if (isNpcsSection && broadcast.sectionKey === "pokemons") {
+          setPokemonCatalogState(nextCatalogState);
+        } else if (isNpcsSection && broadcast.sectionKey === "players") {
+          setCharacterSkinCatalogState(nextCatalogState);
+        }
+        return;
+      }
+
+      // Our own echo: the local state already contains these ops (and maybe
+      // newer edits) — applying them back would transiently revert typing
+      // that happened while the patch was in flight. Just adopt the version.
+      if (broadcast.updatedByUserId !== null && broadcast.updatedByUserId === user?.id) {
+        setSectionCacheVersion(broadcast.version);
+        setObjectsSyncMeta({
+          updatedAt: broadcast.updatedAt,
+          updatedByUsername: broadcast.updatedByUsername,
+        });
+        setIsObjectsStateHydrated(true);
+        return;
+      }
+
+      // Another designer's patch: apply it onto the live state. Ordering is
+      // guaranteed within a socket connection; after a reconnect the join
+      // re-syncs via version negotiation, so contiguity holds here.
+      shouldBroadcastRef.current = false;
+      const nextState = sanitizeSectionState(
+        sectionKey,
+        applyDesignerSectionPatchOps(latestSectionStateRef.current, broadcast.ops)
+      );
+
+      latestSectionStateRef.current = nextState;
+      setSectionState(nextState);
+      setSectionCacheVersion(broadcast.version);
+      setObjectsSyncMeta({
+        updatedAt: broadcast.updatedAt,
+        updatedByUsername: broadcast.updatedByUsername,
+      });
+      setIsObjectsStateHydrated(true);
+    };
+
     socket.on("designer:section:state", handleObjectsState);
     socket.on("designer:section:version", handleSectionVersion);
+    socket.on("designer:section:patched", handleSectionPatched);
     socket.on("designer:section:error", handleObjectsError);
     socket.on("connect", joinSectionRoom);
 
@@ -2582,10 +2765,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       }
       socket.off("designer:section:state", handleObjectsState);
       socket.off("designer:section:version", handleSectionVersion);
+      socket.off("designer:section:patched", handleSectionPatched);
       socket.off("designer:section:error", handleObjectsError);
       socket.off("connect", joinSectionRoom);
     };
-  }, [authReady, authenticated, isGenericRealtimeSection, isHeavyMediaSection, isItemsSection, isNpcsSection, isPokemonSection, isSkillsSection, sectionKey, socket, toast]);
+  }, [authReady, authenticated, isGenericRealtimeSection, isHeavyMediaSection, isItemsSection, isNpcsSection, isPokemonSection, isSkillsSection, sectionKey, socket, toast, user?.id]);
 
   useEffect(() => {
     if (!isMapsSection) {
@@ -2979,17 +3163,48 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     });
   }, [categoryFilter, searchTerm, sectionState.items]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredItems.length / ITEMS_PER_PAGE));
+  const [itemsPerPage, setItemsPerPage] = useState(ITEMS_PER_PAGE);
+  // Search box state for the creature move selector (shared by the add and
+  // edit modals — only one is open at a time).
+  const [pokemonMoveSearch, setPokemonMoveSearch] = useState("");
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / itemsPerPage));
   const visiblePage = Math.min(currentPage, totalPages);
   const paginatedItems = useMemo(() => {
-    const startIndex = (visiblePage - 1) * ITEMS_PER_PAGE;
+    const startIndex = (visiblePage - 1) * itemsPerPage;
 
-    return filteredItems.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  }, [filteredItems, visiblePage]);
+    return filteredItems.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredItems, visiblePage, itemsPerPage]);
   const firstVisibleItem = filteredItems.length === 0
     ? 0
-    : (visiblePage - 1) * ITEMS_PER_PAGE + 1;
-  const lastVisibleItem = Math.min(visiblePage * ITEMS_PER_PAGE, filteredItems.length);
+    : (visiblePage - 1) * itemsPerPage + 1;
+  const lastVisibleItem = Math.min(visiblePage * itemsPerPage, filteredItems.length);
+  // Windowed page-number buttons: first, last, and up to 5 pages around the
+  // current one, with ellipsis markers where pages are skipped.
+  const pageNumbers = useMemo(() => {
+    const pages: Array<number | "ellipsis"> = [];
+    const windowStart = Math.max(2, visiblePage - 2);
+    const windowEnd = Math.min(totalPages - 1, visiblePage + 2);
+
+    pages.push(1);
+
+    if (windowStart > 2) {
+      pages.push("ellipsis");
+    }
+
+    for (let page = windowStart; page <= windowEnd; page += 1) {
+      pages.push(page);
+    }
+
+    if (windowEnd < totalPages - 1) {
+      pages.push("ellipsis");
+    }
+
+    if (totalPages > 1) {
+      pages.push(totalPages);
+    }
+
+    return pages;
+  }, [totalPages, visiblePage]);
 
   useEffect(() => {
     setCurrentPage((page) => Math.min(page, totalPages));
@@ -3210,6 +3425,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         ? {
             iconSrc: itemProfile.iconSrc,
             description: itemProfile.description,
+            essentialsId: itemProfile.essentialsId ?? "",
+            namePlural: itemProfile.namePlural ?? "",
+            pocket: itemProfile.pocket ?? "",
+            price: itemProfile.price != null ? String(itemProfile.price) : "",
+            fieldUse: itemProfile.fieldUse ?? "",
+            flags: Array.isArray(itemProfile.flags) ? itemProfile.flags : [],
             pokemonDbCategory: itemProfile.pokemonDbCategory,
             effectText: itemProfile.effectText,
             effectKind: itemProfile.effectKind,
@@ -3289,6 +3510,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     setEditSkillForm(
       pokemonSkillProfile
         ? {
+            essentialsId: pokemonSkillProfile.essentialsId ?? "",
+            effectChance:
+              (pokemonSkillProfile as { effectChance?: number }).effectChance != null
+                ? String((pokemonSkillProfile as { effectChance?: number }).effectChance)
+                : "",
             elements: pokemonSkillProfile.elements,
             power: String(pokemonSkillProfile.power),
             powerPoint: String(pokemonSkillProfile.powerPoint),
@@ -4029,10 +4255,17 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
     }
 
     const skill = pokemonSkillCatalog.find((item) => item.id === formState.skillId);
+    const parsedPrice = Number.parseInt(formState.price, 10);
 
     return {
       iconSrc: formState.iconSrc,
       description: formState.description.trim(),
+      essentialsId: formState.essentialsId.trim() || undefined,
+      namePlural: formState.namePlural.trim() || undefined,
+      pocket: formState.pocket.trim() || undefined,
+      price: Number.isFinite(parsedPrice) ? parsedPrice : undefined,
+      fieldUse: formState.fieldUse.trim() || undefined,
+      flags: formState.flags.length > 0 ? formState.flags : undefined,
       pokemonDbCategory: formState.pokemonDbCategory.trim(),
       effectText: formState.effectText.trim(),
       effectKind: formState.effectKind,
@@ -4083,7 +4316,11 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       (item) => item.id === formState.stateConditionId
     );
 
+    const parsedEffectChance = Number.parseInt(formState.effectChance, 10);
+
     return {
+      essentialsId: formState.essentialsId.trim() || undefined,
+      ...(Number.isFinite(parsedEffectChance) ? { effectChance: parsedEffectChance } : {}),
       elements: formState.elements,
       power,
       powerPoint,
@@ -4227,14 +4464,40 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
 
   const handleEditItem = () => {
     const name = editItemName.trim();
-    const itemProfile = isItemsSection ? buildGameItemProfile(editGameItemForm) : undefined;
+    // Profiles are rebuilt from form state, but migrated records carry many
+    // fields the forms don't cover (essentials provenance, prices, raw
+    // properties...). Merge the rebuilt profile over the stored one so an
+    // edit never silently destroys them.
+    const editingItem = sectionState.items.find((item) => item.id === editingItemId);
+    const mergeProfile = <Profile extends object>(
+      base: unknown,
+      built: Profile | undefined
+    ): Profile | undefined => {
+      if (!built || !base || typeof base !== "object") {
+        return built;
+      }
+
+      // Keys the form left undefined must not clobber stored values.
+      const definedBuilt = Object.fromEntries(
+        Object.entries(built).filter(([, value]) => value !== undefined)
+      );
+
+      return { ...(base as Record<string, unknown>), ...definedBuilt } as Profile;
+    };
+    const itemProfile = isItemsSection
+      ? mergeProfile(editingItem?.itemProfile, buildGameItemProfile(editGameItemForm))
+      : undefined;
     const skillGfxProfile = isSkillGfxSection ? buildSkillGfxProfile(editSkillGfxForm) : undefined;
     const characterSkinProfile = isPlayersSection
       ? buildCharacterSkinProfile(editCharacterSkinForm)
       : undefined;
     const npcProfile = isNpcsSection ? buildNpcProfile(editNpcForm) : undefined;
-    const pokemonProfile = isPokemonSection ? buildPokemonProfile(editPokemonForm) : undefined;
-    const pokemonSkillProfile = isSkillsSection ? buildPokemonSkillProfile(editSkillForm) : undefined;
+    const pokemonProfile = isPokemonSection
+      ? mergeProfile(editingItem?.pokemonProfile, buildPokemonProfile(editPokemonForm))
+      : undefined;
+    const pokemonSkillProfile = isSkillsSection
+      ? mergeProfile(editingItem?.pokemonSkillProfile, buildPokemonSkillProfile(editSkillForm))
+      : undefined;
     const migrationProfileKey = getMigrationProfileKey(sectionKey);
     const migrationProfile = isMigrationProfileSection
       ? parseMigrationProfileJson(editMigrationProfileForm.profileJson)
@@ -5956,70 +6219,145 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         </SimpleGrid>
 
         <Box>
-          <FormLabel>Moves</FormLabel>
-          {visiblePokemonSkills.length > 0 ? (
-            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-              {visiblePokemonSkills.map((skill) => {
-                const selectedSkill = formState.skills.find(
-                  (currentSkill) => currentSkill.skillId === skill.id
-                );
-                const skillLevel = selectedSkill?.level ?? "1";
+          <FormLabel>
+            Moves ({formState.skills.length} assigned)
+          </FormLabel>
+          {/* Assigned moves: compact rows sorted by learn level. */}
+          {formState.skills.length > 0 ? (
+            <Box
+              maxH="260px"
+              overflowY="auto"
+              borderRadius="16px"
+              border="1px solid rgba(43, 66, 47, 0.12)"
+              bg="rgba(255,255,255,0.68)"
+              p={2}
+              mb={3}
+            >
+              {[...formState.skills]
+                .sort(
+                  (a, b) =>
+                    (parsePokemonSkillLevel(a.level) ?? 0) -
+                    (parsePokemonSkillLevel(b.level) ?? 0)
+                )
+                .map((assigned) => {
+                  const catalogSkill = visiblePokemonSkills.find(
+                    (skill) => skill.id === assigned.skillId
+                  );
 
-                return (
-                  <Box
-                    key={skill.id}
-                    p={3}
-                    borderRadius="16px"
-                    border="1px solid rgba(43, 66, 47, 0.12)"
-                    bg="rgba(255,255,255,0.68)"
-                  >
-                    <Flex align="center" justify="space-between" gap={3}>
-                      <Checkbox
-                        colorScheme="green"
-                        isChecked={Boolean(selectedSkill)}
-                        onChange={(event) => toggleSkill(skill, event.target.checked)}
-                      >
-                        <Box>
-                          <Text fontWeight="700">{skill.name}</Text>
-                          <Text fontSize="xs" color="#6d7b71">
-                            {skill.category}
-                          </Text>
-                        </Box>
-                      </Checkbox>
+                  return (
+                    <Flex key={assigned.skillId} align="center" gap={2} px={2} py={1}>
+                      <Text flex="1" fontWeight="600" fontSize="sm" noOfLines={1}>
+                        {assigned.skillName || catalogSkill?.name || assigned.skillId}
+                      </Text>
+                      <Text fontSize="xs" color="#6d7b71" w="90px" noOfLines={1}>
+                        {catalogSkill?.category ?? ""}
+                      </Text>
                       <FormControl
-                        w="104px"
-                        isInvalid={Boolean(selectedSkill) && parsePokemonSkillLevel(skillLevel) === null}
+                        w="88px"
+                        isInvalid={parsePokemonSkillLevel(assigned.level) === null}
                       >
-                        <FormLabel fontSize="xs" mb={1}>
-                          Level
-                        </FormLabel>
                         <Input
                           type="number"
                           min={1}
                           step={1}
-                          size="sm"
-                          value={skillLevel}
-                          isDisabled={!selectedSkill}
-                          onChange={(event) => updateSkillLevel(skill.id, event.target.value)}
+                          size="xs"
+                          value={assigned.level}
+                          title="Learned at level"
+                          onChange={(event) =>
+                            updateSkillLevel(assigned.skillId, event.target.value)
+                          }
                         />
                       </FormControl>
+                      <IconButton
+                        aria-label={`Remove ${assigned.skillName}`}
+                        size="xs"
+                        variant="outline"
+                        colorScheme="red"
+                        icon={<span>✕</span>}
+                        onClick={() =>
+                          catalogSkill
+                            ? toggleSkill(catalogSkill, false)
+                            : onFormChange((current) => ({
+                                ...current,
+                                skills: current.skills.filter(
+                                  (skill) => skill.skillId !== assigned.skillId
+                                ),
+                              }))
+                        }
+                      />
                     </Flex>
-                  </Box>
-                );
-              })}
-            </SimpleGrid>
-          ) : (
-            <Box
-              p={4}
-              borderRadius="16px"
-              border="1px dashed rgba(43, 66, 47, 0.18)"
-              bg="rgba(255,255,255,0.68)"
-            >
-              <Text color="#6d7b71" fontSize="sm">
-                Create moves in Moves before assigning them.
-              </Text>
+                  );
+                })}
             </Box>
+          ) : (
+            <Text mb={3} fontSize="sm" color="#6d7b71">
+              No moves assigned yet — search below to add some.
+            </Text>
           )}
+
+          {/* Search-to-add: renders only matching moves instead of the whole
+              661-move catalog, which made the modal crawl. */}
+          <Input
+            size="sm"
+            bg="white"
+            placeholder="Search moves to add (name)..."
+            value={pokemonMoveSearch}
+            onChange={(event) => setPokemonMoveSearch(event.target.value)}
+            mb={2}
+          />
+          {pokemonMoveSearch.trim().length > 0 ? (
+            <Box
+              maxH="200px"
+              overflowY="auto"
+              borderRadius="12px"
+              border="1px solid rgba(43, 66, 47, 0.12)"
+              bg="white"
+            >
+              {pokemonSkillCatalog
+                .filter(
+                  (skill) =>
+                    skill.name
+                      .toLowerCase()
+                      .includes(pokemonMoveSearch.trim().toLowerCase()) &&
+                    !formState.skills.some((assigned) => assigned.skillId === skill.id)
+                )
+                .slice(0, 30)
+                .map((skill) => (
+                  <Flex
+                    key={skill.id}
+                    align="center"
+                    justify="space-between"
+                    px={3}
+                    py={1.5}
+                    _hover={{ bg: "rgba(126, 166, 120, 0.1)" }}
+                  >
+                    <Box>
+                      <Text fontSize="sm" fontWeight="600">
+                        {skill.name}
+                      </Text>
+                      <Text fontSize="xs" color="#6d7b71">
+                        {skill.category}
+                      </Text>
+                    </Box>
+                    <Button
+                      size="xs"
+                      colorScheme="green"
+                      variant="outline"
+                      onClick={() => toggleSkill(skill, true)}
+                    >
+                      Add
+                    </Button>
+                  </Flex>
+                ))}
+              {pokemonSkillCatalog.filter((skill) =>
+                skill.name.toLowerCase().includes(pokemonMoveSearch.trim().toLowerCase())
+              ).length === 0 ? (
+                <Text px={3} py={2} fontSize="sm" color="#6d7b71">
+                  No moves match "{pokemonMoveSearch}". Create moves in the Moves section first.
+                </Text>
+              ) : null}
+            </Box>
+          ) : null}
         </Box>
 
         <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
@@ -6046,7 +6384,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 {formState[field.key] ? (
                   <Box
                     as="img"
-                    src={formState[field.key]}
+                    src={resolveServerAssetUrl(formState[field.key])}
                     alt={`${field.label} preview`}
                     maxW="88px"
                     maxH="88px"
@@ -6353,7 +6691,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             {formState.iconSrc ? (
               <Box
                 as="img"
-                src={formState.iconSrc}
+                src={resolveServerAssetUrl(formState.iconSrc)}
                 alt="Item icon preview"
                 maxW="72px"
                 maxH="72px"
@@ -6369,6 +6707,62 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         </FormControl>
 
         <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+          <FormControl>
+            <FormLabel>Essentials ID</FormLabel>
+            <Input
+              value={formState.essentialsId}
+              onChange={(event) => updateField("essentialsId", event.target.value)}
+              placeholder="POTION"
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel>Plural name</FormLabel>
+            <Input
+              value={formState.namePlural}
+              onChange={(event) => updateField("namePlural", event.target.value)}
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel>Price</FormLabel>
+            <Input
+              type="number"
+              value={formState.price}
+              onChange={(event) => updateField("price", event.target.value)}
+              placeholder="0"
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel>Bag pocket</FormLabel>
+            <Input
+              value={formState.pocket}
+              onChange={(event) => updateField("pocket", event.target.value)}
+              placeholder="1"
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel>Field use</FormLabel>
+            <Input
+              value={formState.fieldUse}
+              onChange={(event) => updateField("fieldUse", event.target.value)}
+              placeholder="Direct, OnPokemon..."
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel>Flags</FormLabel>
+            <Input
+              value={formState.flags.join(", ")}
+              onChange={(event) =>
+                updateField(
+                  "flags",
+                  event.target.value
+                    .split(",")
+                    .map((flag) => flag.trim())
+                    .filter((flag) => flag.length > 0)
+                )
+              }
+              placeholder="Comma-separated flags"
+            />
+          </FormControl>
           <FormControl isRequired>
             <FormLabel>Type</FormLabel>
             <Select
@@ -6659,13 +7053,34 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           </FormControl>
         </SimpleGrid>
 
-        <FormControl>
-          <FormLabel>Flags</FormLabel>
-          <Input
-            value={formState.flags}
-            onChange={(event) => updateField("flags", event.target.value)}
-          />
-        </FormControl>
+        <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+          <FormControl>
+            <FormLabel>Essentials ID</FormLabel>
+            <Input
+              value={formState.essentialsId}
+              onChange={(event) => updateField("essentialsId", event.target.value)}
+              placeholder="TACKLE"
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel>Effect Chance (%)</FormLabel>
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              value={formState.effectChance}
+              onChange={(event) => updateField("effectChance", event.target.value)}
+              placeholder="e.g. 30"
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel>Flags</FormLabel>
+            <Input
+              value={formState.flags}
+              onChange={(event) => updateField("flags", event.target.value)}
+            />
+          </FormControl>
+        </SimpleGrid>
 
         <FormControl>
           <FormLabel>Description</FormLabel>
@@ -6774,33 +7189,16 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             {profileKey ? profileKey.replace(/([A-Z])/g, " $1") : "Profile"} properties
           </Text>
           <Text fontSize="sm" color="#55645a">
-            Store the section-specific migration fields here. The template matches the target
-            designer profile used by Redis and future import scripts.
+            {parsedProfile === null
+              ? "The profile JSON is invalid — repair it in the raw editor below."
+              : "Edit the section-specific fields directly; unknown fields are preserved."}
           </Text>
         </Box>
-        <FormControl isRequired isInvalid={parsedProfile === null}>
-          <FormLabel>Properties JSON</FormLabel>
-          <Textarea
-            value={formState.profileJson}
-            onChange={(event) =>
-              onFormChange({
-                profileJson: event.target.value,
-              })
-            }
-            fontFamily="mono"
-            minH="280px"
-            spellCheck={false}
-          />
-          {parsedProfile === null ? (
-            <Text mt={2} color="#914335" fontSize="sm">
-              Enter a valid JSON object.
-            </Text>
-          ) : (
-            <Text mt={2} color="#55645a" fontSize="sm">
-              {Object.keys(parsedProfile).length} profile fields ready.
-            </Text>
-          )}
-        </FormControl>
+        <MigrationProfileEditor
+          sectionKey={sectionKey}
+          formState={formState}
+          onFormChange={onFormChange}
+        />
       </>
     );
   };
@@ -6834,6 +7232,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         boxShadow="0 24px 60px rgba(52, 66, 45, 0.12)"
         backdropFilter="blur(12px)"
       >
+        <DesignerNav title={section.title} />
         <Flex
           direction={{ base: "column", lg: "row" }}
           justify="space-between"
@@ -6956,7 +7355,18 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                     ? `Syncing ${section.itemLabelPlural} from Redis through the realtime server.`
                     : `Live sync is active for ${section.itemLabelPlural}. ${selectedCount} selected.${lastSyncedLabel ? ` Last saved ${lastSyncedLabel}.` : ""}${objectsSyncMeta.updatedByUsername ? ` Latest change by ${objectsSyncMeta.updatedByUsername}.` : ""}`}
           </Text>
+          {!isObjectsSyncReady ? (
+            <Box mt={3}>
+              <Progress size="sm" borderRadius="4px" isIndeterminate colorScheme="green" />
+            </Box>
+          ) : null}
         </Box>
+
+        {isHeavyMediaSection ? (
+          <SectionLoadIndicator sectionKey={sectionKey} label={section.itemLabelPlural} />
+        ) : null}
+
+        {isNpcsSection ? <MapNpcBrowser /> : null}
 
         <Box mb={8}>
           <Text
@@ -7039,7 +7449,23 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               Showing {firstVisibleItem}-{lastVisibleItem} of {filteredItems.length} filtered{" "}
               {section.itemLabelPlural} ({sectionState.items.length} total).
             </Text>
-            <Flex align="center" gap={2}>
+            <Flex align="center" gap={2} wrap="wrap">
+              <Select
+                size="sm"
+                width="132px"
+                bg="white"
+                value={itemsPerPage}
+                onChange={(event) => {
+                  setItemsPerPage(Number(event.target.value));
+                  setCurrentPage(1);
+                }}
+              >
+                {[12, 24, 48, 96].map((count) => (
+                  <option key={count} value={count}>
+                    {count} per page
+                  </option>
+                ))}
+              </Select>
               <Button
                 size="sm"
                 variant="outline"
@@ -7049,9 +7475,24 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               >
                 Previous
               </Button>
-              <Text minW="96px" textAlign="center" color="#55645a" fontSize="sm">
-                Page {visiblePage} of {totalPages}
-              </Text>
+              {pageNumbers.map((page, index) =>
+                page === "ellipsis" ? (
+                  <Text key={`ellipsis-${index}`} color="#55645a" fontSize="sm" px={1}>
+                    …
+                  </Text>
+                ) : (
+                  <Button
+                    key={page}
+                    size="sm"
+                    variant={page === visiblePage ? "solid" : "outline"}
+                    colorScheme={page === visiblePage ? "green" : undefined}
+                    borderColor="rgba(43, 66, 47, 0.24)"
+                    onClick={() => setCurrentPage(page)}
+                  >
+                    {page}
+                  </Button>
+                )
+              )}
               <Button
                 size="sm"
                 variant="outline"
@@ -7129,6 +7570,13 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                     characterSkinProfile.frontImageSrc ||
                     characterSkinProfile.backImageSrc
                   : "";
+                const tilesetPreviewSrc =
+                  sectionKey === "tilesets" &&
+                  item.tilesetProfile &&
+                  typeof (item.tilesetProfile as { tilesetImageSrc?: unknown }).tilesetImageSrc ===
+                    "string"
+                    ? ((item.tilesetProfile as { tilesetImageSrc: string }).tilesetImageSrc)
+                    : "";
                 const npcPreviewSrc = npcProfile
                   ? npcProfile.npcType === "chest"
                     ? npcProfile.graphics.chestImageSrc
@@ -7200,6 +7648,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                             itemProfile?.iconSrc ||
                             skillGfxProfile?.mediaSrc ||
                             assetPreviewSrc ||
+                            tilesetPreviewSrc ||
                             battleBackgroundPreviewSrc ||
                             characterSkinPreviewSrc ||
                             npcPreviewSrc ||
@@ -7223,7 +7672,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                           ) : itemProfile?.iconSrc ? (
                             <Box
                               as="img"
-                              src={itemProfile.iconSrc}
+                              src={resolveServerAssetUrl(itemProfile.iconSrc)}
                               alt={`${item.name} icon`}
                               maxW="48px"
                               maxH="48px"
@@ -7233,7 +7682,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                           ) : skillGfxProfile?.mediaSrc ? (
                             <Box
                               as="img"
-                              src={skillGfxProfile.mediaSrc}
+                              src={resolveServerAssetUrl(skillGfxProfile.mediaSrc)}
                               alt={`${item.name} GFX`}
                               maxW="48px"
                               maxH="48px"
@@ -7243,7 +7692,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                           ) : assetPreviewSrc ? (
                             <Box
                               as="img"
-                              src={assetPreviewSrc}
+                              src={resolveServerAssetUrl(assetPreviewSrc)}
                               alt={`${item.name} asset`}
                               maxW="48px"
                               maxH="48px"
@@ -7253,7 +7702,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                           ) : battleBackgroundPreviewSrc ? (
                             <Box
                               as="img"
-                              src={battleBackgroundPreviewSrc}
+                              src={resolveServerAssetUrl(battleBackgroundPreviewSrc)}
                               alt={`${item.name} battle background`}
                               maxW="48px"
                               maxH="48px"
@@ -7263,17 +7712,27 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                           ) : characterSkinPreviewSrc ? (
                             <Box
                               as="img"
-                              src={characterSkinPreviewSrc}
+                              src={resolveServerAssetUrl(characterSkinPreviewSrc)}
                               alt={`${item.name} sprite`}
                               maxW="48px"
                               maxH="48px"
                               objectFit="contain"
                               style={{ imageRendering: "pixelated" }}
                             />
+                          ) : tilesetPreviewSrc ? (
+                            <Box
+                              as="img"
+                              src={resolveServerAssetUrl(tilesetPreviewSrc)}
+                              alt={`${item.name} tileset`}
+                              maxW="48px"
+                              maxH="48px"
+                              objectFit="cover"
+                              style={{ imageRendering: "pixelated" }}
+                            />
                           ) : npcPreviewSrc ? (
                             <Box
                               as="img"
-                              src={npcPreviewSrc}
+                              src={resolveServerAssetUrl(npcPreviewSrc)}
                               alt={`${item.name} sprite`}
                               maxW="48px"
                               maxH="48px"
@@ -7283,7 +7742,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                           ) : pokemonProfile?.iconImageSrc ? (
                             <Box
                               as="img"
-                              src={pokemonProfile.iconImageSrc}
+                              src={resolveServerAssetUrl(pokemonProfile.iconImageSrc)}
                               alt={`${item.name} icon`}
                               maxW="48px"
                               maxH="48px"

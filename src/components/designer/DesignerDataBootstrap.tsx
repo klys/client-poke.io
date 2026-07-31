@@ -9,14 +9,18 @@ import {
   type DesignerSectionKey,
 } from "./designerSections";
 import {
+  applyDesignerSectionPatchToCache,
   cleanupStaleDesignerStorage,
   persistStoredDesignerSectionPayload,
   readStoredDesignerSectionPayload,
+  sanitizeDesignerSectionPatchBroadcast,
 } from "./designerCache";
 import {
   fetchDesignerSectionOverHttp,
   sanitizeBootstrapSectionState,
   sanitizeSectionStatePayload,
+  HEAVY_DESIGNER_SECTION_KEYS,
+  PUBLIC_DESIGNER_SECTION_KEYS,
 } from "./designerSectionHttp";
 
 type DesignerSectionVersionPayload = {
@@ -28,29 +32,11 @@ type DesignerSectionVersionPayload = {
 const DESIGNER_SECTION_KEYS = Object.keys(
   designerSectionsByKey
 ) as DesignerSectionKey[];
-const PUBLIC_DESIGNER_SECTION_KEYS: DesignerSectionKey[] = [
-  "pokemons",
-  "npcs",
-  "players",
-  "skillsGfx",
-  "audio",
-  "types",
-  "battleInterface",
-];
 const GENERIC_DESIGNER_SECTION_KEYS = DESIGNER_SECTION_KEYS.filter(
   (sectionKey) => sectionKey !== "mapsEditor"
 );
-// Never eagerly preload the heavy media catalogs (assets/tilesets/battle-
-// backgrounds run to tens of MB): they cannot fit in localStorage, so their
-// cached version never persists and every connect would re-stream the full
-// payload over the websocket — enough queued traffic to starve the Socket.IO
-// heartbeat into "ping timeout"/"transport error" loops. Their designer pages
-// join the sections on demand instead.
-const HEAVY_DESIGNER_SECTION_KEYS: DesignerSectionKey[] = [
-  "assets",
-  "tilesets",
-  "battleBackgrounds",
-];
+// Heavy media catalogs (assets/tilesets/battleBackgrounds) are never eagerly
+// preloaded: their designer pages download them over HTTP on demand.
 const DESIGNER_ONLY_SECTION_KEYS = GENERIC_DESIGNER_SECTION_KEYS.filter(
   (sectionKey) =>
     !PUBLIC_DESIGNER_SECTION_KEYS.includes(sectionKey) &&
@@ -151,9 +137,12 @@ export default function DesignerDataBootstrap() {
     // keeps the game playable in the meantime). Heavy sections work the same
     // way for everyone, designers included.
     const scheduleSectionRefresh = (sectionKey: DesignerSectionKey) => {
+      // Public/heavy sections are open; designer-only ones are served over
+      // HTTP too (with the session token), but only to designer accounts.
       if (
         !PUBLIC_DESIGNER_SECTION_KEYS.includes(sectionKey) &&
-        !HEAVY_DESIGNER_SECTION_KEYS.includes(sectionKey)
+        !HEAVY_DESIGNER_SECTION_KEYS.includes(sectionKey) &&
+        !canAccessDesigner
       ) {
         return;
       }
@@ -216,7 +205,20 @@ export default function DesignerDataBootstrap() {
       });
     };
 
-    const preloadDesignerData = () => {
+    const preloadDesignerData = async () => {
+      // Warm the designer-only caches over HTTP, one section at a time — the
+      // old behavior (joining every section over the socket at connect)
+      // streamed every catalog through the websocket in one burst, which
+      // starved the Socket.IO heartbeat. HTTP downloads don't queue behind
+      // realtime traffic and the sequential loop keeps the server gentle.
+      for (const sectionKey of DESIGNER_ONLY_SECTION_KEYS) {
+        if (readStoredDesignerSectionPayload(sectionKey).version === null) {
+          await fetchDesignerSectionOverHttp(sectionKey);
+        }
+      }
+
+      // Join with the cached version so the server answers with a version
+      // stub (realtime updates still arrive through the section room).
       DESIGNER_ONLY_SECTION_KEYS.forEach((sectionKey) => {
         const storedPayload = readStoredDesignerSectionPayload(sectionKey);
 
@@ -285,8 +287,23 @@ export default function DesignerDataBootstrap() {
       persistPlayableMapsSyncPayload(syncPayload);
     };
 
+    // Item-level patches: apply directly to the cache when the version is
+    // contiguous; on a gap, refetch the whole section over HTTP.
+    const handleSectionPatched = (payload: unknown) => {
+      const broadcast = sanitizeDesignerSectionPatchBroadcast(payload);
+
+      if (!broadcast) {
+        return;
+      }
+
+      if (applyDesignerSectionPatchToCache(broadcast) === "gap") {
+        scheduleSectionRefresh(broadcast.sectionKey);
+      }
+    };
+
     socket.on("designer:section:state", handleSectionState);
     socket.on("designer:section:version", handleSectionVersion);
+    socket.on("designer:section:patched", handleSectionPatched);
     socket.on("playableMaps:state", handleMapsState);
     socket.on("connect", preloadSharedData);
 
@@ -309,6 +326,7 @@ export default function DesignerDataBootstrap() {
     return () => {
       socket.off("designer:section:state", handleSectionState);
       socket.off("designer:section:version", handleSectionVersion);
+      socket.off("designer:section:patched", handleSectionPatched);
       socket.off("playableMaps:state", handleMapsState);
       socket.off("connect", preloadSharedData);
 

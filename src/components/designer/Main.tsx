@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Heading, SimpleGrid, Text } from "@chakra-ui/react";
 import { Link as RouterLink } from "react-router-dom";
 import { DesignerIcon, designerSections } from "./designerSections";
+import DesignerNav from "./shared/DesignerNav";
 
 export default function Main() {
   return (
@@ -21,6 +22,7 @@ export default function Main() {
         boxShadow="0 24px 60px rgba(52, 66, 45, 0.12)"
         backdropFilter="blur(12px)"
       >
+        <DesignerNav showDesignerHome={false} />
         <Text
           fontSize="sm"
           fontWeight="700"

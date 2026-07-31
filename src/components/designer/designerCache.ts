@@ -20,6 +20,114 @@ export type DesignerCacheUpdateDetail = {
   sectionKey: DesignerSectionKey;
 };
 
+// Item-level ops mirrored from server DesignerSectionStore. A patch touches
+// only the records that changed, so saves and rebroadcasts stay small.
+export type DesignerSectionPatchOp =
+  | { kind: "upsert"; item: DesignerItemSeed }
+  | { kind: "delete"; itemId: string }
+  | { kind: "setCategories"; categories: string[] };
+
+export type DesignerSectionPatchBroadcast = {
+  sectionKey: DesignerSectionKey;
+  ops: DesignerSectionPatchOp[];
+  version: number;
+  updatedAt: string | null;
+  updatedByUserId: number | null;
+  updatedByUsername: string | null;
+};
+
+export function sanitizeDesignerSectionPatchBroadcast(
+  value: unknown
+): DesignerSectionPatchBroadcast | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate = value as Partial<DesignerSectionPatchBroadcast>;
+
+  if (
+    typeof candidate.sectionKey !== "string" ||
+    !(candidate.sectionKey in designerSectionsByKey) ||
+    typeof candidate.version !== "number" ||
+    !Number.isFinite(candidate.version) ||
+    !Array.isArray(candidate.ops)
+  ) {
+    return null;
+  }
+
+  return {
+    sectionKey: candidate.sectionKey as DesignerSectionKey,
+    ops: candidate.ops as DesignerSectionPatchOp[],
+    version: Math.round(candidate.version),
+    updatedAt: typeof candidate.updatedAt === "string" ? candidate.updatedAt : null,
+    updatedByUserId:
+      typeof candidate.updatedByUserId === "number" ? candidate.updatedByUserId : null,
+    updatedByUsername:
+      typeof candidate.updatedByUsername === "string" ? candidate.updatedByUsername : null,
+  };
+}
+
+// Pure apply, mirrored from the server implementation.
+export function applyDesignerSectionPatchOps(
+  state: DesignerSectionState,
+  ops: DesignerSectionPatchOp[]
+): DesignerSectionState {
+  let categories = state.categories;
+  let items = state.items;
+
+  for (const op of ops) {
+    if (op.kind === "upsert" && op.item && typeof op.item.id === "string") {
+      const index = items.findIndex((item) => item.id === op.item.id);
+
+      items =
+        index >= 0
+          ? [...items.slice(0, index), op.item, ...items.slice(index + 1)]
+          : [...items, op.item];
+
+      if (!categories.includes(op.item.category)) {
+        categories = [...categories, op.item.category];
+      }
+    } else if (op.kind === "delete" && typeof op.itemId === "string") {
+      items = items.filter((item) => item.id !== op.itemId);
+    } else if (op.kind === "setCategories" && Array.isArray(op.categories)) {
+      categories = op.categories.filter(
+        (category): category is string => typeof category === "string"
+      );
+    }
+  }
+
+  return { categories, items };
+}
+
+/**
+ * Applies a patch broadcast to the cached section payload.
+ * Returns "applied" when the ops were applied (version was contiguous),
+ * "stale" when the broadcast is older than the cache (safe to ignore), and
+ * "gap" when versions were missed — the caller should refetch over HTTP.
+ */
+export function applyDesignerSectionPatchToCache(
+  broadcast: DesignerSectionPatchBroadcast
+): "applied" | "stale" | "gap" {
+  const cached = readStoredDesignerSectionPayload(broadcast.sectionKey);
+
+  if (cached.version !== null && broadcast.version <= cached.version) {
+    return "stale";
+  }
+
+  if (cached.version === null || broadcast.version !== cached.version + 1) {
+    return "gap";
+  }
+
+  persistStoredDesignerSectionPayload(broadcast.sectionKey, {
+    state: applyDesignerSectionPatchOps(cached.state, broadcast.ops),
+    version: broadcast.version,
+    updatedAt: broadcast.updatedAt,
+    updatedByUsername: broadcast.updatedByUsername,
+  });
+
+  return "applied";
+}
+
 export const DESIGNER_CACHE_UPDATED_EVENT = "client-poke.io.designer-cache-updated";
 
 // localStorage is a warm-start optimization only: quota is ~10MB shared across the

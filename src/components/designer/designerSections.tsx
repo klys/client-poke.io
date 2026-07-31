@@ -184,6 +184,7 @@ export interface DesignerPokemonSkillProfile {
   functionCode?: string;
   flags?: string[];
   priority?: number;
+  effectChance?: number;
   description: string;
   effectText?: string;
   skillGfxId: string;
@@ -596,6 +597,22 @@ export interface DesignerItemCreateOptions {
   fontProfile?: DesignerFontProfile;
   tilesetProfile?: DesignerTilesetProfile;
   battleInterfaceProfile?: DesignerBattleInterfaceProfile;
+  regionProfile?: DesignerRegionProfile;
+}
+
+export interface DesignerRegionPoint {
+  gridX: number;
+  gridY: number;
+  name: string;
+  poi?: string;
+  fly?: { mapId: string; cellX: number; cellY: number };
+}
+
+export interface DesignerRegionProfile {
+  imageSrc: string;
+  gridSize: number;
+  points: DesignerRegionPoint[];
+  source?: DesignerEssentialsSourceProfile;
 }
 
 export interface DesignerItemSeed {
@@ -625,6 +642,7 @@ export interface DesignerItemSeed {
   fontProfile?: DesignerFontProfile;
   tilesetProfile?: DesignerTilesetProfile;
   battleInterfaceProfile?: DesignerBattleInterfaceProfile;
+  regionProfile?: DesignerRegionProfile;
 }
 
 export interface DesignerPlayableMapConfig {
@@ -1243,11 +1261,11 @@ export const designerSections: DesignerSectionDefinition[] = [
   },
   {
     key: "pokemons",
-    title: "Pokemons",
-    description: "Manage pokemon definitions, evolution lines, rarity, and regional placement.",
+    title: "Creatures",
+    description: "Manage creature definitions, evolution lines, rarity, and regional placement.",
     path: "/designer/pokemons",
-    itemLabel: "pokemon",
-    itemLabelPlural: "pokemons",
+    itemLabel: "creature",
+    itemLabelPlural: "creatures",
     categoryLabel: "primary element",
     icon: "pokemons",
     defaultCategories: [
@@ -1496,31 +1514,77 @@ export const designerSections: DesignerSectionDefinition[] = [
   {
     key: "passiveStates",
     title: "Passive States",
-    description: "Manage reusable battle states that moves can inflict or require.",
+    description:
+      "Battle status conditions the engine can inflict (moves reference these in their Inflict State and State Condition fields). Seeded from the server battle engine's non-volatile statuses.",
     path: "/designer/passive-states",
     itemLabel: "passive state",
     itemLabelPlural: "passive states",
     categoryLabel: "group",
     icon: "passiveStates",
-    defaultCategories: ["Status", "Buff", "Debuff"],
+    defaultCategories: ["Status"],
+    // Mirrors server-poke.io/components/battle/statuses.ts — the engine's six
+    // non-volatile statuses. Ids match BattleStatusId so move profiles can be
+    // linked to real engine behavior.
     demoItems: [
+      {
+        id: "state-poison",
+        name: "Poison",
+        category: "Status",
+        details: [
+          detail("Status ID", "poison"),
+          detail("Effect", "Loses 1/8 max HP at end of each turn"),
+          detail("Immune Types", "POISON, STEEL"),
+        ],
+      },
+      {
+        id: "state-toxic",
+        name: "Toxic (bad poison)",
+        category: "Status",
+        details: [
+          detail("Status ID", "toxic"),
+          detail("Effect", "Escalating poison damage each turn"),
+          detail("Immune Types", "POISON, STEEL"),
+        ],
+      },
       {
         id: "state-burn",
         name: "Burn",
         category: "Status",
-        details: [detail("Effect", "Takes damage each turn"), detail("Stacking", "No")],
+        details: [
+          detail("Status ID", "burn"),
+          detail("Effect", "End-of-turn damage and halved physical attack"),
+          detail("Immune Types", "FIRE"),
+        ],
       },
       {
-        id: "state-focused",
-        name: "Focused",
-        category: "Buff",
-        details: [detail("Effect", "Improves accuracy"), detail("Stacking", "No")],
+        id: "state-paralysis",
+        name: "Paralysis",
+        category: "Status",
+        details: [
+          detail("Status ID", "paralysis"),
+          detail("Effect", "Speed reduced; may be unable to act"),
+          detail("Immune Types", "ELECTRIC"),
+        ],
       },
       {
-        id: "state-slowed",
-        name: "Slowed",
-        category: "Debuff",
-        details: [detail("Effect", "Reduces speed"), detail("Stacking", "No")],
+        id: "state-sleep",
+        name: "Sleep",
+        category: "Status",
+        details: [
+          detail("Status ID", "sleep"),
+          detail("Effect", "Cannot act for 2-5 turns"),
+          detail("Immune Types", "None"),
+        ],
+      },
+      {
+        id: "state-freeze",
+        name: "Freeze",
+        category: "Status",
+        details: [
+          detail("Status ID", "freeze"),
+          detail("Effect", "Cannot act until thawed"),
+          detail("Immune Types", "ICE"),
+        ],
       },
     ],
     createDetails: (_name, category, _index) => [
@@ -1725,14 +1789,14 @@ export const designerSections: DesignerSectionDefinition[] = [
   },
   {
     key: "ribbons",
-    title: "Ribbons",
-    description: "Store Pokemon Essentials ribbon names, descriptions, and achievement metadata.",
+    title: "Gym Badges",
+    description: "Gym badge definitions: names, descriptions, badge sheet icon positions, and gym metadata.",
     path: "/designer/ribbons",
-    itemLabel: "ribbon",
-    itemLabelPlural: "ribbons",
+    itemLabel: "badge",
+    itemLabelPlural: "badges",
     categoryLabel: "group",
     icon: "database",
-    defaultCategories: ["Ribbons"],
+    defaultCategories: ["Gym Badges"],
     demoItems: [],
     createDetails: (_name, category) => [
       detail("Source", category),

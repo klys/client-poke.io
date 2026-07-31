@@ -14,6 +14,41 @@ import {
 // persists the result into the designer cache (which notifies the editors
 // through DESIGNER_CACHE_UPDATED_EVENT).
 
+// Single source of truth for which sections the HTTP endpoint serves without
+// auth (mirrors PUBLIC_SECTION_KEYS / HEAVY_SECTION_KEYS in server index.ts).
+// Everything else requires a designer session token via Authorization: Bearer.
+export const PUBLIC_DESIGNER_SECTION_KEYS: DesignerSectionKey[] = [
+  "pokemons",
+  "npcs",
+  "players",
+  "skillsGfx",
+  "audio",
+  "types",
+  "battleInterface",
+];
+export const HEAVY_DESIGNER_SECTION_KEYS: DesignerSectionKey[] = [
+  "assets",
+  "tilesets",
+  "battleBackgrounds",
+];
+
+const AUTH_TOKEN_STORAGE_KEY = "client-poke.io.auth.token";
+
+function isDesignerOnlySection(sectionKey: DesignerSectionKey) {
+  return (
+    !PUBLIC_DESIGNER_SECTION_KEYS.includes(sectionKey) &&
+    !HEAVY_DESIGNER_SECTION_KEYS.includes(sectionKey)
+  );
+}
+
+function readAuthToken() {
+  try {
+    return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export type DesignerSectionLoadPhase = "downloading" | "parsing" | "done" | "error";
 
 export type DesignerSectionLoadProgress = {
@@ -171,8 +206,10 @@ async function fetchSectionOverHttp(sectionKey: DesignerSectionKey) {
   try {
     publishProgress({ sectionKey, phase: "downloading", loadedBytes: 0, totalBytes: null });
 
+    const token = isDesignerOnlySection(sectionKey) ? readAuthToken() : null;
     const response = await fetch(
-      `${getBackendBaseUrl()}/designer-sections/${sectionKey}.json`
+      `${getBackendBaseUrl()}/designer-sections/${sectionKey}.json`,
+      token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
     );
 
     if (!response.ok) {

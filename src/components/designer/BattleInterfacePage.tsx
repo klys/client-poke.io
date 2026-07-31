@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Badge,
   Box,
@@ -10,6 +10,7 @@ import {
   Heading,
   HStack,
   Input,
+  Progress,
   Select,
   SimpleGrid,
   Stack,
@@ -19,9 +20,14 @@ import {
 import { Link as RouterLink } from "react-router-dom";
 import { useAuth } from "../../context/authContext";
 import {
+  DESIGNER_CACHE_UPDATED_EVENT,
   persistStoredDesignerSectionPayload,
   readStoredDesignerSectionPayload,
+  type DesignerCacheUpdateDetail,
 } from "./designerCache";
+import { ensureDesignerSectionOverHttp } from "./designerSectionHttp";
+import DesignerNav from "./shared/DesignerNav";
+import SectionLoadIndicator from "./shared/SectionLoadIndicator";
 import type { DesignerBattleInterfaceProfile, DesignerItemSeed } from "./designerSections";
 import {
   DEFAULT_BATTLE_INTERFACE_CONFIG,
@@ -65,10 +71,26 @@ export default function BattleInterfacePage() {
   });
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncReady, setIsSyncReady] = useState(false);
-  const battleBackgrounds = useMemo(
-    () => readStoredDesignerSectionPayload("battleBackgrounds").state.items,
-    []
+  const [battleBackgrounds, setBattleBackgrounds] = useState<DesignerItemSeed[]>(() =>
+    readStoredDesignerSectionPayload("battleBackgrounds").state.items
   );
+
+  // The battleBackgrounds section is heavy and arrives over HTTP after this
+  // page mounts — refresh the dropdown whenever the cache is updated.
+  useEffect(() => {
+    void ensureDesignerSectionOverHttp("battleBackgrounds");
+
+    const handleCacheUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<DesignerCacheUpdateDetail>).detail;
+
+      if (detail?.sectionKey === "battleBackgrounds") {
+        setBattleBackgrounds(readStoredDesignerSectionPayload("battleBackgrounds").state.items);
+      }
+    };
+
+    window.addEventListener(DESIGNER_CACHE_UPDATED_EVENT, handleCacheUpdate);
+    return () => window.removeEventListener(DESIGNER_CACHE_UPDATED_EVENT, handleCacheUpdate);
+  }, []);
 
   useEffect(() => {
     if (!authReady || !authenticated || !socket) {
@@ -108,12 +130,47 @@ export default function BattleInterfacePage() {
       });
     };
 
+    // The bootstrap pre-caches this section over HTTP, so the join usually
+    // matches the server version and the server answers with a version stub
+    // instead of full state. Treat a matching stub as "in sync"; on a newer
+    // version, re-download the section and hydrate from the cache.
+    const handleVersion = (payload: {
+      sectionKey?: string;
+      hasState?: boolean;
+      version: number | null;
+      updatedAt: string | null;
+    }) => {
+      if (payload.sectionKey && payload.sectionKey !== SECTION_KEY) {
+        return;
+      }
+
+      const storedPayload = readStoredDesignerSectionPayload(SECTION_KEY);
+
+      if (
+        typeof payload.version === "number" &&
+        storedPayload.version !== null &&
+        payload.version !== storedPayload.version
+      ) {
+        void ensureDesignerSectionOverHttp(SECTION_KEY).then(() => {
+          const refreshed = readStoredDesignerSectionPayload(SECTION_KEY);
+          const item = refreshed.state.items[0] as
+            | { battleInterfaceProfile?: unknown }
+            | undefined;
+          setConfig(sanitizeBattleInterfaceConfig(item?.battleInterfaceProfile));
+        });
+      }
+
+      setIsSyncReady(true);
+      setIsSaving(false);
+    };
+
     const handleError = ({ message }: { message: string }) => {
       setIsSaving(false);
       toast({ title: message, status: "error", duration: 4000, isClosable: true, position: "top" });
     };
 
     socket.on("designer:section:state", handleState);
+    socket.on("designer:section:version", handleVersion);
     socket.on("designer:section:error", handleError);
     socket.on("connect", joinSectionRoom);
 
@@ -126,6 +183,7 @@ export default function BattleInterfacePage() {
     return () => {
       socket.emit("designer:section:leave", { sectionKey: SECTION_KEY });
       socket.off("designer:section:state", handleState);
+      socket.off("designer:section:version", handleVersion);
       socket.off("designer:section:error", handleError);
       socket.off("connect", joinSectionRoom);
     };
@@ -185,8 +243,17 @@ export default function BattleInterfacePage() {
     </FormControl>
   );
 
+  const syncStage = !authReady
+    ? "Restoring session…"
+    : !authenticated
+    ? "Sign in required"
+    : !socket
+    ? "Opening realtime connection…"
+    : "Syncing battle interface settings…";
+
   return (
     <Box maxW="1080px" mx="auto" px={{ base: 4, md: 8 }} py={8}>
+      <DesignerNav title="Battle Interface" />
       <HStack justify="space-between" align="start" mb={6}>
         <Box>
           <Heading size="lg">Battle Interface</Heading>
@@ -200,9 +267,23 @@ export default function BattleInterfacePage() {
         </Button>
       </HStack>
 
-      <Badge colorScheme={isSyncReady ? "green" : "yellow"} mb={4}>
-        {isSyncReady ? "Live sync active" : "Connecting..."}
-      </Badge>
+      {isSyncReady ? (
+        <Badge colorScheme="green" mb={4}>
+          Live sync active
+        </Badge>
+      ) : (
+        <Box borderWidth="1px" borderRadius="8px" p={3} mb={4}>
+          <HStack justify="space-between" mb={2}>
+            <Text fontSize="sm" fontWeight="600">
+              {syncStage}
+            </Text>
+            <Badge colorScheme="yellow">Connecting</Badge>
+          </HStack>
+          <Progress size="sm" borderRadius="4px" isIndeterminate />
+        </Box>
+      )}
+
+      <SectionLoadIndicator sectionKey="battleBackgrounds" label="battle backgrounds" />
 
       <Grid templateColumns={{ base: "1fr", lg: "1fr 340px" }} gap={6}>
         <Stack spacing={6}>

@@ -24,6 +24,7 @@ import {
   readStoredDesignerSectionPayload,
 } from "./designerCache";
 import type { DesignerItemSeed } from "./designerSections";
+import DesignerNav from "./shared/DesignerNav";
 import {
   buildLevelingCurveSectionState,
   computeBattleExperience,
@@ -445,6 +446,7 @@ export default function LevelingCurvePage() {
         boxShadow="0 24px 60px rgba(45, 65, 79, 0.12)"
         backdropFilter="blur(12px)"
       >
+        <DesignerNav title="Leveling Curve" />
         <Stack spacing={6}>
           <HStack justify="space-between" align="flex-start" spacing={4} flexWrap="wrap">
             <Box>

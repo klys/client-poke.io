@@ -1227,6 +1227,15 @@ export default function MapEditorPage() {
           >
             Back
           </Button>
+          <Button
+            as={RouterLink}
+            to="/"
+            variant="outline"
+            borderColor="editor.borderAccent"
+            color="editor.accent"
+          >
+            Exit to Game
+          </Button>
         </Flex>
       </Flex>
 
