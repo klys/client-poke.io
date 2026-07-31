@@ -36,6 +36,9 @@ export type AuthUser = {
   inventory: InventoryItem[]
   pokemonParty: PokemonSummary[]
   pokemonStorage: PokemonStorageBox[]
+  itemStorage: ItemStorageBox[]
+  /** Money stored in the PC bank, separate from the wallet (`money`). */
+  pcMoney: number
   battleHistory: BattleHistoryEntry[]
   role: UserRole
   permissions: RolePermission[]
@@ -104,15 +107,30 @@ export type PokemonSummary = {
   }
 }
 
+/** Cosmetic per-box styling the player can customize at the PC. */
+export type StorageBoxStyle = {
+  bgColor?: string
+  bgImage?: string
+  borderColor?: string
+}
+
 /**
- * One PC storage box. The server always sends at least one box; a new box is
- * created automatically whenever every existing one is full.
+ * One PC venomon storage box (up to 15). The server always sends at least one
+ * box; a new box is created on overflow or when the player adds one.
  */
-export type PokemonStorageBox = {
+export type PokemonStorageBox = StorageBoxStyle & {
   id: string
   name: string
   capacity: number
   pokemon: PokemonSummary[]
+}
+
+/** One PC item storage box (up to 15), holding inventory stacks. */
+export type ItemStorageBox = StorageBoxStyle & {
+  id: string
+  name: string
+  capacity: number
+  items: InventoryItem[]
 }
 
 export type BattleHistoryEntry = {
@@ -217,8 +235,20 @@ type AuthContextValue = {
   reorderPokemonParty: (payload: { order: string[] }) => void
   learnPokemonMove: (payload: { pokemonId: string; moveName: string; replaceMoveName?: string }) => void
   forgetPokemonMove: (payload: { pokemonId: string; moveName: string }) => void
-  depositPokemonToBox: (payload: { pokemonId: string; boxId?: string }) => void
-  withdrawPokemonFromBox: (payload: { pokemonId: string; boxId: string }) => void
+  depositPokemonToBox: (payload: { pokemonIds: string[]; boxId?: string }) => void
+  withdrawPokemonFromBox: (payload: { pokemonIds: string[]; boxId: string }) => void
+  movePokemonToBox: (payload: { pokemonIds: string[]; toBoxId: string }) => void
+  releasePokemonFromBox: (payload: { pokemonIds: string[] }) => void
+  createPokemonBox: () => void
+  stylePokemonBox: (payload: { boxId: string; name?: string; bgColor?: string; bgImage?: string; borderColor?: string }) => void
+  depositItemToBox: (payload: { itemId: string; quantity: number; boxId?: string }) => void
+  withdrawItemFromBox: (payload: { itemId: string; quantity: number; boxId: string }) => void
+  moveItemToBox: (payload: { itemId: string; quantity: number; fromBoxId: string; toBoxId: string }) => void
+  releaseItemFromBox: (payload: { itemId: string; quantity: number; boxId: string }) => void
+  createItemBox: () => void
+  styleItemBox: (payload: { boxId: string; name?: string; bgColor?: string; bgImage?: string; borderColor?: string }) => void
+  depositPcMoney: (payload: { amount: number }) => void
+  withdrawPcMoney: (payload: { amount: number }) => void
   healNpcParty: (payload: { npcPlacementId: string }) => void
   buyFromNpcStore: (payload: { npcPlacementId: string; itemId: string; quantity: number }) => void
   sellToNpcStore: (payload: { npcPlacementId: string; itemId: string; quantity: number }) => void
@@ -518,6 +548,18 @@ export const AuthProvider = (
     forgetPokemonMove: (payload) => emitAuthEvent('pokemon:forget-move', payload),
     depositPokemonToBox: (payload) => emitAuthEvent('pokemon:box-deposit', payload),
     withdrawPokemonFromBox: (payload) => emitAuthEvent('pokemon:box-withdraw', payload),
+    movePokemonToBox: (payload) => emitAuthEvent('pokemon:box-move', payload),
+    releasePokemonFromBox: (payload) => emitAuthEvent('pokemon:box-release', payload),
+    createPokemonBox: () => emitAuthEvent('pokemon:box-create'),
+    stylePokemonBox: (payload) => emitAuthEvent('pokemon:box-style', payload),
+    depositItemToBox: (payload) => emitAuthEvent('item:box-deposit', payload),
+    withdrawItemFromBox: (payload) => emitAuthEvent('item:box-withdraw', payload),
+    moveItemToBox: (payload) => emitAuthEvent('item:box-move', payload),
+    releaseItemFromBox: (payload) => emitAuthEvent('item:box-release', payload),
+    createItemBox: () => emitAuthEvent('item:box-create'),
+    styleItemBox: (payload) => emitAuthEvent('item:box-style', payload),
+    depositPcMoney: (payload) => emitAuthEvent('pc:money-deposit', payload),
+    withdrawPcMoney: (payload) => emitAuthEvent('pc:money-withdraw', payload),
     healNpcParty: (payload) => emitAuthEvent('npc:heal-party', payload),
     buyFromNpcStore: (payload) => emitAuthEvent('npc:store-buy', payload),
     sellToNpcStore: (payload) => emitAuthEvent('npc:store-sell', payload),

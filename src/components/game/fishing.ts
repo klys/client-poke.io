@@ -4,7 +4,10 @@
  * The server remains the authority (it re-validates rod / adjacency / water and
  * runs the cast); this only gates the UI.
  */
-import { decodeTerrainTagCells } from "../tilemap/tileMapProfile";
+import {
+  decodePassageTerrainTagCells,
+  decodeTerrainTagCells,
+} from "../tilemap/tileMapProfile";
 import type { PlayableMapTileMapProfile } from "../tilemap/tileMapTypes";
 
 // RMXP/Essentials terrain tags for surfable water (still + sea + deep). Mirrors
@@ -12,6 +15,7 @@ import type { PlayableMapTileMapProfile } from "../tilemap/tileMapTypes";
 const FISHABLE_WATER_TAGS = new Set([5, 6, 7]);
 
 const terrainTagCache = new globalThis.Map<string, Uint8Array | null>();
+const passageTagCache = new globalThis.Map<string, Uint8Array | null>();
 
 export function getTerrainTagCells(mapId: string, tileMap: PlayableMapTileMapProfile) {
   const encoded = tileMap.terrainTags ?? "";
@@ -22,6 +26,21 @@ export function getTerrainTagCells(mapId: string, tileMap: PlayableMapTileMapPro
   }
   const cells = decodeTerrainTagCells(tileMap);
   terrainTagCache.set(cacheKey, cells);
+  return cells;
+}
+
+function getPassageTagCells(mapId: string, tileMap: PlayableMapTileMapProfile) {
+  const encoded = tileMap.passageTerrainTags ?? "";
+  if (!encoded) {
+    return null;
+  }
+  const cacheKey = `${mapId}:${encoded.length}:${encoded.slice(0, 32)}`;
+  const cached = passageTagCache.get(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const cells = decodePassageTerrainTagCells(tileMap);
+  passageTagCache.set(cacheKey, cells);
   return cells;
 }
 
@@ -46,5 +65,17 @@ export function isFishableWaterCell(
   if (cellX < 0 || cellY < 0 || cellX >= tileMap.width || cellY >= tileMap.height) {
     return false;
   }
-  return FISHABLE_WATER_TAGS.has(cells[cellY * tileMap.width + cellX]);
+  const index = cellY * tileMap.width + cellX;
+  if (!FISHABLE_WATER_TAGS.has(cells[index])) {
+    return false;
+  }
+  // Obstacles drawn over water (rocks) keep the water terrain tag from the
+  // layer underneath, but their collision-deciding tile is not water — those
+  // cells are neither fishable, surfable, nor passable while surfing. Mirrors
+  // server world.isOpenWaterCell.
+  const passageCells = getPassageTagCells(mapId, tileMap);
+  if (passageCells && !FISHABLE_WATER_TAGS.has(passageCells[index])) {
+    return false;
+  }
+  return true;
 }

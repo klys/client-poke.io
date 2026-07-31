@@ -48,6 +48,11 @@ export interface PlayableMapTileMapProfile {
   collisionEncoding: typeof TILE_MAP_GRID_ENCODING;
   collision: string;
   terrainTags?: string;
+  /** u8rle-base64: terrain tag of the collision-DECIDING tile per cell
+   * (server tools/derivePassageTerrainTags.ts). Distinguishes open water
+   * from obstacles drawn over water (rocks), which plain `terrainTags`
+   * cannot — those keep the water tag from the layer underneath. */
+  passageTerrainTags?: string;
   baked?: PlayableMapTileMapBaked;
   essentials?: {
     mapId?: string;

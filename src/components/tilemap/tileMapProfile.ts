@@ -81,6 +81,8 @@ export function sanitizeTileMapProfile(value: unknown): PlayableMapTileMapProfil
     collisionEncoding: TILE_MAP_GRID_ENCODING,
     collision: candidate.collision,
     terrainTags: typeof candidate.terrainTags === "string" ? candidate.terrainTags : undefined,
+    passageTerrainTags:
+      typeof candidate.passageTerrainTags === "string" ? candidate.passageTerrainTags : undefined,
     baked:
       candidate.baked && typeof candidate.baked === "object"
         ? {
@@ -155,6 +157,26 @@ export function decodeTerrainTagCells(profile: PlayableMapTileMapProfile): Uint8
   }
 
   const cells = decodeRleBytes(profile.terrainTags);
+
+  if (!cells || cells.length !== profile.width * profile.height) {
+    return null;
+  }
+
+  return cells;
+}
+
+/**
+ * Per-cell terrain tag of the collision-deciding tile (see the field doc on
+ * PlayableMapTileMapProfile). Null when the grid hasn't been derived.
+ */
+export function decodePassageTerrainTagCells(
+  profile: PlayableMapTileMapProfile
+): Uint8Array | null {
+  if (!profile.passageTerrainTags) {
+    return null;
+  }
+
+  const cells = decodeRleBytes(profile.passageTerrainTags);
 
   if (!cells || cells.length !== profile.width * profile.height) {
     return null;
