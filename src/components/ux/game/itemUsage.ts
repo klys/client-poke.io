@@ -52,7 +52,8 @@ const EVOLUTION_STONE_IDS = new Set([
 const REPEL_IDS = new Set(["REPEL", "SUPERREPEL", "MAXREPEL"]);
 const WAKE_FLUTE_IDS = new Set(["POKEFLUTE", "BLUEFLUTE"]);
 const SERVER_KEY_ITEM_IDS = new Set([
-  "BICYCLE", "ITEMFINDER", "DOWSINGMACHINE", "OLDROD", "GOODROD", "SUPERROD", "POKERADAR"
+  "BICYCLE", "ITEMFINDER", "DOWSINGMACHINE", "OLDROD", "GOODROD", "SUPERROD", "POKERADAR",
+  "RUNNINGSHOES"
 ]);
 
 interface CatalogEntry {
@@ -163,6 +164,13 @@ export function classifyInventoryItem(item: InventoryItem): ItemUsage {
     if (item.category === "moves") {
       return NOT_USABLE;
     }
+  }
+  if (item.id === "item-runningshoes") {
+    // Running Shoes are synthesized server-side (the original game has no
+    // such item — running was a bare flag), so the designer catalog can't
+    // resolve them. "Use" asks the server, which replies with the
+    // hold-the-run-key reminder.
+    return { target: "none", usable: true };
   }
   const entry = readItemCatalogIndex().get(item.id);
   if (!entry) {

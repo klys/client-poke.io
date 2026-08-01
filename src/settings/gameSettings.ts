@@ -37,6 +37,11 @@ export interface GameSettings {
   controls: {
     /** Tap/click on the map walks the player there. Off = keyboard/pad only. */
     touchMoveEnabled: boolean;
+    /**
+     * KeyboardEvent.key held to run with the Running Shoes (Essentials
+     * hold-to-run: Input::A = Shift on the RMXP keyboard layout).
+     */
+    runKey: string;
   };
   chat: {
     /** Show the map chat bar at all. Off hides the bar and its toggle. */
@@ -49,6 +54,14 @@ export interface GameSettings {
     bubblesEnabled: boolean;
     /** How long a chat bubble stays visible, in seconds. */
     bubbleDurationSeconds: number;
+  };
+  hud: {
+    /** Show the FPS counter chip (top-left). */
+    showFps: boolean;
+    /** Show the server round-trip latency chip (top-left). */
+    showLatency: boolean;
+    /** Always show trainer names over players' heads (off = hover only). */
+    showPlayerNames: boolean;
   };
 }
 
@@ -69,6 +82,7 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   language: 'auto',
   controls: {
     touchMoveEnabled: true,
+    runKey: 'Shift',
   },
   chat: {
     enabled: true,
@@ -76,6 +90,11 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
     nativeNotifications: true,
     bubblesEnabled: true,
     bubbleDurationSeconds: 5,
+  },
+  hud: {
+    showFps: false,
+    showLatency: false,
+    showPlayerNames: true,
   },
 };
 
@@ -107,6 +126,7 @@ function normalizeSettings(raw: unknown): GameSettings {
     language?: unknown;
     controls?: Partial<GameSettings['controls']>;
     chat?: Partial<GameSettings['chat']>;
+    hud?: Partial<GameSettings['hud']>;
   };
 
   return {
@@ -127,6 +147,10 @@ function normalizeSettings(raw: unknown): GameSettings {
         : base.language,
     controls: {
       touchMoveEnabled: toBool(input.controls?.touchMoveEnabled, base.controls.touchMoveEnabled),
+      runKey:
+        typeof input.controls?.runKey === 'string' && input.controls.runKey.length > 0
+          ? input.controls.runKey
+          : base.controls.runKey,
     },
     chat: {
       enabled: toBool(input.chat?.enabled, base.chat.enabled),
@@ -137,6 +161,11 @@ function normalizeSettings(raw: unknown): GameSettings {
         typeof input.chat?.bubbleDurationSeconds === 'number' && Number.isFinite(input.chat.bubbleDurationSeconds)
           ? clamp(input.chat.bubbleDurationSeconds, CHAT_BUBBLE_DURATION_MIN, CHAT_BUBBLE_DURATION_MAX)
           : base.chat.bubbleDurationSeconds,
+    },
+    hud: {
+      showFps: toBool(input.hud?.showFps, base.hud.showFps),
+      showLatency: toBool(input.hud?.showLatency, base.hud.showLatency),
+      showPlayerNames: toBool(input.hud?.showPlayerNames, base.hud.showPlayerNames),
     },
   };
 }
@@ -184,6 +213,7 @@ export function useGameSettings(): [GameSettings, (patch: Partial<GameSettings>)
       uiScale: { ...current.uiScale, ...patch.uiScale },
       controls: { ...current.controls, ...patch.controls },
       chat: { ...current.chat, ...patch.chat },
+      hud: { ...current.hud, ...patch.hud },
     });
     saveGameSettings(next);
   }, []);

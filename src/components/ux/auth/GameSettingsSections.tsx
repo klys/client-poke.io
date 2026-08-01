@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import {
+  Button,
   FormControl,
   FormHelperText,
   FormLabel,
@@ -107,12 +109,45 @@ export const DisplaySettingsSection = () => {
         format={percent}
         onChange={(battle) => update({ uiScale: { ...settings.uiScale, battle } })}
       />
+      <FormControl display="flex" alignItems="center" justifyContent="space-between">
+        <FormLabel mb={0}>{t('settings.display.showFps')}</FormLabel>
+        <Switch
+          colorScheme="teal"
+          isChecked={settings.hud.showFps}
+          onChange={(event) => update({ hud: { ...settings.hud, showFps: event.target.checked } })}
+        />
+      </FormControl>
+      <FormControl display="flex" alignItems="center" justifyContent="space-between">
+        <FormLabel mb={0}>{t('settings.display.showLatency')}</FormLabel>
+        <Switch
+          colorScheme="teal"
+          isChecked={settings.hud.showLatency}
+          onChange={(event) => update({ hud: { ...settings.hud, showLatency: event.target.checked } })}
+        />
+      </FormControl>
+      <FormControl display="flex" alignItems="center" justifyContent="space-between">
+        <FormLabel mb={0}>{t('settings.display.showPlayerNames')}</FormLabel>
+        <Switch
+          colorScheme="teal"
+          isChecked={settings.hud.showPlayerNames}
+          onChange={(event) =>
+            update({ hud: { ...settings.hud, showPlayerNames: event.target.checked } })
+          }
+        />
+      </FormControl>
     </VStack>
   );
 };
 
+/** Friendly display for a stored KeyboardEvent.key ("` `" reads as "Space"). */
+const describeKey = (key: string) => {
+  if (key === ' ') return 'Space';
+  return key.length === 1 ? key.toUpperCase() : key;
+};
+
 export const ControlsSettingsSection = () => {
   const [settings, update] = useGameSettings();
+  const [capturingRunKey, setCapturingRunKey] = useState(false);
   const t = useT();
 
   return (
@@ -122,11 +157,40 @@ export const ControlsSettingsSection = () => {
         <Switch
           colorScheme="teal"
           isChecked={settings.controls.touchMoveEnabled}
-          onChange={(event) => update({ controls: { touchMoveEnabled: event.target.checked } })}
+          onChange={(event) => update({ controls: { ...settings.controls, touchMoveEnabled: event.target.checked } })}
         />
       </FormControl>
       <Text mt={-2} fontSize="sm" color="gray.500">
         {t('settings.controls.touchMoveHelp')}
+      </Text>
+
+      <FormControl display="flex" alignItems="center" justifyContent="space-between">
+        <FormLabel mb={0}>{t('settings.controls.runKey')}</FormLabel>
+        <Button
+          size="sm"
+          variant="outline"
+          colorScheme={capturingRunKey ? 'teal' : 'gray'}
+          onClick={() => setCapturingRunKey(true)}
+          onBlur={() => setCapturingRunKey(false)}
+          onKeyDown={(event) => {
+            if (!capturingRunKey) return;
+            event.preventDefault();
+            event.stopPropagation();
+            // Modifier keys are valid run keys (Shift is the classic one);
+            // Escape cancels the capture instead of binding it.
+            if (event.key === 'Escape') {
+              setCapturingRunKey(false);
+              return;
+            }
+            update({ controls: { ...settings.controls, runKey: event.key } });
+            setCapturingRunKey(false);
+          }}
+        >
+          {capturingRunKey ? t('settings.controls.runKeyPress') : describeKey(settings.controls.runKey)}
+        </Button>
+      </FormControl>
+      <Text mt={-2} fontSize="sm" color="gray.500">
+        {t('settings.controls.runKeyHelp')}
       </Text>
     </VStack>
   );

@@ -92,6 +92,15 @@ const STRINGS: Record<string, Entry> = {
   'settings.display.dialogs': { en: 'NPC dialog size', es: 'Tamaño de los diálogos de NPC' },
   'settings.display.interface': { en: 'Interface windows size', es: 'Tamaño de las ventanas de interfaz' },
   'settings.display.battle': { en: 'Battle interface size', es: 'Tamaño de la interfaz de batalla' },
+  'settings.display.showFps': { en: 'Show FPS counter', es: 'Mostrar contador de FPS' },
+  'settings.display.showLatency': {
+    en: 'Show server latency (ms)',
+    es: 'Mostrar latencia del servidor (ms)',
+  },
+  'settings.display.showPlayerNames': {
+    en: 'Show player names over their heads',
+    es: 'Mostrar nombres de jugadores sobre sus cabezas',
+  },
 
   // --- Settings window: language ---
   'settings.controls.title': { en: 'Controls', es: 'Controles' },
@@ -99,6 +108,12 @@ const STRINGS: Record<string, Entry> = {
   'settings.controls.touchMoveHelp': {
     en: 'When off, tapping or clicking the map no longer moves your character.',
     es: 'Si está desactivado, tocar o hacer clic en el mapa ya no mueve a tu personaje.',
+  },
+  'settings.controls.runKey': { en: 'Run key (hold to run)', es: 'Tecla de correr (mantener para correr)' },
+  'settings.controls.runKeyPress': { en: 'Press a key…', es: 'Pulsa una tecla…' },
+  'settings.controls.runKeyHelp': {
+    en: 'Hold this key while walking to run. You need the Running Shoes in your bag.',
+    es: 'Mantén esta tecla mientras caminas para correr. Necesitas los Zapatos Deportivos en tu mochila.',
   },
   'settings.language.title': { en: 'Language', es: 'Idioma' },
   'settings.language.auto': { en: 'Auto (system language)', es: 'Automático (idioma del sistema)' },

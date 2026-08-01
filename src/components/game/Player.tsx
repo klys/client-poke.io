@@ -11,6 +11,7 @@ import {
   loadCharacterSkinCatalog,
 } from "../ux/game/characterSkinCatalog";
 import { SocialContext } from "../ux/game/social/SocialContext";
+import { useGameSettings } from "../../settings/gameSettings";
 import { getPoseSheet, poseRowForDirection, type OverworldPose } from "./overworldPoses";
 
 type Position = {
@@ -419,6 +420,12 @@ const Player = (props: any) => {
   // is absent (e.g. isolated tests).
   const social = useContext(SocialContext);
   const chatBubble = social?.bubbles?.[playerId] ?? null;
+  // Settings toggle: names always visible over heads, or hover-only (the
+  // original behavior) when off. The chat bubble keeps priority either way.
+  const [gameSettings] = useGameSettings();
+  const showNameLabel =
+    !chatBubble &&
+    (gameSettings.hud.showPlayerNames || (!isCurrentPlayer && isHovered));
 
   return (
     <div
@@ -494,8 +501,9 @@ const Player = (props: any) => {
           />
         </div>
       ) : null}
-      {!isCurrentPlayer && isHovered && !chatBubble ? (
+      {showNameLabel ? (
         <div
+          data-player-name-label={playerId}
           style={{
             position: "absolute",
             bottom: "34px",

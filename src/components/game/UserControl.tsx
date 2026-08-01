@@ -51,6 +51,10 @@ const UserControl = () => {
     // Movement keys currently held, in press order (latest wins). Kept in a
     // ref so the drive interval always sees the live state.
     const heldKeysRef = useRef<string[]>([]);
+    // Run key (Running Shoes) hold state. The server owns the actual speed —
+    // it only honors this while the shoes are in the bag — so the client just
+    // reports intent on press/release.
+    const runHeldRef = useRef(false);
     const driveTimerRef = useRef<number | null>(null);
     const stateRef = useRef({ players, myplayer, waiting, activeNpcInteraction });
     stateRef.current = { players, myplayer, waiting, activeNpcInteraction };
@@ -71,6 +75,15 @@ const UserControl = () => {
             window.clearInterval(driveTimerRef.current);
             driveTimerRef.current = null;
         }
+    };
+
+    const matchesRunKey = (key: string) =>
+        key.toLowerCase() === gameSettings.controls.runKey.toLowerCase();
+
+    const setRunning = (running: boolean) => {
+        if (runHeldRef.current === running) return;
+        runHeldRef.current = running;
+        socket.emit("player:run", { running });
     };
 
     const releaseAllKeys = (emitStop: boolean) => {
@@ -113,6 +126,13 @@ const UserControl = () => {
     // Never leave a dangling interval (map unmount, account switch).
     useEffect(() => () => stopDriveLoop(), []);
 
+    // Rebinding the run key mid-hold would otherwise leave the server running
+    // forever (the old key's keyup no longer matches). Reset on change.
+    useEffect(() => {
+        setRunning(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [gameSettings.controls.runKey]);
+
     // Tap / click to move (optional, see Settings → Controls).
     const clickOverMap = (event:MouseEvent) => {
         if (waiting) return;
@@ -143,6 +163,11 @@ const UserControl = () => {
     useEventListener('click', clickOverMap)
 
     const keyUpEvent = (event:KeyboardEvent) => {
+        // Run release must never be swallowed by dialog/chat gating below,
+        // or the player would be stuck running after the key is let go.
+        if (matchesRunKey(event.key)) {
+            setRunning(false);
+        }
         if (isMovementKey(event.key)) {
             heldKeysRef.current = heldKeysRef.current.filter((key) => key !== event.key);
         }
@@ -180,6 +205,12 @@ const UserControl = () => {
     }
 
     const keyDownEvent = (event:KeyboardEvent) => {
+        // Symmetric with keyUpEvent: track the hold even mid-dialog so the
+        // run resumes the moment movement is allowed again (Essentials lets
+        // you keep the run key held through message boxes).
+        if (matchesRunKey(event.key) && !isUxEventTarget(event.target)) {
+            setRunning(true);
+        }
         if (waiting) return;
         if (activeNpcInteraction || isEventDialogActive()) {
             if (isMovementKey(event.key)) {
@@ -213,6 +244,7 @@ const UserControl = () => {
     useEventListener('keydown', keyDownEvent)
 
     useEventListener('blur', () => {
+        setRunning(false);
         if (waiting) return;
         releaseAllKeys(true);
     })
