@@ -15,6 +15,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../../context/authContext';
 import ApiKeysManager from './ApiKeysManager';
+import MaintenancePanel from './MaintenancePanel';
 import MapsOverview from './MapsOverview';
 import OnlinePlayersOverview from './OnlinePlayersOverview';
 import UsersSection from './users/UsersSection';
@@ -25,7 +26,7 @@ import type {
   OnlineMapOverview
 } from './types';
 
-type AdminSection = 'users' | 'online' | 'maps' | 'roles' | 'apikeys';
+type AdminSection = 'users' | 'online' | 'maps' | 'roles' | 'apikeys' | 'maintenance';
 
 type AdminPageProps = {
   section: AdminSection
@@ -43,7 +44,8 @@ const SECTION_LABELS: Record<AdminSection, string> = {
   online: 'Online Players',
   maps: 'Maps',
   roles: 'Roles Manager',
-  apikeys: 'API Keys'
+  apikeys: 'API Keys',
+  maintenance: 'Maintenance'
 };
 
 const SECTION_ROUTES: Record<AdminSection, string> = {
@@ -51,7 +53,8 @@ const SECTION_ROUTES: Record<AdminSection, string> = {
   online: '/admin/online',
   maps: '/admin/maps',
   roles: '/admin/roles',
-  apikeys: '/admin/api-keys'
+  apikeys: '/admin/api-keys',
+  maintenance: '/admin/maintenance'
 };
 
 export default function AdminPage({ section }: AdminPageProps) {
@@ -199,7 +202,7 @@ export default function AdminPage({ section }: AdminPageProps) {
               </Box>
 
               <HStack spacing={3} flexWrap="wrap">
-                {(['users', 'online', 'maps', 'roles', 'apikeys'] as AdminSection[]).map((item) => (
+                {(['users', 'online', 'maps', 'roles', 'apikeys', 'maintenance'] as AdminSection[]).map((item) => (
                   <Button
                     key={item}
                     as={RouterLink}
@@ -350,6 +353,8 @@ export default function AdminPage({ section }: AdminPageProps) {
           ) : null}
 
           {section === 'apikeys' ? <ApiKeysManager /> : null}
+
+          {section === 'maintenance' ? <MaintenancePanel /> : null}
         </Stack>
       </Box>
     </Box>
