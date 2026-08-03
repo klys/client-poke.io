@@ -22,6 +22,11 @@ const DeathScreen = () => {
             top: "150px",
             left: "150px",
             zIndex: 999,
+            color: "#ffffff",
+            background: "rgba(17, 24, 39, 0.85)",
+            padding: "8px 14px",
+            borderRadius: "8px",
+            fontWeight: 700,
           }}
         >
             {(seconds > 0) ?

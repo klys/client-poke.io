@@ -71,7 +71,18 @@ function FriendRow({ friend }: { friend: FriendEntry }) {
         <MenuButton as={Button} size="sm" variant="outline" color="white" borderColor="whiteAlpha.400">
           {t('friends.actions')}
         </MenuButton>
-        <MenuList color="gray.900">
+        <MenuList
+          bg="rgba(17, 24, 39, 0.97)"
+          color="white"
+          borderColor="rgba(255, 255, 255, 0.16)"
+          sx={{
+            ".chakra-menu__menuitem": {
+              bg: "transparent",
+              _hover: { bg: "whiteAlpha.200" },
+              _focus: { bg: "whiteAlpha.200" },
+            },
+          }}
+        >
           <MenuItem onClick={() => social.createPrivateChat([friend.userId])}>
             {t('friends.privateChat')}
           </MenuItem>

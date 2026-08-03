@@ -538,7 +538,17 @@ function DeleteUserButton({
       <Button colorScheme="red" onClick={onOpen}>Delete user</Button>
       <AlertDialog isOpen={isOpen} leastDestructiveRef={cancelRef} onClose={close} isCentered>
         <AlertDialogOverlay>
-          <AlertDialogContent borderRadius="20px">
+          <AlertDialogContent
+            borderRadius="20px"
+            // Renders in a portal outside the pinned-light admin tree — pin
+            // the surface, text, and the confirm input to the light design.
+            bg="white"
+            color="gray.800"
+            sx={{
+              input: { borderColor: 'gray.200', color: 'gray.800' },
+              'input::placeholder': { color: 'gray.400' }
+            }}
+          >
             <AlertDialogHeader fontWeight="800">Delete {username}?</AlertDialogHeader>
             <AlertDialogBody>
               <Text mb={3} color="#54615a">
@@ -556,7 +566,7 @@ function DeleteUserButton({
               </FormControl>
             </AlertDialogBody>
             <AlertDialogFooter>
-              <Button ref={cancelRef} onClick={close} variant="ghost">Cancel</Button>
+              <Button ref={cancelRef} onClick={close} variant="ghost" color="gray.800">Cancel</Button>
               <Button
                 colorScheme="red"
                 ml={3}

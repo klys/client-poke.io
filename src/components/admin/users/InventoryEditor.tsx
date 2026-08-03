@@ -122,6 +122,8 @@ export default function InventoryEditor({ items, catalog, onChange }: InventoryE
                     aria-label="Decrease"
                     size="xs"
                     variant="outline"
+                    color="gray.800"
+                    borderColor="gray.200"
                     onClick={() => setQuantity(item.id, item.quantity - 1)}
                     isDisabled={item.quantity <= 0}
                   >
@@ -138,6 +140,8 @@ export default function InventoryEditor({ items, catalog, onChange }: InventoryE
                     aria-label="Increase"
                     size="xs"
                     variant="outline"
+                    color="gray.800"
+                    borderColor="gray.200"
                     onClick={() => setQuantity(item.id, item.quantity + 1)}
                   >
                     +
@@ -189,8 +193,8 @@ function AddItemPopover({
           + Add item
         </Button>
       </PopoverTrigger>
-      <PopoverContent w="340px">
-        <PopoverArrow />
+      <PopoverContent w="340px" bg="white" color="gray.800" borderColor="gray.200">
+        <PopoverArrow bg="white" />
         <PopoverHeader fontWeight="700" border="none" pb={1}>Add an item</PopoverHeader>
         <PopoverBody>
           <InputGroup size="sm" mb={2}>

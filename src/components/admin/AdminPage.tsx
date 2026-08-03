@@ -1,5 +1,6 @@
 import {
   Badge,
+  LightMode,
   Box,
   Button,
   FormControl,
@@ -181,7 +182,23 @@ export default function AdminPage({ section }: AdminPageProps) {
   };
 
   return (
-    <Box minH="100vh" bg="linear-gradient(180deg, #eef4ea 0%, #dde7db 100%)" px={{ base: 4, lg: 8 }} py={{ base: 5, lg: 8 }}>
+    <LightMode>
+    <Box
+      minH="100vh"
+      bg="linear-gradient(180deg, #eef4ea 0%, #dde7db 100%)"
+      // Pin to the light design regardless of the app's global color mode:
+      // unstyled descendant text inherits dark ink instead of dark-mode white.
+      color="gray.800"
+      sx={{
+        // Chakra internals that read the global (mode-aware) styles instead of
+        // inheriting: pin them to their light-mode values.
+        'input, select, textarea': { borderColor: 'gray.200', color: 'gray.800' },
+        'input::placeholder, textarea::placeholder': { color: 'gray.400' },
+        '.chakra-checkbox__control:not([data-checked])': { borderColor: 'gray.200' }
+      }}
+      px={{ base: 4, lg: 8 }}
+      py={{ base: 5, lg: 8 }}
+    >
       <Box maxW="1400px" mx="auto">
         <Stack spacing={6}>
           <Box
@@ -209,12 +226,16 @@ export default function AdminPage({ section }: AdminPageProps) {
                     to={SECTION_ROUTES[item]}
                     colorScheme={section === item ? 'green' : 'gray'}
                     variant={section === item ? 'solid' : 'outline'}
+                    // Gray outline buttons go whiteAlpha in dark mode; pin the
+                    // inactive tabs to their light-mode ink and border.
+                    color={section === item ? undefined : 'gray.800'}
+                    borderColor={section === item ? undefined : 'gray.200'}
                     borderRadius="full"
                   >
                     {SECTION_LABELS[item]}
                   </Button>
                 ))}
-                <Button as={RouterLink} to="/" variant="ghost" colorScheme="gray" borderRadius="full">
+                <Button as={RouterLink} to="/" variant="ghost" colorScheme="gray" color="gray.800" borderRadius="full">
                   Back To Game
                 </Button>
               </HStack>
@@ -358,5 +379,6 @@ export default function AdminPage({ section }: AdminPageProps) {
         </Stack>
       </Box>
     </Box>
+    </LightMode>
   );
 }

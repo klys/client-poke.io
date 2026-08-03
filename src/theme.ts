@@ -73,6 +73,21 @@ const theme = extendTheme({
         default: "rgba(35, 49, 39, 0.06)",
         _dark: "rgba(226, 235, 227, 0.08)",
       },
+      // Designer shell (Main/Section/etc.) — the cream gradient endpoints and
+      // translucent cards those pages hardcoded before dark mode existed.
+      "editor.shellGradientStart": { default: "#f7f4ea", _dark: "#141a16" },
+      "editor.shellGradientEnd": { default: "#e8efe5", _dark: "#0f130f" },
+      "editor.shellCard": {
+        default: "rgba(255, 252, 245, 0.92)",
+        _dark: "rgba(22, 28, 24, 0.92)",
+      },
+      "editor.accentSoft": {
+        default: "rgba(126, 166, 120, 0.12)",
+        _dark: "rgba(134, 194, 144, 0.16)",
+      },
+      // Text that sits on editor.accent-filled elements (white in light mode,
+      // near-black in dark mode where the accent turns light green).
+      "editor.onAccent": { default: "#ffffff", _dark: "#10160f" },
     },
   },
   components: {

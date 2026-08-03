@@ -252,12 +252,12 @@ export default function BattleInterfacePage() {
     : "Syncing battle interface settings…";
 
   return (
-    <Box maxW="1080px" mx="auto" px={{ base: 4, md: 8 }} py={8}>
+    <Box maxW="1080px" mx="auto" minH="100vh" bg="editor.pageMuted" px={{ base: 4, md: 8 }} py={8}>
       <DesignerNav title="Battle Interface" />
       <HStack justify="space-between" align="start" mb={6}>
         <Box>
           <Heading size="lg">Battle Interface</Heading>
-          <Text color="gray.500" mt={1}>
+          <Text color="editor.textSubtle" mt={1}>
             Customize the battle scene the game runtime renders: backgrounds, databoxes, message
             window, sounds, transitions, and battle log.
           </Text>

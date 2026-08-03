@@ -186,20 +186,20 @@ export default function MapNpcBrowser() {
       mb={8}
       p={{ base: 4, md: 5 }}
       borderRadius="24px"
-      bg="linear-gradient(135deg, rgba(255,253,246,0.95) 0%, rgba(237,244,234,0.95) 100%)"
-      border="1px solid rgba(43, 66, 47, 0.12)"
+      bg="editor.surface"
+      border="1px solid" borderColor="editor.borderAccentMuted"
     >
       <Text
         fontSize="sm"
         fontWeight="700"
         textTransform="uppercase"
         letterSpacing="0.14em"
-        color="#5e7a61"
+        color="editor.accentMuted"
         mb={1}
       >
         World NPCs (from playable maps)
       </Text>
-      <Text fontSize="sm" color="#55645a" mb={4}>
+      <Text fontSize="sm" color="editor.textSubtle" mb={4}>
         Every NPC placed in the game world — trainers, stores, Pokemon Centers, signs, quest and
         talking NPCs. Click one to open it in its map editor. The catalog below this panel holds
         reusable NPC templates.
@@ -207,13 +207,13 @@ export default function MapNpcBrowser() {
 
       {loadState === "loading" ? (
         <Flex align="center" gap={3} py={4}>
-          <Spinner size="sm" color="#2e5b37" />
-          <Text fontSize="sm" color="#55645a">
+          <Spinner size="sm" color="editor.accent" />
+          <Text fontSize="sm" color="editor.textSubtle">
             Loading world map data…
           </Text>
         </Flex>
       ) : loadState === "error" ? (
-        <Text fontSize="sm" color="#914335">
+        <Text fontSize="sm" color="editor.danger">
           Could not download the playable maps snapshot. Reload the page to retry.
         </Text>
       ) : (
@@ -227,8 +227,8 @@ export default function MapNpcBrowser() {
                   px={2.5}
                   py={1}
                   borderRadius="full"
-                  bg={typeFilter === npcType ? "#2e5b37" : "rgba(46, 91, 55, 0.08)"}
-                  color={typeFilter === npcType ? "white" : "#2e5b37"}
+                  bg={typeFilter === npcType ? "editor.accent" : "editor.accentSoft"}
+                  color={typeFilter === npcType ? "editor.onAccent" : "editor.accent"}
                   cursor="pointer"
                   textTransform="none"
                   onClick={() => {
@@ -245,7 +245,7 @@ export default function MapNpcBrowser() {
             <Input
               size="sm"
               maxW="260px"
-              bg="white"
+              bg="editor.page"
               placeholder="Search NPCs by name"
               value={search}
               onChange={(event) => {
@@ -256,7 +256,7 @@ export default function MapNpcBrowser() {
             <Select
               size="sm"
               maxW="220px"
-              bg="white"
+              bg="editor.page"
               value={typeFilter}
               onChange={(event) => {
                 setTypeFilter(event.target.value);
@@ -273,7 +273,7 @@ export default function MapNpcBrowser() {
             <Select
               size="sm"
               maxW="260px"
-              bg="white"
+              bg="editor.page"
               value={mapFilter}
               onChange={(event) => {
                 setMapFilter(event.target.value);
@@ -345,7 +345,7 @@ export default function MapNpcBrowser() {
           </Box>
 
           <Flex mt={3} justify="space-between" align="center" wrap="wrap" gap={2}>
-            <Text fontSize="sm" color="#55645a">
+            <Text fontSize="sm" color="editor.textSubtle">
               {filteredRows.length} NPCs ({rows.length} total in the world)
             </Text>
             <Flex gap={2} align="center">
@@ -357,7 +357,7 @@ export default function MapNpcBrowser() {
               >
                 Previous
               </Button>
-              <Text fontSize="sm" color="#55645a">
+              <Text fontSize="sm" color="editor.textSubtle">
                 Page {visiblePage} / {totalPages}
               </Text>
               <Button

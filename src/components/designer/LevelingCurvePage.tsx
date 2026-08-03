@@ -434,15 +434,15 @@ export default function LevelingCurvePage() {
       minH="100vh"
       px={{ base: 4, md: 8, xl: 12 }}
       py={{ base: 6, md: 10 }}
-      bg="linear-gradient(180deg, #f6f1e3 0%, #e2edf3 100%)"
+      bgGradient="linear(to-b, editor.shellGradientStart, editor.shellGradientEnd)"
     >
       <Box
         maxW="1280px"
         mx="auto"
         p={{ base: 5, md: 8 }}
         borderRadius="32px"
-        bg="rgba(255, 252, 245, 0.9)"
-        border="1px solid rgba(54, 73, 82, 0.14)"
+        bg="editor.shellCard"
+        border="1px solid" borderColor="editor.borderAccentMuted"
         boxShadow="0 24px 60px rgba(45, 65, 79, 0.12)"
         backdropFilter="blur(12px)"
       >
@@ -459,10 +459,10 @@ export default function LevelingCurvePage() {
               >
                 Leveling Curve
               </Badge>
-              <Heading size="lg" color="#22313a" mb={2}>
+              <Heading size="lg" color="editor.heading" mb={2}>
                 Configure EXP rewards and level growth.
               </Heading>
-              <Text color="#5b6972" maxW="780px">
+              <Text color="editor.textSubtle" maxW="780px">
                 This curve controls how much EXP a winning Pokemon gains, how fast the next
                 level requirement grows, and the formulas applied when the foe is higher or
                 lower level.
@@ -503,7 +503,7 @@ export default function LevelingCurvePage() {
               {statusText}
             </Text>
             {sectionVersion !== null ? (
-              <Text mt={1} color="#67727a" fontSize="sm">
+              <Text mt={1} color="editor.textSubtle" fontSize="sm">
                 Version {sectionVersion}
               </Text>
             ) : null}
@@ -514,11 +514,11 @@ export default function LevelingCurvePage() {
               <Stack spacing={4}>
                 <Box
                   borderRadius="24px"
-                  border="1px solid rgba(72, 92, 101, 0.14)"
-                  bg="white"
+                  border="1px solid" borderColor="editor.borderAccentMuted"
+                  bg="editor.page"
                   p={5}
                 >
-                  <Heading size="md" color="#22313a" mb={4}>
+                  <Heading size="md" color="editor.heading" mb={4}>
                     Variables
                   </Heading>
                   <Stack spacing={4}>
@@ -605,14 +605,14 @@ export default function LevelingCurvePage() {
                     <Box
                       key={card.label}
                       borderRadius="20px"
-                      border="1px solid rgba(72, 92, 101, 0.14)"
-                      bg="linear-gradient(135deg, #ffffff 0%, #f3f8fb 100%)"
+                      border="1px solid" borderColor="editor.borderAccentMuted"
+                      bg="editor.surface"
                       p={4}
                     >
-                      <Text fontSize="sm" color="#66747c">
+                      <Text fontSize="sm" color="editor.textSubtle">
                         {card.label}
                       </Text>
-                      <Text mt={1} fontSize="xl" fontWeight="700" color="#21313a">
+                      <Text mt={1} fontSize="xl" fontWeight="700" color="editor.heading">
                         {card.value}
                       </Text>
                     </Box>
@@ -625,22 +625,22 @@ export default function LevelingCurvePage() {
               <Stack spacing={4}>
                 <Box
                   borderRadius="24px"
-                  border="1px solid rgba(72, 92, 101, 0.14)"
-                  bg="white"
+                  border="1px solid" borderColor="editor.borderAccentMuted"
+                  bg="editor.page"
                   p={5}
                 >
-                  <Heading size="md" color="#22313a" mb={2}>
+                  <Heading size="md" color="editor.heading" mb={2}>
                     Level 1-100 Curve
                   </Heading>
-                  <Text color="#66747c" mb={5}>
+                  <Text color="editor.textSubtle" mb={5}>
                     The graph combines total EXP growth, per-level requirement, and sample
                     battle rewards for equal, higher, and lower level wins.
                   </Text>
 
                   <Box
                     borderRadius="20px"
-                    bg="linear-gradient(180deg, #f8fbfd 0%, #edf5f9 100%)"
-                    border="1px solid rgba(82, 112, 126, 0.14)"
+                    bg="editor.surface"
+                    border="1px solid" borderColor="editor.borderAccentMuted"
                     p={3}
                     overflowX="auto"
                   >
@@ -662,13 +662,13 @@ export default function LevelingCurvePage() {
                               y1={y}
                               x2={chartDimensions.width - chartPadding.right}
                               y2={y}
-                              stroke="rgba(83, 109, 120, 0.16)"
+                              stroke="var(--chakra-colors-editor-borderAccentMuted)"
                               strokeDasharray="4 6"
                             />
                             <text
                               x={12}
                               y={y + 4}
-                              fill="#64727b"
+                              fill="var(--chakra-colors-editor-textSubtle)"
                               fontSize="11"
                               fontFamily="sans-serif"
                             >
@@ -683,7 +683,7 @@ export default function LevelingCurvePage() {
                         y1={chartPadding.top}
                         x2={chartPadding.left}
                         y2={chartDimensions.height - chartPadding.bottom}
-                        stroke="#8aa0ad"
+                        stroke="var(--chakra-colors-editor-accentMuted)"
                         strokeWidth="1.2"
                       />
                       <line
@@ -691,7 +691,7 @@ export default function LevelingCurvePage() {
                         y1={chartDimensions.height - chartPadding.bottom}
                         x2={chartDimensions.width - chartPadding.right}
                         y2={chartDimensions.height - chartPadding.bottom}
-                        stroke="#8aa0ad"
+                        stroke="var(--chakra-colors-editor-accentMuted)"
                         strokeWidth="1.2"
                       />
 
@@ -708,13 +708,13 @@ export default function LevelingCurvePage() {
                               y1={chartPadding.top}
                               x2={x}
                               y2={chartDimensions.height - chartPadding.bottom}
-                              stroke="rgba(83, 109, 120, 0.12)"
+                              stroke="var(--chakra-colors-editor-borderAccentMuted)"
                             />
                             <text
                               x={x}
                               y={chartDimensions.height - 10}
                               textAnchor="middle"
-                              fill="#64727b"
+                              fill="var(--chakra-colors-editor-textSubtle)"
                               fontSize="11"
                               fontFamily="sans-serif"
                             >
@@ -801,7 +801,7 @@ export default function LevelingCurvePage() {
                     {legendItems.map((item) => (
                       <HStack key={item.label} spacing={3}>
                         <Box w="14px" h="14px" borderRadius="full" bg={item.color} />
-                        <Text color="#59676f">{item.label}</Text>
+                        <Text color="editor.textSubtle">{item.label}</Text>
                       </HStack>
                     ))}
                   </SimpleGrid>
@@ -809,14 +809,14 @@ export default function LevelingCurvePage() {
 
                 <Box
                   borderRadius="24px"
-                  border="1px solid rgba(72, 92, 101, 0.14)"
-                  bg="white"
+                  border="1px solid" borderColor="editor.borderAccentMuted"
+                  bg="editor.page"
                   p={5}
                 >
-                  <Heading size="sm" color="#22313a" mb={3}>
+                  <Heading size="sm" color="editor.heading" mb={3}>
                     Formula Notes
                   </Heading>
-                  <Stack spacing={2} color="#66747c">
+                  <Stack spacing={2} color="editor.textSubtle">
                     <Text>Allowed tokens: numbers, `Alvl`, `Blvl`, `+`, `-`, `*`, `/`, parentheses.</Text>
                     <Text>You can write percentages like `5% * (Blvl - Alvl)` and the editor will interpret `5%` as `0.05`.</Text>
                     <Text>At runtime the winning Pokemon receives base battle EXP adjusted by the selected bonus or debonus formula.</Text>

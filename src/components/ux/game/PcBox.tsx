@@ -270,7 +270,7 @@ function StorageShell({
           </HStack>
           <HStack spacing={2} flexWrap="wrap" justify="flex-end">
             {headerExtra}
-            <Button size="sm" bg="#ffd76e" border="2px solid #5d5a7b" borderRadius={0} _hover={{ bg: "#ffe79b" }} onClick={onClose}>
+            <Button size="sm" bg="#ffd76e" color="#4a4964" border="2px solid #5d5a7b" borderRadius={0} _hover={{ bg: "#ffe79b" }} onClick={onClose}>
               Close
             </Button>
           </HStack>
@@ -365,6 +365,7 @@ function BoxStyleEditor({
           value={name}
           maxLength={20}
           bg="white"
+          color="#1f2937"
           borderColor="#5d5a7b"
           fontFamily="mono"
           fontWeight="800"

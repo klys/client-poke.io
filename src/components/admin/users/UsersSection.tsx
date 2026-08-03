@@ -412,7 +412,22 @@ export default function UsersSection({ socket }: UsersSectionProps) {
 
       <Modal isOpen={isEditorOpen} onClose={closeEditor} size="4xl" scrollBehavior="inside">
         <ModalOverlay />
-        <ModalContent borderRadius="28px" my={{ base: 4, lg: 10 }}>
+        <ModalContent
+          borderRadius="28px"
+          // Modals render in a portal, so the admin page's light pinning does
+          // not reach them — pin the surface and text to the light design.
+          bg="white"
+          color="gray.800"
+          sx={{
+            'input, select, textarea': { borderColor: 'gray.200', color: 'gray.800' },
+            'input::placeholder, textarea::placeholder': { color: 'gray.400' },
+            '.chakra-checkbox__control:not([data-checked])': { borderColor: 'gray.200' },
+            // PasswordInput's ghost eye-toggle (shared component) would go
+            // whiteAlpha in dark mode.
+            '.chakra-input__right-element button': { color: 'gray.800' }
+          }}
+          my={{ base: 4, lg: 10 }}
+        >
           <ModalCloseButton top={4} right={4} />
           <ModalBody p={{ base: 5, lg: 6 }}>
             {editorPanel}

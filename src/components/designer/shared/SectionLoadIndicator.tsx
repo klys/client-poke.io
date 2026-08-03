@@ -75,7 +75,7 @@ export default function SectionLoadIndicator({
             ? `Preparing ${sectionLabel} data…`
             : `Downloading ${sectionLabel} data…`}
         </Text>
-        <Text fontSize="xs" color="gray.500">
+        <Text fontSize="xs" color="editor.textMuted">
           {hasTotal
             ? `${formatMegabytes(progress.loadedBytes)} / ${formatMegabytes(
                 progress.totalBytes as number

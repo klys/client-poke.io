@@ -65,6 +65,8 @@ export default function OnlinePlayersOverview({
           border="1px solid rgba(57, 79, 57, 0.14)"
           bg="white"
           boxShadow="0 18px 40px rgba(46, 67, 52, 0.08)"
+          // Cell borders are mode-aware in Chakra; pin them to light-mode gray.
+          sx={{ 'th, td': { borderColor: 'gray.100' } }}
         >
           <Table variant="simple">
             <Thead bg="#f6f7f1">

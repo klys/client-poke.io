@@ -109,7 +109,16 @@ export default function UserList(props: UserListProps) {
           </HStack>
         </HStack>
 
-        <Box overflowX="auto" position="relative">
+        <Box
+          overflowX="auto"
+          position="relative"
+          // Table headers/cell borders are mode-aware in Chakra; pin them to
+          // their light-mode values so the table reads identically in dark.
+          sx={{
+            th: { color: 'gray.600', borderColor: 'gray.100' },
+            td: { borderColor: 'gray.100' }
+          }}
+        >
           <Table size="sm">
             <Thead>
               <Tr>
@@ -186,8 +195,8 @@ export default function UserList(props: UserListProps) {
               : `Page ${page} of ${totalPages} · ${total} user${total === 1 ? '' : 's'}.`}
           </Text>
           <HStack>
-            <Button variant="outline" onClick={onPrev} isDisabled={page <= 1 || loading}>Previous</Button>
-            <Button variant="outline" onClick={onNext} isDisabled={page >= totalPages || loading}>Next</Button>
+            <Button variant="outline" color="gray.800" borderColor="gray.200" onClick={onPrev} isDisabled={page <= 1 || loading}>Previous</Button>
+            <Button variant="outline" color="gray.800" borderColor="gray.200" onClick={onNext} isDisabled={page >= totalPages || loading}>Next</Button>
           </HStack>
         </HStack>
       </Stack>

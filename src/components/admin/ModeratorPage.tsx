@@ -1,5 +1,6 @@
 import {
   Box,
+  LightMode,
   Button,
   HStack,
   Stack,
@@ -59,7 +60,16 @@ export default function ModeratorPage() {
   }, [loadMaps, socket, toast]);
 
   return (
-    <Box minH="100vh" bg="linear-gradient(180deg, #f6f0e5 0%, #ece2d2 100%)" px={{ base: 4, lg: 8 }} py={{ base: 5, lg: 8 }}>
+    <LightMode>
+    <Box
+      minH="100vh"
+      bg="linear-gradient(180deg, #f6f0e5 0%, #ece2d2 100%)"
+      // Pin to the light design regardless of the app's global color mode:
+      // unstyled descendant text inherits dark ink instead of dark-mode white.
+      color="gray.800"
+      px={{ base: 4, lg: 8 }}
+      py={{ base: 5, lg: 8 }}
+    >
       <Box maxW="1280px" mx="auto">
         <Stack spacing={6}>
           <Box
@@ -82,7 +92,7 @@ export default function ModeratorPage() {
                 <Button colorScheme="orange" variant="outline" onClick={loadMaps}>
                   Refresh Overview
                 </Button>
-                <Button as={RouterLink} to="/" variant="ghost">
+                <Button as={RouterLink} to="/" variant="ghost" color="gray.800">
                   Back To Game
                 </Button>
               </HStack>
@@ -100,5 +110,6 @@ export default function ModeratorPage() {
         </Stack>
       </Box>
     </Box>
+    </LightMode>
   );
 }

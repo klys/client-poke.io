@@ -10,15 +10,15 @@ export default function Main() {
       minH="100vh"
       px={{ base: 4, md: 8, xl: 12 }}
       py={{ base: 6, md: 10 }}
-      bg="linear-gradient(180deg, #f7f4ea 0%, #e8efe5 100%)"
+      bgGradient="linear(to-b, editor.shellGradientStart, editor.shellGradientEnd)"
     >
       <Box
         maxW="1200px"
         mx="auto"
         p={{ base: 5, md: 8 }}
         borderRadius="32px"
-        bg="rgba(255, 252, 245, 0.88)"
-        border="1px solid rgba(58, 76, 52, 0.14)"
+        bg="editor.shellCard"
+        border="1px solid" borderColor="editor.borderAccentMuted"
         boxShadow="0 24px 60px rgba(52, 66, 45, 0.12)"
         backdropFilter="blur(12px)"
       >
@@ -28,7 +28,7 @@ export default function Main() {
           fontWeight="700"
           textTransform="uppercase"
           letterSpacing="0.18em"
-          color="#5e7a61"
+          color="editor.accentMuted"
           mb={3}
         >
           Designer
@@ -36,7 +36,7 @@ export default function Main() {
         <Heading
           as="h1"
           size="xl"
-          color="#233127"
+          color="editor.heading"
           maxW="560px"
           lineHeight="1.1"
           mb={3}
@@ -45,7 +45,7 @@ export default function Main() {
         </Heading>
         <Text
           fontSize={{ base: "sm", md: "md" }}
-          color="#55645a"
+          color="editor.textSubtle"
           maxW="720px"
           mb={{ base: 6, md: 8 }}
         >
@@ -63,9 +63,9 @@ export default function Main() {
               px={{ base: 4, md: 6 }}
               py={{ base: 4, md: 5 }}
               borderRadius="24px"
-              border="1px solid rgba(43, 66, 47, 0.18)"
-              bg="linear-gradient(135deg, #fffdf6 0%, #edf4ea 100%)"
-              color="#213128"
+              border="1px solid" borderColor="editor.borderAccent"
+              bg="editor.surface"
+              color="editor.heading"
               display="flex"
               flexDirection="column"
               alignItems="center"
@@ -76,7 +76,7 @@ export default function Main() {
               boxShadow="0 14px 30px rgba(59, 78, 55, 0.08)"
               _hover={{
                 transform: "translateY(-3px)",
-                borderColor: "rgba(43, 66, 47, 0.32)",
+                borderColor: "editor.borderAccent",
                 boxShadow: "0 18px 34px rgba(59, 78, 55, 0.14)",
                 textDecoration: "none",
               }}
@@ -87,8 +87,8 @@ export default function Main() {
                 borderRadius="18px"
                 display="grid"
                 placeItems="center"
-                bg="rgba(126, 166, 120, 0.12)"
-                color="#2e5b37"
+                bg="editor.accentSoft"
+                color="editor.accent"
               >
                 <DesignerIcon icon={section.icon} boxSize={8} />
               </Box>

@@ -210,7 +210,7 @@ function PokemonCard({
             <HpBar hp={pokemon.hp} maxHp={pokemon.maxHp} />
           </Box>
 
-          <Button size="xs" variant="ghost" alignSelf="flex-start" onClick={onToggle}>
+          <Button size="xs" variant="ghost" color="gray.800" alignSelf="flex-start" onClick={onToggle}>
             {isOpen ? '▲ Hide details' : '▼ Moves & stats'}
           </Button>
 
@@ -231,7 +231,7 @@ function PokemonCard({
                 )}
               </Box>
 
-              <Divider />
+              <Divider borderColor="gray.200" />
 
               <Box>
                 <Text fontSize="xs" fontWeight="700" color="#4a5a45" mb={2}>Stat bonuses</Text>
@@ -302,8 +302,8 @@ function AddPokemonPopover({
           + Add Pokémon
         </Button>
       </PopoverTrigger>
-      <PopoverContent w="340px">
-        <PopoverArrow />
+      <PopoverContent w="340px" bg="white" color="gray.800" borderColor="gray.200">
+        <PopoverArrow bg="white" />
         <PopoverHeader fontWeight="700" border="none" pb={1}>Add a Pokémon</PopoverHeader>
         <PopoverBody>
           <InputGroup size="sm" mb={2}>

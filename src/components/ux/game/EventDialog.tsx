@@ -542,6 +542,7 @@ export default function EventDialog() {
                     fontFamily="mono"
                     fontWeight="800"
                     bg="white"
+                    color="#1f2937"
                     borderColor="#5d5a7b"
                     onChange={(changeEvent) => setNameValue(changeEvent.target.value)}
                     onKeyDown={(keyEvent) => {
@@ -555,6 +556,7 @@ export default function EventDialog() {
                     fontFamily="mono"
                     fontWeight="800"
                     bg="#ffd76e"
+                    color="#4a4964"
                     border="3px solid #5d5a7b"
                     borderRadius={0}
                     _hover={{ bg: "#ffe79b" }}

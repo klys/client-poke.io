@@ -17,7 +17,7 @@ const RequireAuth = ({ children, requiredPermission }: RequireAuthProps) => {
 
   if (!authReady) {
     return (
-      <Center minH="100vh" flexDirection="column" gap={4}>
+      <Center minH="100vh" flexDirection="column" gap={4} bg="gray.50">
         <Spinner size="xl" color="teal.500" />
         <Text color="gray.600">Checking your session...</Text>
       </Center>

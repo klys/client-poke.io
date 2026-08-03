@@ -63,6 +63,8 @@ export default function MapLocationEditor({ mapId, x, y, automatic, maps, onChan
                 justifyContent="space-between"
                 variant="outline"
                 bg="white"
+                color="gray.800"
+                borderColor="gray.200"
                 fontWeight="600"
                 rightIcon={<Text as="span">▾</Text>}
                 isDisabled={maps.length === 0}
@@ -70,8 +72,8 @@ export default function MapLocationEditor({ mapId, x, y, automatic, maps, onChan
                 <Text noOfLines={1}>{label}</Text>
               </Button>
             </PopoverTrigger>
-            <PopoverContent w="100%">
-              <PopoverArrow />
+            <PopoverContent w="100%" bg="white" color="gray.800" borderColor="gray.200">
+              <PopoverArrow bg="white" />
               <PopoverBody>
                 <InputGroup size="sm" mb={2}>
                   <InputLeftElement pointerEvents="none">🔍</InputLeftElement>

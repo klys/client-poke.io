@@ -1,4 +1,4 @@
-import { Box, Heading, Stack, Text } from '@chakra-ui/react';
+import { Box, Heading, LightMode, Stack, Text } from '@chakra-ui/react';
 import type { ReactNode } from 'react';
 
 type AuthShellProps = {
@@ -8,6 +8,7 @@ type AuthShellProps = {
 }
 
 const AuthShell = ({ title, description, children }: AuthShellProps) => (
+  <LightMode>
   <Box
     minH="100vh"
     display="flex"
@@ -21,6 +22,13 @@ const AuthShell = ({ title, description, children }: AuthShellProps) => (
       w="full"
       maxW="480px"
       bg="white"
+      color="gray.800"
+      sx={{
+        // The card is always light; pin the form chrome so global dark mode
+        // cannot turn text/borders white-on-white.
+        "input, select, textarea": { borderColor: "gray.300" },
+        "input::placeholder, textarea::placeholder": { color: "gray.500" },
+      }}
       borderWidth="1px"
       borderColor="gray.200"
       borderRadius="2xl"
@@ -36,7 +44,8 @@ const AuthShell = ({ title, description, children }: AuthShellProps) => (
         {children}
       </Stack>
     </Box>
-  </Box>
+    </Box>
+  </LightMode>
 );
 
 export default AuthShell;

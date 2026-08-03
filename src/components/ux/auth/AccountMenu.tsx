@@ -2075,7 +2075,18 @@ function PokemonCard({
               color="white"
               icon={<MoreActionsIcon />}
             />
-            <MenuList color="gray.900">
+            <MenuList
+          bg="rgba(17, 24, 39, 0.97)"
+          color="white"
+          borderColor="rgba(255, 255, 255, 0.16)"
+          sx={{
+            ".chakra-menu__menuitem": {
+              bg: "transparent",
+              _hover: { bg: "whiteAlpha.200" },
+              _focus: { bg: "whiteAlpha.200" },
+            },
+          }}
+        >
               <MenuItem onClick={() => onOpenStats(pokemon.id)}>Stats</MenuItem>
               <MenuItem onClick={handleSelectName}>{pokemon.nickname ? 'Rename' : 'Select Name'}</MenuItem>
               <MenuItem isDisabled={partyIndex === 0} onClick={() => onSetLeader(partyIndex)}>
@@ -2518,7 +2529,18 @@ const AccountMenu = () => {
           </Text>
           <Text as="span" ml={2}>v</Text>
         </MenuButton>
-        <MenuList color="gray.900">
+        <MenuList
+          bg="rgba(17, 24, 39, 0.97)"
+          color="white"
+          borderColor="rgba(255, 255, 255, 0.16)"
+          sx={{
+            ".chakra-menu__menuitem": {
+              bg: "transparent",
+              _hover: { bg: "whiteAlpha.200" },
+              _focus: { bg: "whiteAlpha.200" },
+            },
+          }}
+        >
           <MenuItem onClick={() => openWindow('account')}>{t('menu.account')}</MenuItem>
           <MenuItem onClick={() => openWindow('settings')}>{t('menu.settings')}</MenuItem>
           <MenuItem onClick={() => openWindow('bag')}>{t('menu.bag')}</MenuItem>
@@ -2544,7 +2566,7 @@ const AccountMenu = () => {
           {hasPermission('admin.access') ? (
             <MenuItem as={RouterLink} to="/admin">{t('menu.admin')}</MenuItem>
           ) : null}
-          <MenuItem color="red.500" onClick={logout}>{t('menu.logout')}</MenuItem>
+          <MenuItem color="red.300" onClick={logout}>{t('menu.logout')}</MenuItem>
         </MenuList>
       </Menu>
       </HStack>

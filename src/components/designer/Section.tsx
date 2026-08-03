@@ -4943,7 +4943,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           <FormControl display="flex" alignItems="center" justifyContent="space-between">
             <Box>
               <FormLabel mb={1}>Initial Game Map</FormLabel>
-              <Text fontSize="sm" color="#55645a">
+              <Text fontSize="sm" color="editor.textSubtle">
                 New players start on this map unless they already have a saved location.
               </Text>
             </Box>
@@ -5084,7 +5084,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           </FormControl>
         ) : null}
         <Flex justify="space-between" align={{ base: "flex-start", md: "center" }} gap={3} wrap="wrap">
-          <Text fontSize="sm" color="#55645a">
+          <Text fontSize="sm" color="editor.textSubtle">
             Region X/Y will be used for automatic region map generation later. That generation flow is not implemented yet.
           </Text>
           {backgroundImageSrc ? (
@@ -5100,67 +5100,67 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         <Box
           p={4}
           borderRadius="20px"
-          border="1px solid rgba(43, 66, 47, 0.12)"
-          bg="linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(241,246,238,0.95) 100%)"
+          border="1px solid" borderColor="editor.borderAccentMuted"
+          bg="editor.surface"
         >
           <Text
             fontSize="sm"
             fontWeight="700"
             textTransform="uppercase"
             letterSpacing="0.14em"
-            color="#5e7a61"
+            color="editor.accentMuted"
             mb={3}
           >
             Map Summary
           </Text>
-          <Text color="#55645a" fontSize="sm">
+          <Text color="editor.textSubtle" fontSize="sm">
             Cell size: {cellSize || "--"} px
           </Text>
-          <Text color="#55645a" fontSize="sm">
+          <Text color="editor.textSubtle" fontSize="sm">
             Map size:{" "}
             {sizePreset === "custom"
               ? `${customWidth || "--"} x ${customHeight || "--"}`
               : getMapSizePresetOption(sizePreset).label.replace(/[^(]*\((.*)\)/, "$1")}
           </Text>
-          <Text color="#55645a" fontSize="sm">
+          <Text color="editor.textSubtle" fontSize="sm">
             Initial game map: {isInitialMap ? "Yes" : "No"}
           </Text>
-          <Text color="#55645a" fontSize="sm">
+          <Text color="editor.textSubtle" fontSize="sm">
             Initial position:{" "}
             {parseOptionalMapCoordinate(initialPositionX) !== null &&
             parseOptionalMapCoordinate(initialPositionY) !== null
               ? `${parseOptionalMapCoordinate(initialPositionX)}, ${parseOptionalMapCoordinate(initialPositionY)}`
               : "Center"}
           </Text>
-          <Text color="#55645a" fontSize="sm">
+          <Text color="editor.textSubtle" fontSize="sm">
             Region: {regionName || "No regions available"}
           </Text>
-          <Text color="#55645a" fontSize="sm">
+          <Text color="editor.textSubtle" fontSize="sm">
             Region position: {parseMapCoordinate(regionX)}, {parseMapCoordinate(regionY)}
           </Text>
-          <Text color="#55645a" fontSize="sm">
+          <Text color="editor.textSubtle" fontSize="sm">
             Map type: {formatMapTypeLabel(mapType)}
           </Text>
-          <Text color="#55645a" fontSize="sm">
+          <Text color="editor.textSubtle" fontSize="sm">
             Background color: {normalizeBackgroundColor(backgroundColor)}
           </Text>
-          <Text color="#55645a" fontSize="sm">
+          <Text color="editor.textSubtle" fontSize="sm">
             Background image: {backgroundImageSrc ? backgroundImageMode : "None"}
           </Text>
           <Box
             mt={4}
             minH="120px"
             borderRadius="16px"
-            border="1px solid rgba(43, 66, 47, 0.14)"
+            border="1px solid" borderColor="editor.borderAccentMuted"
             sx={previewBackgroundStyle}
           />
           {!isValidDimensions ? (
-            <Text mt={2} color="#914335" fontSize="sm">
+            <Text mt={2} color="editor.danger" fontSize="sm">
               Enter a valid custom width and height to continue.
             </Text>
           ) : null}
           {!hasValidOptionalCoordinatePair(initialPositionX, initialPositionY) ? (
-            <Text mt={2} color="#914335" fontSize="sm">
+            <Text mt={2} color="editor.danger" fontSize="sm">
               Enter both initial position coordinates or leave both empty to use the map center.
             </Text>
           ) : null}
@@ -5231,8 +5231,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   align="center"
                   justify="center"
                   borderRadius="16px"
-                  border="1px dashed rgba(43, 66, 47, 0.18)"
-                  bg="rgba(255,255,255,0.68)"
+                  border="1px dashed" borderColor="editor.borderAccent"
+                  bg="editor.card"
                 >
                   {formState[field.key] ? (
                     <Box
@@ -5245,7 +5245,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                       style={{ imageRendering: "pixelated" }}
                     />
                   ) : (
-                    <Text fontSize="sm" color="#6d7b71">
+                    <Text fontSize="sm" color="editor.textMuted">
                       {field.required ? "Required" : "Optional"}
                     </Text>
                   )}
@@ -5258,10 +5258,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         <Box
           p={4}
           borderRadius="20px"
-          border="1px solid rgba(43, 66, 47, 0.12)"
-          bg="rgba(255,255,255,0.68)"
+          border="1px solid" borderColor="editor.borderAccentMuted"
+          bg="editor.card"
         >
-          <Text fontWeight="700" color="#233127" mb={3}>
+          <Text fontWeight="700" color="editor.heading" mb={3}>
             Skin Preview
           </Text>
           <Flex
@@ -5269,9 +5269,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             align="center"
             justify="center"
             borderRadius="18px"
-            border="1px dashed rgba(43, 66, 47, 0.18)"
+            border="1px dashed" borderColor="editor.borderAccent"
             bgSize="20px 20px"
-            bgImage="linear-gradient(45deg, rgba(46,91,55,0.07) 25%, transparent 25%, transparent 75%, rgba(46,91,55,0.07) 75%, rgba(46,91,55,0.07)), linear-gradient(45deg, rgba(46,91,55,0.07) 25%, transparent 25%, transparent 75%, rgba(46,91,55,0.07) 75%, rgba(46,91,55,0.07))"
+            bgImage="linear-gradient(45deg, var(--chakra-colors-editor-wellSoft) 25%, transparent 25%, transparent 75%, var(--chakra-colors-editor-wellSoft) 75%, var(--chakra-colors-editor-wellSoft)), linear-gradient(45deg, var(--chakra-colors-editor-wellSoft) 25%, transparent 25%, transparent 75%, var(--chakra-colors-editor-wellSoft) 75%, var(--chakra-colors-editor-wellSoft))"
             bgPosition="0 0, 10px 10px"
           >
             {previewSrc ? (
@@ -5285,12 +5285,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 style={{ imageRendering: "pixelated" }}
               />
             ) : (
-              <Text color="#6d7b71" textAlign="center" maxW="240px">
+              <Text color="editor.textMuted" textAlign="center" maxW="240px">
                 Upload the standing and walking sprites to preview the character skin.
               </Text>
             )}
           </Flex>
-          <Text mt={3} fontSize="sm" color="#55645a">
+          <Text mt={3} fontSize="sm" color="editor.textSubtle">
             Required directional images uploaded: {uploadedRequiredCount} / 8
           </Text>
         </Box>
@@ -5474,10 +5474,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           <Box
             p={4}
             borderRadius="20px"
-            border="1px solid rgba(43, 66, 47, 0.12)"
-            bg="rgba(255,255,255,0.68)"
+            border="1px solid" borderColor="editor.borderAccentMuted"
+            bg="editor.card"
           >
-            <Text fontWeight="700" color="#233127" mb={3}>
+            <Text fontWeight="700" color="editor.heading" mb={3}>
               Moving AI
             </Text>
             <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
@@ -5550,7 +5550,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 />
               </FormControl>
             </SimpleGrid>
-            <Text mt={3} fontSize="sm" color="#55645a">
+            <Text mt={3} fontSize="sm" color="editor.textSubtle">
               Random movement should stay between 5 and 60 seconds and 1 to 5 cells unless you intentionally change it.
             </Text>
           </Box>
@@ -5566,7 +5566,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               fontFamily="mono"
               placeholder={`// NPC script API\n// self.say('Hello trainer')\n// self.facePlayer()\n// self.moveRandom({ minSeconds: 5, maxSeconds: 60, minSteps: 1, maxSteps: 5 })\n// self.healParty({ price: 20 })`}
             />
-            <Text mt={2} fontSize="sm" color="#55645a">
+            <Text mt={2} fontSize="sm" color="editor.textSubtle">
               This field stores the designer-facing AI script source for backend execution later.
             </Text>
           </FormControl>
@@ -5588,7 +5588,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               value={formState.healPrice}
               onChange={(event) => updateField("healPrice", event.target.value)}
             />
-            <Text mt={2} fontSize="sm" color="#55645a">
+            <Text mt={2} fontSize="sm" color="editor.textSubtle">
               The default healer prompt is yes/no and heals every pokemon for $20.
             </Text>
           </FormControl>
@@ -5598,10 +5598,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           <Box
             p={4}
             borderRadius="20px"
-            border="1px solid rgba(43, 66, 47, 0.12)"
-            bg="rgba(255,255,255,0.68)"
+            border="1px solid" borderColor="editor.borderAccentMuted"
+            bg="editor.card"
           >
-            <Text fontWeight="700" color="#233127" mb={3}>
+            <Text fontWeight="700" color="editor.heading" mb={3}>
               Trainer Battle Team
             </Text>
             {npcPokemonCatalog.length > 0 ? (
@@ -5624,7 +5624,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 </Button>
               </Flex>
             ) : (
-              <Text fontSize="sm" color="#55645a" mb={3}>
+              <Text fontSize="sm" color="editor.textSubtle" mb={3}>
                 Create Pokemons first so this trainer can have a battle roster.
               </Text>
             )}
@@ -5637,13 +5637,13 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   direction={{ base: "column", md: "row" }}
                   p={3}
                   borderRadius="16px"
-                  border="1px solid rgba(43, 66, 47, 0.12)"
+                  border="1px solid" borderColor="editor.borderAccentMuted"
                 >
                   <Box flex="1">
-                    <Text fontWeight="700" color="#233127">
+                    <Text fontWeight="700" color="editor.heading">
                       {pokemon.pokemonName}
                     </Text>
-                    <Text fontSize="sm" color="#55645a">
+                    <Text fontSize="sm" color="editor.textSubtle">
                       {pokemon.pokemonId}
                     </Text>
                   </Box>
@@ -5689,7 +5689,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               ))}
             </Stack>
             {formState.trainerPokemons.length === 0 ? (
-              <Text mt={3} fontSize="sm" color="#914335">
+              <Text mt={3} fontSize="sm" color="editor.danger">
                 Trainers need at least one pokemon configured.
               </Text>
             ) : null}
@@ -5700,8 +5700,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           <Box
             p={4}
             borderRadius="20px"
-            border="1px solid rgba(43, 66, 47, 0.12)"
-            bg="rgba(255,255,255,0.68)"
+            border="1px solid" borderColor="editor.borderAccentMuted"
+            bg="editor.card"
           >
             <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} mb={4}>
               <FormControl
@@ -5719,7 +5719,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   value={formState.storeMoney}
                   onChange={(event) => updateField("storeMoney", event.target.value)}
                 />
-                <Text mt={2} fontSize="sm" color="#55645a">
+                <Text mt={2} fontSize="sm" color="editor.textSubtle">
                   Default is $10,000,000 and this amount should only be visible in the designer.
                 </Text>
               </FormControl>
@@ -5749,14 +5749,14 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   key={item.itemId}
                   p={3}
                   borderRadius="16px"
-                  border="1px solid rgba(43, 66, 47, 0.12)"
+                  border="1px solid" borderColor="editor.borderAccentMuted"
                 >
                   <Flex justify="space-between" align="center" gap={3} mb={3}>
                     <Box>
-                      <Text fontWeight="700" color="#233127">
+                      <Text fontWeight="700" color="editor.heading">
                         {item.itemName}
                       </Text>
-                      <Text fontSize="sm" color="#55645a">
+                      <Text fontSize="sm" color="editor.textSubtle">
                         {item.itemId}
                       </Text>
                     </Box>
@@ -5828,7 +5828,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               ))}
             </Stack>
             {npcItemCatalog.length === 0 ? (
-              <Text mt={3} fontSize="sm" color="#55645a">
+              <Text mt={3} fontSize="sm" color="editor.textSubtle">
                 Create Items first so stores can sell them.
               </Text>
             ) : null}
@@ -5839,8 +5839,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           <Box
             p={4}
             borderRadius="20px"
-            border="1px solid rgba(43, 66, 47, 0.12)"
-            bg="rgba(255,255,255,0.68)"
+            border="1px solid" borderColor="editor.borderAccentMuted"
+            bg="editor.card"
           >
             <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} mb={4}>
               <FormControl
@@ -5858,7 +5858,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   value={formState.chestSlotCapacity}
                   onChange={(event) => updateField("chestSlotCapacity", event.target.value)}
                 />
-                <Text mt={2} fontSize="sm" color="#55645a">
+                <Text mt={2} fontSize="sm" color="editor.textSubtle">
                   A stack of 999 potions still uses just one slot.
                 </Text>
               </FormControl>
@@ -5891,13 +5891,13 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   direction={{ base: "column", md: "row" }}
                   p={3}
                   borderRadius="16px"
-                  border="1px solid rgba(43, 66, 47, 0.12)"
+                  border="1px solid" borderColor="editor.borderAccentMuted"
                 >
                   <Box flex="1">
-                    <Text fontWeight="700" color="#233127">
+                    <Text fontWeight="700" color="editor.heading">
                       {item.itemName}
                     </Text>
-                    <Text fontSize="sm" color="#55645a">
+                    <Text fontSize="sm" color="editor.textSubtle">
                       {item.itemId}
                     </Text>
                   </Box>
@@ -5943,13 +5943,13 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               ))}
             </Stack>
             {npcItemCatalog.length === 0 ? (
-              <Text mt={3} fontSize="sm" color="#55645a">
+              <Text mt={3} fontSize="sm" color="editor.textSubtle">
                 Create Items first so chests can store them.
               </Text>
             ) : null}
             {formState.chestItems.length >
             (parsePositiveInteger(formState.chestSlotCapacity) ?? DEFAULT_NPC_CHEST_SLOTS) ? (
-              <Text mt={3} fontSize="sm" color="#914335">
+              <Text mt={3} fontSize="sm" color="editor.danger">
                 Chest contents currently use more slots than the configured chest capacity.
               </Text>
             ) : null}
@@ -5960,8 +5960,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           <Box
             p={4}
             borderRadius="20px"
-            border="1px solid rgba(43, 66, 47, 0.12)"
-            bg="rgba(255,255,255,0.68)"
+            border="1px solid" borderColor="editor.borderAccentMuted"
+            bg="editor.card"
           >
             <FormControl isRequired>
               <FormLabel>Character Skin</FormLabel>
@@ -5992,8 +5992,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               align="center"
               justify="center"
               borderRadius="18px"
-              border="1px dashed rgba(43, 66, 47, 0.18)"
-              bg="rgba(255,255,255,0.68)"
+              border="1px dashed" borderColor="editor.borderAccent"
+              bg="editor.card"
             >
               {selectedCharacterSkinPreviewSrc ? (
                 <Box
@@ -6006,7 +6006,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   style={{ imageRendering: "pixelated" }}
                 />
               ) : (
-                <Text fontSize="sm" color="#6d7b71">
+                <Text fontSize="sm" color="editor.textMuted">
                   {npcCharacterSkinCatalog.length === 0
                     ? "Create a character skin first."
                     : "Select a character skin."}
@@ -6014,7 +6014,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               )}
             </Flex>
             {selectedCharacterSkin ? (
-              <Text mt={3} fontSize="sm" color="#55645a">
+              <Text mt={3} fontSize="sm" color="editor.textSubtle">
                 Uses the directional standing and walking sprites from {selectedCharacterSkin.name}.
               </Text>
             ) : null}
@@ -6042,8 +6042,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                     align="center"
                     justify="center"
                     borderRadius="16px"
-                    border="1px dashed rgba(43, 66, 47, 0.18)"
-                    bg="rgba(255,255,255,0.68)"
+                    border="1px dashed" borderColor="editor.borderAccent"
+                    bg="editor.card"
                   >
                     {formState.graphics[field.key] ? (
                       <Box
@@ -6056,7 +6056,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                         style={{ imageRendering: "pixelated" }}
                       />
                     ) : (
-                      <Text fontSize="sm" color="#6d7b71">
+                      <Text fontSize="sm" color="editor.textMuted">
                         {field.required ? "Required" : "Optional"}
                       </Text>
                     )}
@@ -6175,7 +6175,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             ))}
           </SimpleGrid>
           {formState.elements.length === 0 ? (
-            <Text mt={2} color="#914335" fontSize="sm">
+            <Text mt={2} color="editor.danger" fontSize="sm">
               Select at least one element.
             </Text>
           ) : null}
@@ -6184,8 +6184,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         <Box
           p={4}
           borderRadius="16px"
-          border="1px solid rgba(43, 66, 47, 0.12)"
-          bg="rgba(255,255,255,0.68)"
+          border="1px solid" borderColor="editor.borderAccentMuted"
+          bg="editor.card"
         >
           <Checkbox
             colorScheme="green"
@@ -6194,7 +6194,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           >
             Initial Pokemon
           </Checkbox>
-          <Text mt={1} fontSize="sm" color="#6d7b71">
+          <Text mt={1} fontSize="sm" color="editor.textMuted">
             Can be selected by new trainers as their first Pokemon.
           </Text>
         </Box>
@@ -6228,8 +6228,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               maxH="260px"
               overflowY="auto"
               borderRadius="16px"
-              border="1px solid rgba(43, 66, 47, 0.12)"
-              bg="rgba(255,255,255,0.68)"
+              border="1px solid" borderColor="editor.borderAccentMuted"
+              bg="editor.card"
               p={2}
               mb={3}
             >
@@ -6249,7 +6249,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                       <Text flex="1" fontWeight="600" fontSize="sm" noOfLines={1}>
                         {assigned.skillName || catalogSkill?.name || assigned.skillId}
                       </Text>
-                      <Text fontSize="xs" color="#6d7b71" w="90px" noOfLines={1}>
+                      <Text fontSize="xs" color="editor.textMuted" w="90px" noOfLines={1}>
                         {catalogSkill?.category ?? ""}
                       </Text>
                       <FormControl
@@ -6290,7 +6290,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 })}
             </Box>
           ) : (
-            <Text mb={3} fontSize="sm" color="#6d7b71">
+            <Text mb={3} fontSize="sm" color="editor.textMuted">
               No moves assigned yet — search below to add some.
             </Text>
           )}
@@ -6299,7 +6299,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               661-move catalog, which made the modal crawl. */}
           <Input
             size="sm"
-            bg="white"
+            bg="editor.page"
             placeholder="Search moves to add (name)..."
             value={pokemonMoveSearch}
             onChange={(event) => setPokemonMoveSearch(event.target.value)}
@@ -6310,8 +6310,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               maxH="200px"
               overflowY="auto"
               borderRadius="12px"
-              border="1px solid rgba(43, 66, 47, 0.12)"
-              bg="white"
+              border="1px solid" borderColor="editor.borderAccentMuted"
+              bg="editor.page"
             >
               {pokemonSkillCatalog
                 .filter(
@@ -6329,13 +6329,13 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                     justify="space-between"
                     px={3}
                     py={1.5}
-                    _hover={{ bg: "rgba(126, 166, 120, 0.1)" }}
+                    _hover={{ bg: "editor.accentSoft" }}
                   >
                     <Box>
                       <Text fontSize="sm" fontWeight="600">
                         {skill.name}
                       </Text>
-                      <Text fontSize="xs" color="#6d7b71">
+                      <Text fontSize="xs" color="editor.textMuted">
                         {skill.category}
                       </Text>
                     </Box>
@@ -6352,7 +6352,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               {pokemonSkillCatalog.filter((skill) =>
                 skill.name.toLowerCase().includes(pokemonMoveSearch.trim().toLowerCase())
               ).length === 0 ? (
-                <Text px={3} py={2} fontSize="sm" color="#6d7b71">
+                <Text px={3} py={2} fontSize="sm" color="editor.textMuted">
                   No moves match "{pokemonMoveSearch}". Create moves in the Moves section first.
                 </Text>
               ) : null}
@@ -6378,8 +6378,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 align="center"
                 justify="center"
                 borderRadius="16px"
-                border="1px dashed rgba(43, 66, 47, 0.18)"
-                bg="rgba(255,255,255,0.68)"
+                border="1px dashed" borderColor="editor.borderAccent"
+                bg="editor.card"
               >
                 {formState[field.key] ? (
                   <Box
@@ -6392,7 +6392,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                     style={{ imageRendering: "pixelated" }}
                   />
                 ) : (
-                  <Text fontSize="sm" color="#6d7b71">
+                  <Text fontSize="sm" color="editor.textMuted">
                     Required
                   </Text>
                 )}
@@ -6436,8 +6436,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             align="center"
             justify="center"
             borderRadius="16px"
-            border="1px dashed rgba(43, 66, 47, 0.18)"
-            bg="rgba(255,255,255,0.68)"
+            border="1px dashed" borderColor="editor.borderAccent"
+            bg="editor.card"
           >
             {formState.mediaSrc ? (
               <Box
@@ -6450,7 +6450,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 style={{ imageRendering: "pixelated" }}
               />
             ) : (
-              <Text fontSize="sm" color="#6d7b71">
+              <Text fontSize="sm" color="editor.textMuted">
                 Required
               </Text>
             )}
@@ -6685,8 +6685,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             align="center"
             justify="center"
             borderRadius="16px"
-            border="1px dashed rgba(43, 66, 47, 0.18)"
-            bg="rgba(255,255,255,0.68)"
+            border="1px dashed" borderColor="editor.borderAccent"
+            bg="editor.card"
           >
             {formState.iconSrc ? (
               <Box
@@ -6699,7 +6699,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 style={{ imageRendering: "pixelated" }}
               />
             ) : (
-              <Text fontSize="sm" color="#6d7b71">
+              <Text fontSize="sm" color="editor.textMuted">
                 Required
               </Text>
             )}
@@ -6959,7 +6959,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             ))}
           </SimpleGrid>
           {formState.elements.length === 0 ? (
-            <Text mt={2} color="#914335" fontSize="sm">
+            <Text mt={2} color="editor.danger" fontSize="sm">
               Select at least one element.
             </Text>
           ) : null}
@@ -7130,7 +7130,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 </option>
               ))}
             </Select>
-            <Text mt={2} color="#55645a" fontSize="sm">
+            <Text mt={2} color="editor.textSubtle" fontSize="sm">
               {WEATHER_EFFECT_DESCRIPTIONS[formState.weatherEffect]}
             </Text>
           </FormControl>
@@ -7182,13 +7182,13 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         <Box
           p={4}
           borderRadius="18px"
-          border="1px solid rgba(43, 66, 47, 0.12)"
-          bg="rgba(237, 244, 234, 0.48)"
+          border="1px solid" borderColor="editor.borderAccentMuted"
+          bg="editor.surface"
         >
-          <Text fontWeight="700" color="#233127" mb={1}>
+          <Text fontWeight="700" color="editor.heading" mb={1}>
             {profileKey ? profileKey.replace(/([A-Z])/g, " $1") : "Profile"} properties
           </Text>
-          <Text fontSize="sm" color="#55645a">
+          <Text fontSize="sm" color="editor.textSubtle">
             {parsedProfile === null
               ? "The profile JSON is invalid — repair it in the raw editor below."
               : "Edit the section-specific fields directly; unknown fields are preserved."}
@@ -7220,15 +7220,15 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       minH="100vh"
       px={{ base: 4, md: 8, xl: 12 }}
       py={{ base: 6, md: 10 }}
-      bg="linear-gradient(180deg, #f7f4ea 0%, #e8efe5 100%)"
+      bgGradient="linear(to-b, editor.shellGradientStart, editor.shellGradientEnd)"
     >
       <Box
         maxW="1280px"
         mx="auto"
         p={{ base: 5, md: 8 }}
         borderRadius="32px"
-        bg="rgba(255, 252, 245, 0.92)"
-        border="1px solid rgba(58, 76, 52, 0.14)"
+        bg="editor.shellCard"
+        border="1px solid" borderColor="editor.borderAccentMuted"
         boxShadow="0 24px 60px rgba(52, 66, 45, 0.12)"
         backdropFilter="blur(12px)"
       >
@@ -7246,15 +7246,15 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               fontWeight="700"
               textTransform="uppercase"
               letterSpacing="0.18em"
-              color="#5e7a61"
+              color="editor.accentMuted"
               mb={3}
             >
               Designer / {section.title}
             </Text>
-            <Heading as="h1" size="xl" color="#233127" mb={3}>
+            <Heading as="h1" size="xl" color="editor.heading" mb={3}>
               {section.title}
             </Heading>
-            <Text color="#55645a" maxW="760px">
+            <Text color="editor.textSubtle" maxW="760px">
               {section.description}
             </Text>
           </Box>
@@ -7263,9 +7263,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             as={RouterLink}
             to="/designer"
             variant="outline"
-            borderColor="rgba(43, 66, 47, 0.2)"
-            color="#2e5b37"
-            _hover={{ bg: "rgba(126, 166, 120, 0.08)" }}
+            borderColor="editor.borderAccent"
+            color="editor.accent"
+            _hover={{ bg: "editor.accentSoft" }}
           >
             Back to Designer
           </Button>
@@ -7275,15 +7275,15 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           mb={8}
           p={{ base: 4, md: 5 }}
           borderRadius="24px"
-          bg="linear-gradient(135deg, rgba(255,253,246,0.95) 0%, rgba(237,244,234,0.95) 100%)"
-          border="1px solid rgba(43, 66, 47, 0.12)"
+          bg="editor.surface"
+          border="1px solid" borderColor="editor.borderAccentMuted"
         >
           <Text
             fontSize="sm"
             fontWeight="700"
             textTransform="uppercase"
             letterSpacing="0.14em"
-            color="#5e7a61"
+            color="editor.accentMuted"
             mb={4}
           >
             Menu
@@ -7298,7 +7298,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             </Button>
             <Button
               variant="outline"
-              borderColor="rgba(43, 66, 47, 0.24)"
+              borderColor="editor.borderAccent"
+              color="editor.accent"
               onClick={handleDeleteSelected}
               isDisabled={selectedCount === 0 || !isObjectsSyncReady}
             >
@@ -7306,7 +7307,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             </Button>
             <Button
               variant="outline"
-              borderColor="rgba(43, 66, 47, 0.24)"
+              borderColor="editor.borderAccent"
+              color="editor.accent"
               onClick={openCategoriesModal}
               isDisabled={!isObjectsSyncReady}
             >
@@ -7314,7 +7316,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             </Button>
             <Button
               variant="outline"
-              borderColor="rgba(43, 66, 47, 0.24)"
+              borderColor="editor.borderAccent"
+              color="editor.accent"
               onClick={openMoveModal}
               isDisabled={selectedCount === 0 || !isObjectsSyncReady}
             >
@@ -7322,7 +7325,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             </Button>
             <Button
               variant="outline"
-              borderColor="rgba(43, 66, 47, 0.24)"
+              borderColor="editor.borderAccent"
+              color="editor.accent"
               onClick={openImportPicker}
               isDisabled={!isObjectsSyncReady}
             >
@@ -7330,7 +7334,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             </Button>
             <Button
               variant="outline"
-              borderColor="rgba(43, 66, 47, 0.24)"
+              borderColor="editor.borderAccent"
+              color="editor.accent"
               onClick={handleExportItems}
               isDisabled={!isObjectsSyncReady}
             >
@@ -7344,7 +7349,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             display="none"
             onChange={handleImportItems}
           />
-          <Text mt={4} color="#55645a" fontSize="sm">
+          <Text mt={4} color="editor.textSubtle" fontSize="sm">
             {!authReady
               ? `Preparing the live ${section.itemLabelPlural} channel.`
               : !authenticated
@@ -7374,7 +7379,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             fontWeight="700"
             textTransform="uppercase"
             letterSpacing="0.14em"
-            color="#5e7a61"
+            color="editor.accentMuted"
             mb={4}
           >
             Categories
@@ -7386,13 +7391,13 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 px={4}
                 py={3}
                 borderRadius="18px"
-                bg="rgba(126, 166, 120, 0.1)"
-                border="1px solid rgba(43, 66, 47, 0.12)"
+                bg="editor.accentSoft"
+                border="1px solid" borderColor="editor.borderAccentMuted"
               >
-                <Text fontWeight="700" color="#233127">
+                <Text fontWeight="700" color="editor.heading">
                   {category.name}
                 </Text>
-                <Text fontSize="sm" color="#55645a">
+                <Text fontSize="sm" color="editor.textSubtle">
                   {category.count}{" "}
                   {category.count === 1 ? section.itemLabel : section.itemLabelPlural}
                 </Text>
@@ -7407,27 +7412,27 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             fontWeight="700"
             textTransform="uppercase"
             letterSpacing="0.14em"
-            color="#5e7a61"
+            color="editor.accentMuted"
             mb={4}
           >
             Search & Filter
           </Text>
           <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
             <FormControl>
-              <FormLabel color="#55645a">Search by name</FormLabel>
+              <FormLabel color="editor.textSubtle">Search by name</FormLabel>
               <Input
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
                 placeholder={`Search ${section.itemLabelPlural} by name`}
-                bg="white"
+                bg="editor.page"
               />
             </FormControl>
             <FormControl>
-              <FormLabel color="#55645a">Filter by category</FormLabel>
+              <FormLabel color="editor.textSubtle">Filter by category</FormLabel>
               <Select
                 value={categoryFilter}
                 onChange={(event) => setCategoryFilter(event.target.value)}
-                bg="white"
+                bg="editor.page"
               >
                 <option value={ALL_CATEGORIES}>All categories</option>
                 {sectionState.categories.map((category) => (
@@ -7445,7 +7450,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             align={{ base: "flex-start", md: "center" }}
             gap={3}
           >
-            <Text color="#55645a" fontSize="sm">
+            <Text color="editor.textSubtle" fontSize="sm">
               Showing {firstVisibleItem}-{lastVisibleItem} of {filteredItems.length} filtered{" "}
               {section.itemLabelPlural} ({sectionState.items.length} total).
             </Text>
@@ -7453,7 +7458,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               <Select
                 size="sm"
                 width="132px"
-                bg="white"
+                bg="editor.page"
                 value={itemsPerPage}
                 onChange={(event) => {
                   setItemsPerPage(Number(event.target.value));
@@ -7469,7 +7474,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               <Button
                 size="sm"
                 variant="outline"
-                borderColor="rgba(43, 66, 47, 0.24)"
+                borderColor="editor.borderAccent"
+                color="editor.accent"
                 onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
                 isDisabled={visiblePage === 1}
               >
@@ -7477,7 +7483,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               </Button>
               {pageNumbers.map((page, index) =>
                 page === "ellipsis" ? (
-                  <Text key={`ellipsis-${index}`} color="#55645a" fontSize="sm" px={1}>
+                  <Text key={`ellipsis-${index}`} color="editor.textSubtle" fontSize="sm" px={1}>
                     …
                   </Text>
                 ) : (
@@ -7486,7 +7492,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                     size="sm"
                     variant={page === visiblePage ? "solid" : "outline"}
                     colorScheme={page === visiblePage ? "green" : undefined}
-                    borderColor="rgba(43, 66, 47, 0.24)"
+                    borderColor="editor.borderAccent"
+                    color={page === visiblePage ? undefined : "editor.accent"}
                     onClick={() => setCurrentPage(page)}
                   >
                     {page}
@@ -7496,7 +7503,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               <Button
                 size="sm"
                 variant="outline"
-                borderColor="rgba(43, 66, 47, 0.24)"
+                borderColor="editor.borderAccent"
+                color="editor.accent"
                 onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
                 isDisabled={visiblePage === totalPages}
               >
@@ -7512,7 +7520,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             fontWeight="700"
             textTransform="uppercase"
             letterSpacing="0.14em"
-            color="#5e7a61"
+            color="editor.accentMuted"
             mb={4}
           >
             {section.title} List
@@ -7521,13 +7529,13 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             <Box
               p={8}
               borderRadius="24px"
-              border="1px solid rgba(43, 66, 47, 0.12)"
-              bg="rgba(255,255,255,0.72)"
+              border="1px solid" borderColor="editor.borderAccentMuted"
+              bg="editor.card"
             >
-              <Text fontWeight="700" color="#233127" mb={2}>
+              <Text fontWeight="700" color="editor.heading" mb={2}>
                 No {section.itemLabelPlural} match this filter.
               </Text>
-              <Text color="#55645a">
+              <Text color="editor.textSubtle">
                 Try another name or category filter, or create a new {section.itemLabel}.
               </Text>
             </Box>
@@ -7613,13 +7621,13 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                     p={{ base: 4, md: 5 }}
                     borderRadius="24px"
                     borderWidth="2px"
-                    borderColor={isSelected ? "#4b7a55" : "rgba(43, 66, 47, 0.12)"}
+                    borderColor={isSelected ? "editor.cardSelectedBorder" : "editor.borderAccentMuted"}
                     bg={
                       isSelected
-                        ? "rgba(225, 241, 221, 0.95)"
-                        : "linear-gradient(135deg, #fffdf6 0%, #edf4ea 100%)"
+                        ? "editor.cardSelected"
+                        : "editor.surface"
                     }
-                    color="#213128"
+                    color="editor.heading"
                     cursor="pointer"
                     textAlign="left"
                     transition="transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease"
@@ -7630,7 +7638,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                     }
                     _hover={{
                       transform: "translateY(-3px)",
-                      borderColor: "rgba(43, 66, 47, 0.32)",
+                      borderColor: "editor.borderAccent",
                       boxShadow: "0 18px 34px rgba(59, 78, 55, 0.14)",
                     }}
                   >
@@ -7653,10 +7661,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                             characterSkinPreviewSrc ||
                             npcPreviewSrc ||
                             pokemonProfile?.iconImageSrc
-                              ? "linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(227,235,224,0.95) 100%)"
-                              : "rgba(126, 166, 120, 0.12)"
+                              ? "editor.surface"
+                              : "editor.accentSoft"
                           }
-                          color="#2e5b37"
+                          color="editor.accent"
                           flexShrink={0}
                         >
                           {mapObjectAsset ? (
@@ -7761,8 +7769,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                             px={2.5}
                             py={1}
                             borderRadius="full"
-                            bg="rgba(46, 91, 55, 0.12)"
-                            color="#2e5b37"
+                            bg="editor.accentSoft"
+                            color="editor.accent"
                             textTransform="none"
                           >
                             {section.categoryLabel}: {item.category}
@@ -7774,8 +7782,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                         px={2.5}
                         py={1}
                         borderRadius="full"
-                        bg={isSelected ? "#2e5b37" : "rgba(46, 91, 55, 0.08)"}
-                        color={isSelected ? "white" : "#2e5b37"}
+                        bg={isSelected ? "editor.accent" : "editor.accentSoft"}
+                        color={isSelected ? "editor.onAccent" : "editor.accent"}
                         textTransform="none"
                       >
                         {isSelected ? "Selected" : "Select"}
@@ -7789,8 +7797,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                         align="center"
                         justify="center"
                         borderRadius="16px"
-                        border="1px solid rgba(43, 66, 47, 0.12)"
-                        bg="rgba(255,255,255,0.68)"
+                        border="1px solid" borderColor="editor.borderAccentMuted"
+                        bg="editor.card"
                       >
                         <Box
                           as="img"
@@ -7811,8 +7819,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                         align="center"
                         justify="center"
                         borderRadius="16px"
-                        border="1px solid rgba(43, 66, 47, 0.12)"
-                        bg="rgba(255,255,255,0.68)"
+                        border="1px solid" borderColor="editor.borderAccentMuted"
+                        bg="editor.card"
                       >
                         <Box
                           as="img"
@@ -7833,10 +7841,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                           justify="space-between"
                           gap={4}
                         >
-                          <Text fontSize="sm" color="#6d7b71">
+                          <Text fontSize="sm" color="editor.textMuted">
                             {itemDetail.label}
                           </Text>
-                          <Text fontSize="sm" fontWeight="700" color="#233127">
+                          <Text fontSize="sm" fontWeight="700" color="editor.heading">
                             {itemDetail.value}
                           </Text>
                         </Flex>
@@ -7875,7 +7883,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                           size="sm"
                           variant="outline"
                           borderColor="rgba(145, 67, 53, 0.24)"
-                          color="#914335"
+                          color="editor.danger"
                           isDisabled={!isObjectsSyncReady}
                           icon={
                             <Icon viewBox="0 0 24 24" boxSize={4}>
@@ -7927,8 +7935,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                           aria-label={`Edit ${item.name}`}
                           size="sm"
                           variant="outline"
-                          borderColor="rgba(43, 66, 47, 0.24)"
-                          color="#2e5b37"
+                          borderColor="editor.borderAccent"
+                          color="editor.accent"
                           isDisabled={!isObjectsSyncReady}
                           icon={
                             <Icon viewBox="0 0 24 24" boxSize={4}>
@@ -7973,24 +7981,24 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         <ModalOverlay bg="blackAlpha.500" />
         <ModalContent
           borderRadius="24px"
-          bg="#fffdf8"
+          bg="editor.raised"
           overflow="hidden"
           maxH="calc(100vh - 2rem)"
           boxShadow="0 28px 70px rgba(24, 34, 20, 0.24)"
         >
-          <ModalHeader bg="#fffdf8" borderBottom="1px solid rgba(43, 66, 47, 0.08)">
+          <ModalHeader bg="editor.raised" borderBottom="1px solid" borderBottomColor="editor.borderAccentFaint">
             {reviewingSkillGfxItem?.name ?? "Move Animation"}
           </ModalHeader>
           <ModalCloseButton />
-          <ModalBody bg="#fffdf8" overflowY="auto">
+          <ModalBody bg="editor.raised" overflowY="auto">
             <Stack spacing={5}>
               <Flex
                 minH={{ base: "260px", md: "420px" }}
                 align="center"
                 justify="center"
                 borderRadius="18px"
-                border="1px solid rgba(43, 66, 47, 0.12)"
-                bg="rgba(255,255,255,0.74)"
+                border="1px solid" borderColor="editor.borderAccentMuted"
+                bg="editor.card"
               >
                 {reviewingSkillGfxProfile?.mediaSrc ? (
                   <Box
@@ -8003,7 +8011,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                     style={{ imageRendering: "pixelated" }}
                   />
                 ) : (
-                  <Text color="#6d7b71">No animation GIF available.</Text>
+                  <Text color="editor.textMuted">No animation GIF available.</Text>
                 )}
               </Flex>
 
@@ -8015,12 +8023,12 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                     gap={4}
                     p={3}
                     borderRadius="12px"
-                    bg="rgba(237, 244, 234, 0.58)"
+                    bg="editor.surface"
                   >
-                    <Text fontSize="sm" color="#6d7b71">
+                    <Text fontSize="sm" color="editor.textMuted">
                       {itemDetail.label}
                     </Text>
-                    <Text fontSize="sm" fontWeight="700" color="#233127" textAlign="right">
+                    <Text fontSize="sm" fontWeight="700" color="editor.heading" textAlign="right">
                       {itemDetail.value}
                     </Text>
                   </Flex>
@@ -8028,7 +8036,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               </SimpleGrid>
             </Stack>
           </ModalBody>
-          <ModalFooter bg="#fffdf8" borderTop="1px solid rgba(43, 66, 47, 0.08)">
+          <ModalFooter bg="editor.raised" borderTop="1px solid" borderTopColor="editor.borderAccentFaint">
             <Button variant="ghost" onClick={() => setReviewingSkillGfxItem(null)}>
               Close
             </Button>
@@ -8045,16 +8053,16 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         <ModalOverlay bg="blackAlpha.400" />
         <ModalContent
           borderRadius="24px"
-          bg="#fffdf8"
+          bg="editor.raised"
           overflow="hidden"
           maxH="calc(100vh - 2rem)"
           boxShadow="0 28px 70px rgba(24, 34, 20, 0.24)"
         >
-          <ModalHeader bg="#fffdf8" borderBottom="1px solid rgba(43, 66, 47, 0.08)">
+          <ModalHeader bg="editor.raised" borderBottom="1px solid" borderBottomColor="editor.borderAccentFaint">
             Add New {section.itemLabel}
           </ModalHeader>
           <ModalCloseButton />
-          <ModalBody bg="#fffdf8" overflowY="auto">
+          <ModalBody bg="editor.raised" overflowY="auto">
             <Stack spacing={4}>
               <FormControl>
                 <FormLabel>Name</FormLabel>
@@ -8121,7 +8129,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                       }
                       p={1.5}
                     />
-                    <Text mt={2} fontSize="sm" color="#55645a">
+                    <Text mt={2} fontSize="sm" color="editor.textSubtle">
                       Upload a transparent PNG or GIF to use as the map object
                       sprite.
                     </Text>
@@ -8168,15 +8176,15 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   <Box
                     p={4}
                     borderRadius="20px"
-                    border="1px solid rgba(43, 66, 47, 0.12)"
-                    bg="linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(241,246,238,0.95) 100%)"
+                    border="1px solid" borderColor="editor.borderAccentMuted"
+                    bg="editor.surface"
                   >
                     <Text
                       fontSize="sm"
                       fontWeight="700"
                       textTransform="uppercase"
                       letterSpacing="0.14em"
-                      color="#5e7a61"
+                      color="editor.accentMuted"
                       mb={3}
                     >
                       Preview
@@ -8186,9 +8194,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                       align="center"
                       justify="center"
                       borderRadius="18px"
-                      border="1px dashed rgba(43, 66, 47, 0.18)"
+                      border="1px dashed" borderColor="editor.borderAccent"
                       bgSize="20px 20px"
-                      bgImage="linear-gradient(45deg, rgba(46,91,55,0.07) 25%, transparent 25%, transparent 75%, rgba(46,91,55,0.07) 75%, rgba(46,91,55,0.07)), linear-gradient(45deg, rgba(46,91,55,0.07) 25%, transparent 25%, transparent 75%, rgba(46,91,55,0.07) 75%, rgba(46,91,55,0.07))"
+                      bgImage="linear-gradient(45deg, var(--chakra-colors-editor-wellSoft) 25%, transparent 25%, transparent 75%, var(--chakra-colors-editor-wellSoft) 75%, var(--chakra-colors-editor-wellSoft)), linear-gradient(45deg, var(--chakra-colors-editor-wellSoft) 25%, transparent 25%, transparent 75%, var(--chakra-colors-editor-wellSoft) 75%, var(--chakra-colors-editor-wellSoft))"
                       bgPosition="0 0, 10px 10px"
                     >
                       {newMapObjectImage ? (
@@ -8212,13 +8220,13 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                           style={{ imageRendering: "pixelated" }}
                         />
                       ) : (
-                        <Text color="#6d7b71" textAlign="center" maxW="240px">
+                        <Text color="editor.textMuted" textAlign="center" maxW="240px">
                           Upload a PNG or GIF to preview the map object with the
                           selected width and height.
                         </Text>
                       )}
                     </Flex>
-                    <Text mt={3} fontSize="sm" color="#55645a">
+                    <Text mt={3} fontSize="sm" color="editor.textSubtle">
                       Saved size:{" "}
                       {hasValidMapObjectWidth ? newMapObjectWidth : "--"} x{" "}
                       {hasValidMapObjectHeight ? newMapObjectHeight : "--"} px
@@ -8264,8 +8272,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           </ModalBody>
           <ModalFooter
             gap={3}
-            bg="#fffdf8"
-            borderTop="1px solid rgba(43, 66, 47, 0.08)"
+            bg="editor.raised"
+            borderTop="1px solid" borderTopColor="editor.borderAccentFaint"
           >
             <Button variant="ghost" onClick={() => setIsAddOpen(false)}>
               Cancel
@@ -8301,16 +8309,16 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         <ModalOverlay bg="blackAlpha.400" />
         <ModalContent
           borderRadius="24px"
-          bg="#fffdf8"
+          bg="editor.raised"
           overflow="hidden"
           maxH="calc(100vh - 2rem)"
           boxShadow="0 28px 70px rgba(24, 34, 20, 0.24)"
         >
-          <ModalHeader bg="#fffdf8" borderBottom="1px solid rgba(43, 66, 47, 0.08)">
+          <ModalHeader bg="editor.raised" borderBottom="1px solid" borderBottomColor="editor.borderAccentFaint">
             Edit {section.itemLabel}
           </ModalHeader>
           <ModalCloseButton />
-          <ModalBody bg="#fffdf8" overflowY="auto">
+          <ModalBody bg="editor.raised" overflowY="auto">
             <Stack spacing={4}>
               <FormControl>
                 <FormLabel>Name</FormLabel>
@@ -8377,7 +8385,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                       }
                       p={1.5}
                     />
-                    <Text mt={2} fontSize="sm" color="#55645a">
+                    <Text mt={2} fontSize="sm" color="editor.textSubtle">
                       Upload a transparent PNG or GIF to replace the current map
                       object sprite.
                     </Text>
@@ -8430,15 +8438,15 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                   <Box
                     p={4}
                     borderRadius="20px"
-                    border="1px solid rgba(43, 66, 47, 0.12)"
-                    bg="linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(241,246,238,0.95) 100%)"
+                    border="1px solid" borderColor="editor.borderAccentMuted"
+                    bg="editor.surface"
                   >
                     <Text
                       fontSize="sm"
                       fontWeight="700"
                       textTransform="uppercase"
                       letterSpacing="0.14em"
-                      color="#5e7a61"
+                      color="editor.accentMuted"
                       mb={3}
                     >
                       Preview
@@ -8448,9 +8456,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                       align="center"
                       justify="center"
                       borderRadius="18px"
-                      border="1px dashed rgba(43, 66, 47, 0.18)"
+                      border="1px dashed" borderColor="editor.borderAccent"
                       bgSize="20px 20px"
-                      bgImage="linear-gradient(45deg, rgba(46,91,55,0.07) 25%, transparent 25%, transparent 75%, rgba(46,91,55,0.07) 75%, rgba(46,91,55,0.07)), linear-gradient(45deg, rgba(46,91,55,0.07) 25%, transparent 25%, transparent 75%, rgba(46,91,55,0.07) 75%, rgba(46,91,55,0.07))"
+                      bgImage="linear-gradient(45deg, var(--chakra-colors-editor-wellSoft) 25%, transparent 25%, transparent 75%, var(--chakra-colors-editor-wellSoft) 75%, var(--chakra-colors-editor-wellSoft)), linear-gradient(45deg, var(--chakra-colors-editor-wellSoft) 25%, transparent 25%, transparent 75%, var(--chakra-colors-editor-wellSoft) 75%, var(--chakra-colors-editor-wellSoft))"
                       bgPosition="0 0, 10px 10px"
                     >
                       {editMapObjectImage ? (
@@ -8474,13 +8482,13 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                           style={{ imageRendering: "pixelated" }}
                         />
                       ) : (
-                        <Text color="#6d7b71" textAlign="center" maxW="240px">
+                        <Text color="editor.textMuted" textAlign="center" maxW="240px">
                           Upload a PNG or GIF to preview the map object with the
                           selected width and height.
                         </Text>
                       )}
                     </Flex>
-                    <Text mt={3} fontSize="sm" color="#55645a">
+                    <Text mt={3} fontSize="sm" color="editor.textSubtle">
                       Saved size:{" "}
                       {hasValidEditMapObjectWidth ? editMapObjectWidth : "--"} x{" "}
                       {hasValidEditMapObjectHeight ? editMapObjectHeight : "--"} px
@@ -8526,8 +8534,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           </ModalBody>
           <ModalFooter
             gap={3}
-            bg="#fffdf8"
-            borderTop="1px solid rgba(43, 66, 47, 0.08)"
+            bg="editor.raised"
+            borderTop="1px solid" borderTopColor="editor.borderAccentFaint"
           >
             <Button
               colorScheme="red"
@@ -8550,8 +8558,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                 as={RouterLink}
                 to={getMapEditorPath(editingItemId)}
                 variant="outline"
-                borderColor="rgba(43, 66, 47, 0.24)"
-                color="#2e5b37"
+                borderColor="editor.borderAccent"
+                color="editor.accent"
               >
                 Map Editor
               </Button>
@@ -8587,27 +8595,27 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         <ModalOverlay bg="blackAlpha.400" />
         <ModalContent
           borderRadius="24px"
-          bg="#fffdf8"
+          bg="editor.raised"
           overflow="hidden"
           maxH="calc(100vh - 2rem)"
           boxShadow="0 28px 70px rgba(24, 34, 20, 0.24)"
         >
           <ModalHeader
-            color="#914335"
-            bg="#fffdf8"
+            color="editor.danger"
+            bg="editor.raised"
             borderBottom="1px solid rgba(145, 67, 53, 0.08)"
           >
             Delete {section.itemLabel}
           </ModalHeader>
           <ModalCloseButton />
-          <ModalBody bg="#fffdf8" overflowY="auto">
-            <Text color="#6e2f24">
+          <ModalBody bg="editor.raised" overflowY="auto">
+            <Text color="editor.danger">
               Are you sure you want to delete this {section.itemLabel}?
             </Text>
           </ModalBody>
           <ModalFooter
             gap={3}
-            bg="#fffdf8"
+            bg="editor.raised"
             borderTop="1px solid rgba(145, 67, 53, 0.08)"
           >
             <Button variant="ghost" onClick={closeDeleteItemConfirm}>
@@ -8629,24 +8637,24 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         <ModalOverlay bg="blackAlpha.400" />
         <ModalContent
           borderRadius="24px"
-          bg="#fffdf8"
+          bg="editor.raised"
           overflow="hidden"
           maxH="calc(100vh - 2rem)"
           boxShadow="0 28px 70px rgba(24, 34, 20, 0.24)"
         >
-          <ModalHeader bg="#fffdf8" borderBottom="1px solid rgba(43, 66, 47, 0.08)">
+          <ModalHeader bg="editor.raised" borderBottom="1px solid" borderBottomColor="editor.borderAccentFaint">
             Categories
           </ModalHeader>
           <ModalCloseButton />
-          <ModalBody bg="#fffdf8" overflowY="auto">
+          <ModalBody bg="editor.raised" overflowY="auto">
             <Stack spacing={6}>
               <Box
                 p={4}
                 borderRadius="18px"
-                bg="rgba(126, 166, 120, 0.08)"
-                border="1px solid rgba(43, 66, 47, 0.12)"
+                bg="editor.accentSoft"
+                border="1px solid" borderColor="editor.borderAccentMuted"
               >
-                <Text fontWeight="700" color="#233127" mb={3}>
+                <Text fontWeight="700" color="editor.heading" mb={3}>
                   Add Category
                 </Text>
                 <Flex direction={{ base: "column", md: "row" }} gap={3}>
@@ -8654,7 +8662,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                     value={newCategoryName}
                     onChange={(event) => setNewCategoryName(event.target.value)}
                     placeholder={`Create a ${section.categoryLabel} folder`}
-                    bg="white"
+                    bg="editor.page"
                   />
                   <Button
                     colorScheme="green"
@@ -8667,7 +8675,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               </Box>
 
               <Box>
-                <Text fontWeight="700" color="#233127" mb={3}>
+                <Text fontWeight="700" color="editor.heading" mb={3}>
                   Existing Categories
                 </Text>
                 <Stack spacing={3}>
@@ -8681,8 +8689,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                         key={category.name}
                         p={4}
                         borderRadius="18px"
-                        border="1px solid rgba(43, 66, 47, 0.12)"
-                        bg="rgba(255,255,255,0.78)"
+                        border="1px solid" borderColor="editor.borderAccentMuted"
+                        bg="editor.card"
                       >
                         <Flex
                           direction={{ base: "column", lg: "row" }}
@@ -8699,7 +8707,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                                     setEditingCategoryName(event.target.value)
                                   }
                                   placeholder="Rename category"
-                                  bg="white"
+                                  bg="editor.page"
                                 />
                                 <Flex wrap="wrap" gap={3}>
                                   <Button
@@ -8716,10 +8724,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                               </Stack>
                             ) : (
                               <Box>
-                                <Text fontWeight="700" color="#233127">
+                                <Text fontWeight="700" color="editor.heading">
                                   {category.name}
                                 </Text>
-                                <Text fontSize="sm" color="#55645a">
+                                <Text fontSize="sm" color="editor.textSubtle">
                                   {category.count}{" "}
                                   {category.count === 1
                                     ? section.itemLabel
@@ -8734,7 +8742,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                borderColor="rgba(43, 66, 47, 0.24)"
+                                borderColor="editor.borderAccent"
+                                color="editor.accent"
                                 onClick={() => startEditCategory(category.name)}
                                 isDisabled={isLockedCategory}
                               >
@@ -8744,7 +8753,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                                 size="sm"
                                 variant="outline"
                                 borderColor="rgba(145, 67, 53, 0.24)"
-                                color="#914335"
+                                color="editor.danger"
                                 onClick={() => startDeleteCategory(category.name)}
                                 isDisabled={isLockedCategory}
                               >
@@ -8762,15 +8771,15 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                             bg="rgba(145, 67, 53, 0.06)"
                             border="1px solid rgba(145, 67, 53, 0.14)"
                           >
-                            <Text fontWeight="700" color="#6e2f24" mb={2}>
+                            <Text fontWeight="700" color="editor.danger" mb={2}>
                               Delete {category.name}?
                             </Text>
-                            <Text fontSize="sm" color="#7b5147" mb={4}>
+                            <Text fontSize="sm" color="editor.danger" mb={4}>
                               Existing {section.itemLabelPlural} in this category can move
                               into another category or become uncategorized.
                             </Text>
                             <FormControl mb={4}>
-                              <FormLabel color="#7b5147">
+                              <FormLabel color="editor.danger">
                                 Reassign existing items to
                               </FormLabel>
                               <Select
@@ -8778,7 +8787,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
                                 onChange={(event) =>
                                   setDeleteCategoryTarget(event.target.value)
                                 }
-                                bg="white"
+                                bg="editor.page"
                               >
                                 {deleteCategoryOptions.map((option) => (
                                   <option key={option} value={option}>
@@ -8804,7 +8813,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               </Box>
             </Stack>
           </ModalBody>
-          <ModalFooter bg="#fffdf8" borderTop="1px solid rgba(43, 66, 47, 0.08)">
+          <ModalFooter bg="editor.raised" borderTop="1px solid" borderTopColor="editor.borderAccentFaint">
             <Button variant="ghost" onClick={() => setIsCategoriesOpen(false)}>
               Close
             </Button>
@@ -8816,18 +8825,18 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         <ModalOverlay bg="blackAlpha.400" />
         <ModalContent
           borderRadius="24px"
-          bg="#fffdf8"
+          bg="editor.raised"
           overflow="hidden"
           maxH="calc(100vh - 2rem)"
           boxShadow="0 28px 70px rgba(24, 34, 20, 0.24)"
         >
-          <ModalHeader bg="#fffdf8" borderBottom="1px solid rgba(43, 66, 47, 0.08)">
+          <ModalHeader bg="editor.raised" borderBottom="1px solid" borderBottomColor="editor.borderAccentFaint">
             Move Selected Elements
           </ModalHeader>
           <ModalCloseButton />
-          <ModalBody bg="#fffdf8" overflowY="auto">
+          <ModalBody bg="editor.raised" overflowY="auto">
             <Stack spacing={4}>
-              <Text color="#55645a">
+              <Text color="editor.textSubtle">
                 Move {selectedCount} selected{" "}
                 {selectedCount === 1 ? section.itemLabel : section.itemLabelPlural} into
                 a new category folder.
@@ -8849,8 +8858,8 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
           </ModalBody>
           <ModalFooter
             gap={3}
-            bg="#fffdf8"
-            borderTop="1px solid rgba(43, 66, 47, 0.08)"
+            bg="editor.raised"
+            borderTop="1px solid" borderTopColor="editor.borderAccentFaint"
           >
             <Button variant="ghost" onClick={() => setIsMoveOpen(false)}>
               Cancel

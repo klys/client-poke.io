@@ -61,14 +61,14 @@ function RevealedKey({ created, onDismiss }: { created: CreatedApiKey; onDismiss
           service’s secret config; it cannot be retrieved again after you leave this page.
         </Text>
         <HStack>
-          <Code p={3} borderRadius="12px" fontSize="sm" wordBreak="break-all" flex="1" bg="white">
+          <Code p={3} borderRadius="12px" fontSize="sm" wordBreak="break-all" flex="1" bg="white" color="gray.800">
             {created.key}
           </Code>
           <Button colorScheme="yellow" onClick={onCopy} minW="90px">
             {hasCopied ? 'Copied' : 'Copy'}
           </Button>
         </HStack>
-        <Button alignSelf="flex-start" variant="ghost" onClick={onDismiss}>
+        <Button alignSelf="flex-start" variant="ghost" color="gray.800" onClick={onDismiss}>
           I’ve stored it safely
         </Button>
       </Stack>
@@ -254,7 +254,15 @@ export default function ApiKeysManager() {
             </Button>
           </HStack>
 
-          <Box overflowX="auto">
+          <Box
+            overflowX="auto"
+            // Table headers/cell borders are mode-aware in Chakra; pin them to
+            // their light-mode values so the table reads identically in dark.
+            sx={{
+              th: { color: 'gray.600', borderColor: 'gray.100' },
+              td: { borderColor: 'gray.100' }
+            }}
+          >
             <Table size="sm">
               <Thead>
                 <Tr>
@@ -272,7 +280,7 @@ export default function ApiKeysManager() {
                 {keys.map((key) => (
                   <Tr key={key.id}>
                     <Td fontWeight="700">{key.name}</Td>
-                    <Td><Code fontSize="xs">pck_{key.keyPrefix}…</Code></Td>
+                    <Td><Code fontSize="xs" bg="gray.100" color="gray.800">pck_{key.keyPrefix}…</Code></Td>
                     <Td>
                       <HStack spacing={1}>
                         {key.scopes.map((scope) => (

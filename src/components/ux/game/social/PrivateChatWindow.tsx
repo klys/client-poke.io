@@ -146,7 +146,20 @@ export default function PrivateChatWindow({ chatId }: { chatId: string }) {
           >
             {t('chat.invite')}
           </MenuButton>
-          <MenuList color="gray.900" maxH="220px" overflowY="auto">
+          <MenuList
+          maxH="220px"
+          overflowY="auto"
+          bg="rgba(17, 24, 39, 0.97)"
+          color="white"
+          borderColor="rgba(255, 255, 255, 0.16)"
+          sx={{
+            ".chakra-menu__menuitem": {
+              bg: "transparent",
+              _hover: { bg: "whiteAlpha.200" },
+              _focus: { bg: "whiteAlpha.200" },
+            },
+          }}
+        >
             {invitableFriends.map((friend) => (
               <MenuItem
                 key={friend.userId}

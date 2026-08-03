@@ -446,7 +446,7 @@ function EncounterTablesField({
             borderRadius="10px"
             p={3}
             mb={3}
-            bg="rgba(237, 244, 234, 0.4)"
+            bg="editor.surface"
           >
             <Flex gap={2} mb={2} align="center">
               <Select
@@ -481,7 +481,7 @@ function EncounterTablesField({
               >
                 <NumberInputField placeholder="Density" />
               </NumberInput>
-              <Text fontSize="xs" color="gray.500">
+              <Text fontSize="xs" color="editor.textMuted">
                 density
               </Text>
               <Box flex="1" />
@@ -840,11 +840,11 @@ function RegionPointsField({
           </FormControl>
         </SimpleGrid>
       ) : (
-        <Text fontSize="xs" color="gray.500">
+        <Text fontSize="xs" color="editor.textMuted">
           No point selected.
         </Text>
       )}
-      <Text mt={2} fontSize="xs" color="gray.500">
+      <Text mt={2} fontSize="xs" color="editor.textMuted">
         The game reads this data from the generated townMapData files — after editing here, run
         server tools/generateTownMapData.ts (or ask an engineer) to publish the changes to the
         runtime.
@@ -885,7 +885,7 @@ function ImagePathPreview({ sourcePath }: { sourcePath: string }) {
   }
 
   return (
-    <Box mt={2} borderWidth="1px" borderRadius="8px" p={2} maxW="280px" bg="white">
+    <Box mt={2} borderWidth="1px" borderRadius="8px" p={2} maxW="280px" bg="editor.page">
       <Image
         src={resolveServerAssetUrl(sourcePath)}
         alt="Asset preview"
@@ -946,7 +946,7 @@ function FontPathPreview({ sourcePath, familyName }: { sourcePath: string; famil
   }
 
   return (
-    <Box mt={2} borderWidth="1px" borderRadius="8px" p={3} bg="white">
+    <Box mt={2} borderWidth="1px" borderRadius="8px" p={3} bg="editor.page">
       <Text fontFamily={status === "loaded" ? previewFamily : undefined} fontSize="lg">
         The quick brown Zubat jumps over the lazy Snorlax 0123456789
       </Text>
@@ -1002,7 +1002,7 @@ export default function MigrationProfileEditor({
               onChange={(event) => setField(spec.key, event.target.value)}
             />
             {spec.help ? (
-              <Text mt={1} fontSize="xs" color="gray.500">
+              <Text mt={1} fontSize="xs" color="editor.textMuted">
                 {spec.help}
               </Text>
             ) : null}
@@ -1037,7 +1037,7 @@ export default function MigrationProfileEditor({
               </NumberInputStepper>
             </NumberInput>
             {spec.help ? (
-              <Text mt={1} fontSize="xs" color="gray.500">
+              <Text mt={1} fontSize="xs" color="editor.textMuted">
                 {spec.help}
               </Text>
             ) : null}
@@ -1189,7 +1189,7 @@ export default function MigrationProfileEditor({
               />
             </Flex>
             {spec.help ? (
-              <Text mt={1} fontSize="xs" color="gray.500">
+              <Text mt={1} fontSize="xs" color="editor.textMuted">
                 {spec.help}
               </Text>
             ) : null}
@@ -1246,7 +1246,7 @@ export default function MigrationProfileEditor({
   return (
     <>
       {profile === null ? (
-        <Text color="#914335" fontSize="sm">
+        <Text color="editor.danger" fontSize="sm">
           The stored profile JSON is invalid — fix it in the raw editor below to re-enable the
           property fields.
         </Text>
@@ -1259,7 +1259,7 @@ export default function MigrationProfileEditor({
       <Accordion allowToggle mt={2}>
         <AccordionItem border="none">
           <AccordionButton px={0} _hover={{ bg: "transparent" }}>
-            <Text fontSize="sm" fontWeight="600" color="#55645a">
+            <Text fontSize="sm" fontWeight="600" color="editor.textSubtle">
               Advanced: raw profile JSON
             </Text>
             <AccordionIcon />
@@ -1274,11 +1274,11 @@ export default function MigrationProfileEditor({
                 spellCheck={false}
               />
               {profile === null ? (
-                <Text mt={2} color="#914335" fontSize="sm">
+                <Text mt={2} color="editor.danger" fontSize="sm">
                   Enter a valid JSON object.
                 </Text>
               ) : (
-                <Text mt={2} color="#55645a" fontSize="sm">
+                <Text mt={2} color="editor.textSubtle" fontSize="sm">
                   {Object.keys(profile).length} profile fields. Fields the form does not show
                   (import provenance, extra metadata) are preserved on save.
                 </Text>
