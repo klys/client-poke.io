@@ -3,6 +3,7 @@ import { AppContext } from "../../context/appContext"
 import { useEventListener } from 'usehooks-ts'
 import { useGameSettings } from "../../settings/gameSettings";
 import { getPlayableMapById } from "./playableMapRuntime";
+import { getPointerPosition } from "./pointerPosition";
 
 const MOVEMENT_KEYS = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
 
@@ -45,7 +46,7 @@ const isUxEventTarget = (target: EventTarget | null) => {
 };
 
 const UserControl = () => {
-    const { socket, players, mouse, waiting, myplayer, activeNpcInteraction, playableMapsState } = useContext(AppContext);
+    const { socket, players, waiting, myplayer, activeNpcInteraction, playableMapsState } = useContext(AppContext);
     const [gameSettings] = useGameSettings();
 
     // Movement keys currently held, in press order (latest wins). Kept in a
@@ -184,9 +185,10 @@ const UserControl = () => {
         }
 
         if ((event.key === "q")) {
+            const pointer = getPointerPosition();
             const shotProjectileData = {
-                mouse_x:mouse.x,
-                mouse_y:mouse.y,
+                mouse_x:pointer.x,
+                mouse_y:pointer.y,
                 who:socket.id
             }
 

@@ -48,6 +48,11 @@ const MIN_MOVEMENT_DURATION = 16;
 const MAX_MOVEMENT_DURATION = 180;
 const MOVEMENT_DURATION_PER_PIXEL = 7;
 
+// Context-dispatch throttling: positions are mirrored into AppContext at tile
+// granularity (plus a trailing settle) instead of per server packet.
+const CONTEXT_DISPATCH_CELL_PX = 32;
+const TRAILING_DISPATCH_MS = 200;
+
 const getDirectionFromAngle = (angle: number): Direction => {
   switch (angle) {
     case 450:
@@ -108,10 +113,27 @@ const Player = (props: any) => {
   const moveQueueRef = useRef<Position[]>([]);
   const animationFrameRef = useRef<number | null>(null);
   const currentTargetRef = useRef<Position | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const isSelfRef = useRef(false);
+  const lastDispatchedCellRef = useRef<{ cx: number; cy: number; angle: number; mapId: string } | null>(null);
+  const pendingDispatchRef = useRef<Position | null>(null);
+  const dispatchTimerRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    posRef.current = pos;
-  }, [pos]);
+  // Visual position is written straight to the DOM (compositor-friendly
+  // translate3d) instead of through setState: tweens run every animation
+  // frame and a React commit per frame per visible player is the single
+  // biggest render cost in the world view. React state (`pos`) only tracks
+  // the semantic bits a render actually depends on (currentMapId).
+  const applyVisualPosition = useCallback((position: Position) => {
+    posRef.current = position;
+    const node = rootRef.current;
+    if (node) {
+      node.style.transform = `translate3d(${position.x}px, ${position.y}px, 0)`;
+    }
+    if (isSelfRef.current) {
+      applyCameraToPosition(position.x, position.y);
+    }
+  }, []);
 
   useEffect(() => {
     deathRef.current = death;
@@ -174,7 +196,7 @@ const Player = (props: any) => {
     ) {
       currentTargetRef.current = null;
       moveQueueRef.current = [];
-      posRef.current = nextPosition;
+      applyVisualPosition(nextPosition);
       setPos(nextPosition);
       setIsWalking(false);
       return;
@@ -182,16 +204,14 @@ const Player = (props: any) => {
 
     if (samePosition(startPosition, nextPosition)) {
       currentTargetRef.current = null;
-      posRef.current = nextPosition;
-      setPos(nextPosition);
+      applyVisualPosition(nextPosition);
       processMoveQueue();
       return;
     }
 
     if (sameCoordinates(startPosition, nextPosition)) {
       currentTargetRef.current = null;
-      posRef.current = nextPosition;
-      setPos(nextPosition);
+      applyVisualPosition(nextPosition);
       processMoveQueue();
       return;
     }
@@ -217,8 +237,7 @@ const Player = (props: any) => {
         currentMapId: nextPosition.currentMapId
       };
 
-      posRef.current = animatedPosition;
-      setPos(animatedPosition);
+      applyVisualPosition(animatedPosition);
 
       if (progress < 1) {
         animationFrameRef.current = requestAnimationFrame(animate);
@@ -227,8 +246,7 @@ const Player = (props: any) => {
 
       animationFrameRef.current = null;
       currentTargetRef.current = null;
-      posRef.current = nextPosition;
-      setPos(nextPosition);
+      applyVisualPosition(nextPosition);
 
       if (moveQueueRef.current.length === 0) {
         setIsWalking(false);
@@ -239,12 +257,67 @@ const Player = (props: any) => {
     };
 
     animationFrameRef.current = requestAnimationFrame(animate);
-  }, []);
+  }, [applyVisualPosition]);
 
   useEffect(() => {
     if (!playerId) {
       return undefined;
     }
+
+    // Mirror a server position into the app context, but not at packet rate:
+    // move packets arrive ~every 28ms while walking and every dispatch
+    // re-renders every AppContext consumer (Map, UserControl, Network, …).
+    // Consumers act on tile-level data, so dispatch immediately only when the
+    // 32px cell / facing / map changes, and trail the in-cell remainder so the
+    // context always settles on the exact resting position.
+    const dispatchMoveToContext = (position: Position, force: boolean) => {
+      if (typeof playerIndex === "undefined") {
+        return;
+      }
+
+      const cell = {
+        cx: Math.floor(position.x / CONTEXT_DISPATCH_CELL_PX),
+        cy: Math.floor(position.y / CONTEXT_DISPATCH_CELL_PX),
+        angle: position.angle,
+        mapId: position.currentMapId
+      };
+      const last = lastDispatchedCellRef.current;
+      const cellChanged =
+        !last ||
+        last.cx !== cell.cx ||
+        last.cy !== cell.cy ||
+        last.angle !== cell.angle ||
+        last.mapId !== cell.mapId;
+
+      if (!cellChanged && !force) {
+        pendingDispatchRef.current = position;
+        if (dispatchTimerRef.current === null) {
+          dispatchTimerRef.current = window.setTimeout(() => {
+            dispatchTimerRef.current = null;
+            const pending = pendingDispatchRef.current;
+            pendingDispatchRef.current = null;
+            if (pending) {
+              dispatchMoveToContext(pending, true);
+            }
+          }, TRAILING_DISPATCH_MS);
+        }
+        return;
+      }
+
+      if (dispatchTimerRef.current !== null) {
+        window.clearTimeout(dispatchTimerRef.current);
+        dispatchTimerRef.current = null;
+      }
+      pendingDispatchRef.current = null;
+      lastDispatchedCellRef.current = cell;
+      movePlayerRef.current({
+        id: playerIndex,
+        angle: position.angle,
+        x: position.x,
+        y: position.y,
+        currentMapId: position.currentMapId
+      });
+    };
 
     const handlePlayerMove = (data: any) => {
       if (deathRef.current) {
@@ -266,20 +339,10 @@ const Player = (props: any) => {
         nextPosition.currentMapId !== posRef.current.currentMapId
       ) {
         stopMovement();
-        posRef.current = nextPosition;
+        applyVisualPosition(nextPosition);
         setDirection(getDirectionFromAngle(nextPosition.angle));
         setPos(nextPosition);
-
-        if (typeof playerIndex !== "undefined") {
-          movePlayerRef.current({
-            id: playerIndex,
-            angle: nextPosition.angle,
-            x: nextPosition.x,
-            y: nextPosition.y,
-            currentMapId: nextPosition.currentMapId
-          });
-        }
-
+        dispatchMoveToContext(nextPosition, true);
         return;
       }
 
@@ -297,15 +360,7 @@ const Player = (props: any) => {
         processMoveQueue();
       }
 
-      if (typeof playerIndex !== "undefined") {
-        movePlayerRef.current({
-          id: playerIndex,
-          angle: nextPosition.angle,
-          x: nextPosition.x,
-          y: nextPosition.y,
-          currentMapId: nextPosition.currentMapId
-        });
-      }
+      dispatchMoveToContext(nextPosition, false);
     };
 
     const handlePlayerDeath = () => {
@@ -344,8 +399,13 @@ const Player = (props: any) => {
       socket.off("player:surf-state", handleSurfState);
       socket.off("player:pose", handlePose);
       stopMovement();
+      if (dispatchTimerRef.current !== null) {
+        window.clearTimeout(dispatchTimerRef.current);
+        dispatchTimerRef.current = null;
+      }
+      pendingDispatchRef.current = null;
     };
-  }, [playerId, playerIndex, processMoveQueue, socket, stopMovement]);
+  }, [applyVisualPosition, playerId, playerIndex, processMoveQueue, socket, stopMovement]);
 
   // Re-seed traversal state whenever the server re-presents this player
   // (map change, reconnect, visibility refresh).
@@ -354,11 +414,15 @@ const Player = (props: any) => {
   }, [playerInfo.isSurfing]);
 
   useEffect(() => {
-    if (myplayer !== playerId) {
+    isSelfRef.current = myplayer === playerId;
+    if (!isSelfRef.current) {
       return;
     }
 
-    applyCameraToPosition(pos.x, pos.y);
+    // Snap the camera when this player becomes "me" (login, map switch,
+    // reconnect). While moving, applyVisualPosition keeps the camera glued to
+    // the tween without a React commit per frame.
+    applyCameraToPosition(posRef.current.x, posRef.current.y);
   }, [myplayer, playerId, pos]);
 
   useEffect(() => {
@@ -430,6 +494,7 @@ const Player = (props: any) => {
   return (
     <div
       id={playerId}
+      ref={rootRef}
       hidden={death || !isVisibleOnActiveMap}
       onPointerEnter={() => setIsHovered(true)}
       onPointerLeave={() => setIsHovered(false)}
@@ -451,8 +516,12 @@ const Player = (props: any) => {
       }}
       style={{
         position: "absolute",
-        top: `${pos.y}px`,
-        left: `${pos.x}px`,
+        top: 0,
+        left: 0,
+        // Movement animates transform (compositor-only, no layout) via
+        // applyVisualPosition. Rendering from posRef (not `pos` state) keeps
+        // an unrelated re-render mid-tween from snapping the sprite back.
+        transform: `translate3d(${posRef.current.x}px, ${posRef.current.y}px, 0)`,
         width: "32px",
         height: "32px",
         zIndex: 999,

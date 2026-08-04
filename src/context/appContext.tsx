@@ -1,4 +1,4 @@
-import { createContext, useReducer, useState } from "react"
+import { createContext, useMemo, useReducer, useState } from "react"
 import io, { Socket } from "socket.io-client"
 import Player from "../components/game/Player"
 import { loadPlayableMapsSnapshot } from "../components/game/playableMapRuntime"
@@ -342,26 +342,11 @@ export const Provider = ({ children, socketUrl }:{children:any, socketUrl:string
         }
     }, [socket])*/
 
-    const api = {
-        socket: state.socket,
-        players: state.players ?? [],
-        //playersIds: state.playersIds,
-        projectiles: state.projectiles ?? [],
-        mouse:state.mouse,
-        //map:state.map,
-        playableMapsState: state.playableMapsState,
-        pointerAngle:state.pointerAngle,
-        life:state.life ?? 100,
-        waiting:state.waiting ?? false,
-        myplayer:state.myplayer ?? "",
-        objects:state.objects ?? [],
-        groundItems: state.groundItems ?? [],
-        battle: state.battle ?? null,
-        battleEvents: state.battleEvents ?? [],
-        battlePrompts: state.battlePrompts ?? [],
-        selectedTrainer: state.selectedTrainer ?? null,
-        activeNpcInteraction: state.activeNpcInteraction ?? null,
-        eventState: state.eventState ?? EMPTY_EVENT_STATE,
+    // Dispatch wrappers only depend on the (stable) reducer dispatch, so give
+    // them stable identities: consumers can safely list them in effect deps
+    // or memoize children without every state change re-creating callbacks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const apiActions = useMemo(() => ({
         setEventState: (eventState: EventPlayerState) => {
             dispatch({ type: actions.SET_EVENT_STATE, eventState })
         },
@@ -446,7 +431,30 @@ export const Provider = ({ children, socketUrl }:{children:any, socketUrl:string
         setActiveNpcInteraction: (npcInteraction: MapEditorNpcPlacement | null) => {
             dispatch({type: actions.SET_ACTIVE_NPC_INTERACTION, npcInteraction})
         }
-    }
+    }), [])
+
+    const api = useMemo(() => ({
+        socket: state.socket,
+        players: state.players ?? [],
+        //playersIds: state.playersIds,
+        projectiles: state.projectiles ?? [],
+        mouse:state.mouse,
+        //map:state.map,
+        playableMapsState: state.playableMapsState,
+        pointerAngle:state.pointerAngle,
+        life:state.life ?? 100,
+        waiting:state.waiting ?? false,
+        myplayer:state.myplayer ?? "",
+        objects:state.objects ?? [],
+        groundItems: state.groundItems ?? [],
+        battle: state.battle ?? null,
+        battleEvents: state.battleEvents ?? [],
+        battlePrompts: state.battlePrompts ?? [],
+        selectedTrainer: state.selectedTrainer ?? null,
+        activeNpcInteraction: state.activeNpcInteraction ?? null,
+        eventState: state.eventState ?? EMPTY_EVENT_STATE,
+        ...apiActions
+    }), [state, apiActions])
 
     return (
         <AppContext.Provider value={api}>

@@ -6,6 +6,7 @@ import GameObject from "./Object";
 import MapNeighbors from "./MapNeighbors";
 import TileMapSurface, { tileMapChunkKey } from "./TileMapSurface";
 import { setMapLoadWaiting, startMapLoad } from "./mapLoadProgress";
+import { setPointerPosition } from "./pointerPosition";
 import NpcInteractionOverlay from "../ux/game/NpcInteractions";
 import WaterInteractionController, { WATER_MENU_EVENT } from "./WaterInteractionController";
 import { isFishableWaterCell } from "./fishing";
@@ -107,7 +108,6 @@ function loadNpcPreviewById() {
 
 const Map = ({children}:{children:any}) => {
     const {
-        setMouse,
         players,
         myplayer,
         playableMapsState,
@@ -207,7 +207,8 @@ const Map = ({children}:{children:any}) => {
             ? getPlayableMapBackgroundStyle(activeMapConfig)
             : { background: `repeat center/1% url('${assetUrl("/map0/Tile_Grass.png")}')` };
 
-    // MOVE THE MOUSE OVER THE GAME
+    // MOVE THE MOUSE OVER THE GAME — recorded in a mutable store, NOT context
+    // state: a SET_MOUSE dispatch per pointermove re-rendered the whole world.
     const mapPointerMoveEvent = (event: MouseEvent) => {
         const mapElement = mapRef.current;
         const target = event.target as Node | null;
@@ -215,7 +216,7 @@ const Map = ({children}:{children:any}) => {
         const rect = mapElement.getBoundingClientRect();
         let x = Math.round(event.clientX - rect.left); //x position within the element.
         let y = Math.round(event.clientY - rect.top);  //y position within the element.
-        setMouse({x:x,y:y})
+        setPointerPosition(x, y)
     }
 
     useEventListener('pointermove',mapPointerMoveEvent, mapRef) 

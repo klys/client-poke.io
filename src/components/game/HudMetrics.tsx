@@ -4,6 +4,34 @@ import { useGameSettings } from "../../settings/gameSettings";
 
 const LATENCY_PROBE_INTERVAL_MS = 3000;
 const LATENCY_PROBE_TIMEOUT_MS = 4000;
+const FPS_WINDOW_MS = 500;
+// Frame-time budget thresholds: one missed 60Hz frame, and one missed 30Hz frame.
+const LONG_FRAME_MS = 1000 / 60 + 4;
+const VERY_LONG_FRAME_MS = 1000 / 30 + 4;
+
+type FrameStats = {
+  fps: number;
+  avgFrameMs: number;
+  p95FrameMs: number;
+  maxFrameMs: number;
+  longFrames: number;
+  veryLongFrames: number;
+};
+
+/** Reduce one window of rAF frame deltas to display stats. */
+export const summarizeFrameDeltas = (deltas: number[], elapsedMs: number): FrameStats => {
+  const sorted = [...deltas].sort((a, b) => a - b);
+  const sum = sorted.reduce((total, value) => total + value, 0);
+  const p95Index = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95));
+  return {
+    fps: Math.round((sorted.length * 1000) / Math.max(1, elapsedMs)),
+    avgFrameMs: sorted.length ? sum / sorted.length : 0,
+    p95FrameMs: sorted.length ? sorted[p95Index] : 0,
+    maxFrameMs: sorted.length ? sorted[sorted.length - 1] : 0,
+    longFrames: sorted.filter((value) => value > LONG_FRAME_MS).length,
+    veryLongFrames: sorted.filter((value) => value > VERY_LONG_FRAME_MS).length,
+  };
+};
 
 /**
  * Optional performance chips (top-left, clear of the top-center map banner and
@@ -14,7 +42,7 @@ const LATENCY_PROBE_TIMEOUT_MS = 4000;
 const HudMetrics = () => {
   const { socket } = useContext(AppContext);
   const [settings] = useGameSettings();
-  const [fps, setFps] = useState<number | null>(null);
+  const [frameStats, setFrameStats] = useState<FrameStats | null>(null);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
 
   const showFps = settings.hud.showFps;
@@ -22,20 +50,25 @@ const HudMetrics = () => {
 
   useEffect(() => {
     if (!showFps) {
-      setFps(null);
+      setFrameStats(null);
       return;
     }
 
     let rafId = 0;
-    let frames = 0;
+    let deltas: number[] = [];
+    let lastFrameAt: number | null = null;
     let windowStart = performance.now();
 
     const tick = (now: number) => {
-      frames += 1;
+      if (lastFrameAt !== null) {
+        deltas.push(now - lastFrameAt);
+      }
+      lastFrameAt = now;
       const elapsed = now - windowStart;
-      if (elapsed >= 500) {
-        setFps(Math.round((frames * 1000) / elapsed));
-        frames = 0;
+      // One setState per window, not per frame.
+      if (elapsed >= FPS_WINDOW_MS && deltas.length > 0) {
+        setFrameStats(summarizeFrameDeltas(deltas, elapsed));
+        deltas = [];
         windowStart = now;
       }
       rafId = window.requestAnimationFrame(tick);
@@ -98,7 +131,14 @@ const HudMetrics = () => {
     >
       {showFps ? (
         <div data-hud-fps="true" style={chipStyle}>
-          FPS {fps ?? "--"}
+          FPS {frameStats?.fps ?? "--"}
+          {frameStats
+            ? ` · ${frameStats.avgFrameMs.toFixed(1)}ms avg · ${frameStats.p95FrameMs.toFixed(
+                1
+              )}ms p95 · ${frameStats.maxFrameMs.toFixed(0)}ms max · long ${
+                frameStats.longFrames
+              }/${frameStats.veryLongFrames}`
+            : ""}
         </div>
       ) : null}
       {showLatency ? (
