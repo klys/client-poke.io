@@ -117,11 +117,16 @@ Then open `http://localhost:8080`.
 
 ## Native Release Builds
 
-Every push to `master` (and every manual workflow run) builds the Android wrapper
-from `klys/pokecraft-mobile` and the Linux, Windows 64-bit, Windows 32-bit, and
-macOS desktop wrappers from `klys/pokecraft-desktop`. The installers are attached
-as individual assets to a prerelease in this repository. The Android APK is
-debug-signed and the desktop installers are unsigned.
+The root [`app.json`](./app.json) controls which apps GitHub Actions builds and
+deploys. Set `apps.web`, `apps.android`, or `apps.desktop` to `false` to skip that
+app group. The desktop switch controls the Linux, Windows 64-bit, Windows 32-bit,
+and macOS builds together. When Android or desktop builds are enabled, their
+installers are attached as individual assets to a prerelease in this repository.
+The Android APK is debug-signed and the desktop installers are unsigned.
+
+Every push to `master` (and every manual workflow run) uses this configuration.
+The Android wrapper comes from `klys/pokecraft-mobile`, and the desktop wrappers
+come from `klys/pokecraft-desktop`.
 
 Set the `NATIVE_REPO_TOKEN` Actions secret to a PAT that can read both wrapper
 repositories when either repository is private. The repository variables
@@ -220,4 +225,3 @@ npm install
 - Clean up unused context actions and legacy comments
 - Document the backend event contract in a dedicated spec
 - Add screenshots or a short gameplay preview
-

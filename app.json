@@ -1,0 +1,7 @@
+{
+  "apps": {
+    "web": true,
+    "android": false,
+    "desktop": false
+  }
+}

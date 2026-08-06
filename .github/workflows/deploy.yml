@@ -21,8 +21,32 @@ env:
   DESKTOP_REPOSITORY_REF: ${{ vars.DESKTOP_REPOSITORY_REF || 'master' }}
 
 jobs:
+  configure-apps:
+    name: Read app build configuration
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.apps.outputs.web }}
+      android: ${{ steps.apps.outputs.android }}
+      desktop: ${{ steps.apps.outputs.desktop }}
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Read app.json
+        id: apps
+        shell: bash
+        run: node scripts/read-app-config.js >> "$GITHUB_OUTPUT"
+
   build-and-deploy:
     name: Build and deploy web client
+    needs: configure-apps
+    if: needs.configure-apps.outputs.web == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -56,6 +80,8 @@ jobs:
 
   build-android:
     name: Build Android APK
+    needs: configure-apps
+    if: needs.configure-apps.outputs.android == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -149,6 +175,8 @@ jobs:
 
   build-desktop:
     name: Build desktop (${{ matrix.platform }})
+    needs: configure-apps
+    if: needs.configure-apps.outputs.desktop == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -261,8 +289,15 @@ jobs:
   publish-release:
     name: Publish native app release
     needs:
+      - configure-apps
       - build-android
       - build-desktop
+    if: >-
+      always() &&
+      needs.configure-apps.result == 'success' &&
+      (needs.configure-apps.outputs.android == 'true' || needs.configure-apps.outputs.desktop == 'true') &&
+      (needs.build-android.result == 'success' || needs.build-android.result == 'skipped') &&
+      (needs.build-desktop.result == 'success' || needs.build-desktop.result == 'skipped')
     runs-on: ubuntu-latest
 
     steps:
@@ -313,7 +348,7 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "$RELEASE_TITLE" \
-              --notes "Debug-signed Android APK and unsigned desktop builds generated from client-poke.io commit ${GITHUB_SHA}." \
+              --notes "Enabled native app builds generated from client-poke.io commit ${GITHUB_SHA}." \
               --prerelease
           fi
 
