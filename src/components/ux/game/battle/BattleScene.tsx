@@ -34,6 +34,7 @@ import MoveLearnPrompt from "./MoveLearnPrompt";
 import { useBattleBackgroundImages, useBattleInterfaceConfig } from "./battleInterfaceConfig";
 import { setBattleUiHold } from "./battleUiHold";
 import { useBattleEventQueue, type BattleSpriteFx } from "./useBattleEventQueue";
+import { UX_LAYER } from "../../layers";
 
 type BattleView = "menu" | "fight" | "bag" | "bagTarget" | "pokemon";
 
@@ -784,7 +785,9 @@ export default function BattleScene() {
       style={{ zoom: gameSettings.uiScale.battle } as CSSProperties}
       position="fixed"
       inset={0}
-      zIndex={4200}
+      // Full-screen takeover: stays above the game system UX (account menu and
+      // its windows), which itself sits above the NPC dialogs. See ../../layers.ts.
+      zIndex={UX_LAYER.TAKEOVER}
       data-game-ux="true"
       bg={
         backgroundImages.backgroundSrc

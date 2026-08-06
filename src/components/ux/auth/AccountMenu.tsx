@@ -70,6 +70,7 @@ import {
 import { useGameSettings } from '../../../settings/gameSettings';
 import { useT } from '../../../i18n';
 import { useCompactUx } from '../useCompactUx';
+import { UX_LAYER } from '../layers';
 import { resolveServerAssetUrl } from '../../tilemap/serverAssets';
 import WorldMapWindow, { FLY_MOVE_NAMES } from '../game/WorldMapWindow';
 import {
@@ -2716,7 +2717,13 @@ const AccountMenu = () => {
       position="fixed"
       top={{ base: 4, md: 6 }}
       right={{ base: 4, md: 6 }}
-      zIndex={3800}
+      // This Box is the stacking context for the whole game system interface
+      // (menu button, notifications bell and every draggable window), so its
+      // value — not the windows' own z-indexes — is what ranks the system UX
+      // against the NPC dialog overlays, which portal to <body>. It sits above
+      // them so bag/party/map/settings stay usable mid-conversation. See
+      // ../layers.ts for the full stack.
+      zIndex={UX_LAYER.SYSTEM_UX}
       onClick={stopUxEvent}
       onMouseDown={stopUxEvent}
       onPointerDown={stopUxEvent}
@@ -2784,6 +2791,10 @@ const AccountMenu = () => {
           dragEnabled={dragEnabled}
           position={positions[windowKey] ?? DEFAULT_POSITIONS[windowKey as WindowKey] ?? POKEMON_STATS_WINDOW_POSITION}
           desktopWidth={getWindowDesktopWidth(windowKey)}
+          // Local to the container's stacking context above: this only orders
+          // the windows among themselves (click-to-focus raises one) and keeps
+          // them over the menu dropdown. Raising the system UX as a whole is
+          // done on the container, not here.
           zIndex={3600 + orderedWindows.indexOf(windowKey)}
           onMove={moveWindow}
           onFocus={focusWindow}

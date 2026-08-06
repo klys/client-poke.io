@@ -13,6 +13,7 @@ import { useGameSettings } from "../../../settings/gameSettings";
 import { useT } from "../../../i18n";
 import { TrainerCardView, type TrainerCardTeamMember } from "./TrainerCard";
 import { useSocial } from "./social/SocialContext";
+import { UX_LAYER } from "../layers";
 
 /** The public trainer card the server returns for another player. */
 type FetchedTrainerCard = {
@@ -261,7 +262,9 @@ export function BattlePrompts() {
       boxShadow="0 18px 44px rgba(0,0,0,0.38)"
       color="white"
       p={4}
-      zIndex={4300}
+      // Incoming request: must stay clickable over an open system window or a
+      // full-screen takeover. See ../layers.ts.
+      zIndex={UX_LAYER.TAKEOVER_PROMPT}
       data-game-ux="true"
       onClick={stopUxEvent}
       onMouseDown={stopUxEvent}

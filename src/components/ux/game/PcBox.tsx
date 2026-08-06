@@ -30,6 +30,7 @@ import { getPokemonDisplayName } from "./pokemonName";
 import { useCompactUx } from "../useCompactUx";
 import { useGameSettings } from "../../../settings/gameSettings";
 import { MenuChoiceButton } from "./NpcInteractions";
+import { UX_LAYER } from "../layers";
 
 const MAX_PARTY_SIZE = 6;
 const MAX_BOXES = 15;
@@ -229,7 +230,8 @@ function StorageShell({
     <Flex
       position="fixed"
       inset={0}
-      zIndex={4200}
+      // Full-screen takeover: above the game system UX. See ../layers.ts.
+      zIndex={UX_LAYER.TAKEOVER}
       align="center"
       justify="center"
       p={compact ? 1 : 3}

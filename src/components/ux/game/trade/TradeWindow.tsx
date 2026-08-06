@@ -22,6 +22,7 @@ import TradeConfirmPanel from './TradeConfirmPanel';
 import TradeOfferPanel, { StatusPill } from './TradeOfferPanel';
 import { useTrade } from './TradeContext';
 import { EDITABLE_TRADE_STATES, otherTradeSide } from './tradeTypes';
+import { UX_LAYER } from '../../layers';
 
 function stopUxEvent(event: SyntheticEvent) {
   event.stopPropagation();
@@ -54,7 +55,9 @@ export function TradeRequestPrompts() {
       boxShadow="0 18px 44px rgba(0,0,0,0.38)"
       color="white"
       p={4}
-      zIndex={4400}
+      // Incoming request: must stay clickable over everything, including an
+      // open system window or a full-screen takeover. See ../../layers.ts.
+      zIndex={UX_LAYER.TAKEOVER_PROMPT}
       data-game-ux="true"
       onClick={stopUxEvent}
       onMouseDown={stopUxEvent}
@@ -141,7 +144,8 @@ export default function TradeWindow() {
       alignItems="center"
       justifyContent="center"
       bg="rgba(0,0,0,0.6)"
-      zIndex={4200}
+      // Full-screen takeover: above the game system UX. See ../../layers.ts.
+      zIndex={UX_LAYER.TAKEOVER}
       data-game-ux="true"
       onClick={stopUxEvent}
       onMouseDown={stopUxEvent}

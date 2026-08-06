@@ -17,6 +17,7 @@ import { Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../../context/authContext';
 import ApiKeysManager from './ApiKeysManager';
 import MaintenancePanel from './MaintenancePanel';
+import GlobalSettingsPanel from './GlobalSettingsPanel';
 import MapsOverview from './MapsOverview';
 import OnlinePlayersOverview from './OnlinePlayersOverview';
 import UsersSection from './users/UsersSection';
@@ -27,7 +28,7 @@ import type {
   OnlineMapOverview
 } from './types';
 
-type AdminSection = 'users' | 'online' | 'maps' | 'roles' | 'apikeys' | 'maintenance';
+type AdminSection = 'users' | 'online' | 'maps' | 'roles' | 'apikeys' | 'maintenance' | 'settings';
 
 type AdminPageProps = {
   section: AdminSection
@@ -46,7 +47,8 @@ const SECTION_LABELS: Record<AdminSection, string> = {
   maps: 'Maps',
   roles: 'Roles Manager',
   apikeys: 'API Keys',
-  maintenance: 'Maintenance'
+  maintenance: 'Maintenance',
+  settings: 'Global Settings'
 };
 
 const SECTION_ROUTES: Record<AdminSection, string> = {
@@ -55,7 +57,8 @@ const SECTION_ROUTES: Record<AdminSection, string> = {
   maps: '/admin/maps',
   roles: '/admin/roles',
   apikeys: '/admin/api-keys',
-  maintenance: '/admin/maintenance'
+  maintenance: '/admin/maintenance',
+  settings: '/admin/settings'
 };
 
 export default function AdminPage({ section }: AdminPageProps) {
@@ -219,7 +222,7 @@ export default function AdminPage({ section }: AdminPageProps) {
               </Box>
 
               <HStack spacing={3} flexWrap="wrap">
-                {(['users', 'online', 'maps', 'roles', 'apikeys', 'maintenance'] as AdminSection[]).map((item) => (
+                {(['users', 'online', 'maps', 'roles', 'apikeys', 'maintenance', 'settings'] as AdminSection[]).map((item) => (
                   <Button
                     key={item}
                     as={RouterLink}
@@ -376,6 +379,7 @@ export default function AdminPage({ section }: AdminPageProps) {
           {section === 'apikeys' ? <ApiKeysManager /> : null}
 
           {section === 'maintenance' ? <MaintenancePanel /> : null}
+          {section === 'settings' ? <GlobalSettingsPanel /> : null}
         </Stack>
       </Box>
     </Box>

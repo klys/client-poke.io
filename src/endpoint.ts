@@ -193,6 +193,10 @@ export const createEndpoints = (config: RuntimeConfig): RouteObject[] => [
     element: withAuth(createElement(AdminPage, { section: 'maintenance' }), 'admin.access')
   },
   {
+    path: '/admin/settings',
+    element: withAuth(createElement(AdminPage, { section: 'settings' }), 'admin.access')
+  },
+  {
     path: '*',
     element: createElement(Navigate, { to: '/', replace: true })
   },
