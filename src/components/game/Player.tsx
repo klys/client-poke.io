@@ -477,7 +477,8 @@ const Player = (props: any) => {
     buildSpritePath(direction, isWalking);
   const spriteLabel = `${isWalking ? "walking" : "standing"} ${direction}`;
   const isVisibleOnActiveMap = !activeMapId || pos.currentMapId === activeMapId;
-  const trainerName = playerInfo.username || playerInfo.name || "Trainer";
+  // Character name is display-primary (accounts are secondary identities).
+  const trainerName = playerInfo.characterName || playerInfo.name || playerInfo.username || "Trainer";
   const isCurrentPlayer = myplayer === playerId;
   // Speech bubble for this player's latest same-map chat message. Direct
   // useContext (not useSocial) so Player still renders if the social provider
@@ -508,6 +509,10 @@ const Player = (props: any) => {
           playerId,
           username: playerInfo.username,
           name: playerInfo.name,
+          accountId: playerInfo.accountId,
+          accountName: playerInfo.accountName,
+          characterId: playerInfo.characterId,
+          characterName: playerInfo.characterName,
           profileImage: playerInfo.profileImage,
           description: playerInfo.description,
           characterSkinId: playerInfo.characterSkinId,

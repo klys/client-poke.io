@@ -534,6 +534,75 @@ const STRINGS: Record<string, Entry> = {
   'trade.warning.NEW_ACCOUNT': { en: 'One account is very new.', es: 'Una cuenta es muy nueva.' },
   'trade.warning.SIMILAR_ITEM_NAMES': { en: 'Two items have nearly identical names.', es: 'Dos objetos tienen nombres casi identicos.' },
   'trade.warning.LARGE_CURRENCY': { en: 'A large amount of money is involved.', es: 'Hay una gran cantidad de dinero.' },
+
+  // --- Account characters (account = @handle owning up to 6 characters) ---
+  'menu.characters': { en: 'Characters', es: 'Personajes' },
+  'characters.slots': { en: 'Characters: {count}/{max}', es: 'Personajes: {count}/{max}' },
+  'characters.active': { en: 'Active', es: 'Activo' },
+  'characters.deleted': { en: 'Deleted', es: 'Eliminado' },
+  'characters.play': { en: 'Play', es: 'Jugar' },
+  'characters.playConfirm': {
+    en: 'Switch to {name}? The game will reload as that character.',
+    es: '¿Cambiar a {name}? El juego se recargará con ese personaje.'
+  },
+  'characters.delete': { en: 'Delete', es: 'Eliminar' },
+  'characters.deleteConfirm': {
+    en: 'Delete {name}? You can restore it within 30 days.',
+    es: '¿Eliminar a {name}? Podrás restaurarlo durante 30 días.'
+  },
+  'characters.restore': { en: 'Restore', es: 'Restaurar' },
+  'characters.badges': { en: 'Medals', es: 'Medallas' },
+  'characters.money': { en: 'Money', es: 'Dinero' },
+  'characters.party': { en: 'Party', es: 'Equipo' },
+  'characters.lastPlayed': { en: 'Last played', es: 'Última vez' },
+  'characters.createTitle': { en: 'Create a new character', es: 'Crear un personaje nuevo' },
+  'characters.namePlaceholder': { en: 'Character name', es: 'Nombre del personaje' },
+  'characters.nameHint': {
+    en: 'Letters only, 2 to 30 characters.',
+    es: 'Solo letras, de 2 a 30 caracteres.'
+  },
+  'characters.create': { en: 'Create', es: 'Crear' },
+  'characters.maxReached': {
+    en: 'Character limit reached ({max}).',
+    es: 'Límite de personajes alcanzado ({max}).'
+  },
+
+  // --- Friends: presence details / blocked accounts / privacy prefs ---
+  'friends.playing': { en: 'Playing: {name}', es: 'Jugando: {name}' },
+  'friends.lastSeen': { en: 'Last seen: {when}', es: 'Visto por última vez: {when}' },
+  'friends.lastCharacter': { en: 'Last character: {name}', es: 'Último personaje: {name}' },
+  'friends.tab.blocked': { en: 'Blocked', es: 'Bloqueados' },
+  'friends.unblock': { en: 'Unblock', es: 'Desbloquear' },
+  'friends.noBlocked': {
+    en: 'You have not blocked any account.',
+    es: 'No has bloqueado ninguna cuenta.'
+  },
+  'friends.blockedHint': {
+    en: 'Blocking an account blocks all of its characters.',
+    es: 'Bloquear una cuenta bloquea a todos sus personajes.'
+  },
+  'friends.showOnlineStatus': { en: 'Show my online status', es: 'Mostrar cuando estoy en línea' },
+  'friends.showActiveCharacter': { en: 'Show my active character', es: 'Mostrar mi personaje activo' },
+  'friends.showCurrentMap': { en: 'Show my current map', es: 'Mostrar mi mapa actual' },
+  'friends.showLastSeen': { en: 'Show my last seen time', es: 'Mostrar mi última conexión' },
+
+  // --- Trainer card: block account ---
+  'trainer.block': { en: 'Block account', es: 'Bloquear' },
+  'trainer.blockConfirm': {
+    en: 'Block @{name}? None of their characters will be able to contact you.',
+    es: '¿Bloquear a @{name}? Ninguno de sus personajes podrá contactarte.'
+  },
+  'trainer.blocked': { en: 'Account blocked', es: 'Cuenta bloqueada' },
+
+  // --- PC bank: shared per-character deposits ---
+  'pc.deposits': { en: 'Deposits by character', es: 'Depósitos por personaje' },
+  'pc.you': { en: '(you)', es: '(tú)' },
+  'pc.withdraw': { en: 'Withdraw', es: 'Retirar' },
+  'pc.medalHint': {
+    en: "Withdrawing another character's deposit requires gym medals.",
+    es: 'Retirar el depósito de otro personaje requiere medallas de gimnasio.'
+  },
+  'pc.ownerBadge': { en: 'From: {name}', es: 'De: {name}' },
 };
 
 export function translate(key: string, language: Language, params?: Record<string, string>): string {

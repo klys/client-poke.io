@@ -25,6 +25,7 @@ import {
   type PokemonSummary,
 } from "../../../context/authContext";
 import { assetUrl, resolveServerAssetUrl } from "../../tilemap/serverAssets";
+import { useT } from "../../../i18n";
 import { getPokemonDisplayName } from "./pokemonName";
 import { useCompactUx } from "../useCompactUx";
 import { useGameSettings } from "../../../settings/gameSettings";
@@ -129,6 +130,18 @@ function boxSurfaceStyle(box: { bgColor?: string; bgImage?: string; borderColor?
 
 function stopUxEvent(event: React.SyntheticEvent) {
   event.stopPropagation();
+}
+
+/** Resolves a character name from the account's character list (badge for
+ * boxed assets another character owns; fallback keeps the raw id visible). */
+function characterNameById(
+  characters: Array<{ characterId: number; characterName: string }> | undefined,
+  characterId: number
+) {
+  return (
+    characters?.find((entry) => entry.characterId === characterId)?.characterName ??
+    `#${characterId}`
+  );
 }
 
 function PokemonSlotIcon({
@@ -565,6 +578,7 @@ function VenomonView({ compact }: { compact: boolean }) {
     createPokemonBox,
     stylePokemonBox,
   } = useAuth();
+  const t = useT();
 
   const [boxIndex, setBoxIndex] = useState(0);
   const [partySel, setPartySel] = useState<Set<string>>(new Set());
@@ -770,10 +784,24 @@ function VenomonView({ compact }: { compact: boolean }) {
           >
             {boxSlots.map((pokemon, index) => {
               const selected = Boolean(pokemon) && boxSel.has(pokemon!.id);
+              // Box assets belong to whichever character stored them; mark the
+              // ones another of this account's characters owns (the server
+              // gates taking them behind gym medals).
+              const foreignOwnerId =
+                pokemon &&
+                typeof pokemon.ownerCharacterId === "number" &&
+                pokemon.ownerCharacterId !== user?.characterId
+                  ? pokemon.ownerCharacterId
+                  : null;
+              const ownerLabel =
+                foreignOwnerId !== null
+                  ? t("pc.ownerBadge", { name: characterNameById(user?.characters, foreignOwnerId) })
+                  : null;
               return (
                 <Box
                   key={pokemon ? pokemon.id : `empty-${index}`}
                   as="button"
+                  position="relative"
                   height={slotSize}
                   border="2px solid"
                   borderColor={selected ? "#ff7b73" : "#8a89a8"}
@@ -782,11 +810,28 @@ function VenomonView({ compact }: { compact: boolean }) {
                   alignItems="center"
                   justifyContent="center"
                   cursor={pokemon ? "pointer" : "default"}
-                  title={pokemon ? `${getPokemonDisplayName(pokemon)} Lv ${pokemon.level}` : "Empty"}
+                  title={
+                    pokemon
+                      ? `${getPokemonDisplayName(pokemon)} Lv ${pokemon.level}${ownerLabel ? ` — ${ownerLabel}` : ""}`
+                      : "Empty"
+                  }
                   onClick={() => pokemon && toggle(setBoxSel, pokemon.id)}
                   onDoubleClick={() => pokemon && openStats(pokemon.id)}
                 >
                   {pokemon ? <PokemonSlotIcon pokemon={pokemon} iconIndex={iconIndex} size={compact ? "26px" : "34px"} /> : null}
+                  {ownerLabel ? (
+                    <Box
+                      position="absolute"
+                      top="1px"
+                      right="1px"
+                      width="10px"
+                      height="10px"
+                      borderRadius="full"
+                      bg="#7ad7ff"
+                      border="1px solid #5d5a7b"
+                      title={ownerLabel}
+                    />
+                  ) : null}
                 </Box>
               );
             })}
@@ -845,6 +890,7 @@ function ItemView({ compact }: { compact: boolean }) {
     createItemBox,
     styleItemBox,
   } = useAuth();
+  const t = useT();
 
   const [boxIndex, setBoxIndex] = useState(0);
   const [selection, setSelection] = useState<{ source: "bag" | "box"; itemId: string } | null>(null);
@@ -962,6 +1008,18 @@ function ItemView({ compact }: { compact: boolean }) {
 
   const renderRow = (item: InventoryItem, source: "bag" | "box") => {
     const active = selection?.source === source && selection.itemId === item.id;
+    // Stored stacks carry their owning character; badge the ones another of
+    // this account's characters owns (server gates taking them via medals).
+    const foreignOwnerId =
+      source === "box" &&
+      typeof item.ownerCharacterId === "number" &&
+      item.ownerCharacterId !== user?.characterId
+        ? item.ownerCharacterId
+        : null;
+    const ownerLabel =
+      foreignOwnerId !== null
+        ? t("pc.ownerBadge", { name: characterNameById(user?.characters, foreignOwnerId) })
+        : null;
     return (
       <Box
         key={`${source}-${item.id}`}
@@ -972,15 +1030,23 @@ function ItemView({ compact }: { compact: boolean }) {
         border="2px solid"
         borderColor={active ? "#ff7b73" : "#8a89a8"}
         bg={active ? "#fff3cf" : "rgba(255,255,255,0.9)"}
+        title={ownerLabel ?? undefined}
         onClick={() => setSelection({ source, itemId: item.id })}
       >
         <HStack spacing={2}>
           <Box width="24px" height="24px" display="flex" alignItems="center" justifyContent="center" flexShrink={0}>
             <ItemSlotIcon item={item} iconIndex={iconIndex} size="24px" />
           </Box>
-          <Text flex="1" fontFamily="mono" fontWeight="800" fontSize="sm" color="#404040" noOfLines={1}>
-            {item.name}
-          </Text>
+          <Box flex="1" minW={0}>
+            <Text fontFamily="mono" fontWeight="800" fontSize="sm" color="#404040" noOfLines={1}>
+              {item.name}
+            </Text>
+            {ownerLabel ? (
+              <Text fontFamily="mono" fontSize="10px" color="#2b6cb0" noOfLines={1}>
+                {ownerLabel}
+              </Text>
+            ) : null}
+          </Box>
           <Text fontFamily="mono" fontSize="xs" color="#7a4b20">x{item.quantity}</Text>
         </HStack>
       </Box>
@@ -1058,10 +1124,19 @@ function ItemView({ compact }: { compact: boolean }) {
 
 // ---- money view ------------------------------------------------------------
 
+/**
+ * PC bank: the money box is shared by the whole account, but each character
+ * keeps its own deposit in it. `user.pcMoney` is the ACTIVE character's own
+ * deposits total; `user.sharedMoneyDeposits` lists every character's deposit.
+ * Withdrawing another character's deposit is medal-gated — the server
+ * enforces it and its error message arrives via the usual auth toasts.
+ */
 function MoneyView() {
   const { user, depositPcMoney, withdrawPcMoney } = useAuth();
+  const t = useT();
   const wallet = user?.money ?? 0;
   const bank = user?.pcMoney ?? 0;
+  const deposits = user?.sharedMoneyDeposits ?? [];
   const [amount, setAmount] = useState(100);
 
   const clampInput = (raw: string) => {
@@ -1081,6 +1156,55 @@ function MoneyView() {
           <Text fontFamily="mono" fontWeight="800" fontSize="xl" color="#4a4964">${bank}</Text>
         </Box>
       </SimpleGrid>
+
+      {deposits.length > 0 ? (
+        <Box>
+          <Text fontFamily="mono" fontWeight="800" fontSize="xs" color="#4a4964" mb={1} textTransform="uppercase">
+            {t('pc.deposits')}
+          </Text>
+          <VStack align="stretch" spacing={1}>
+            {deposits.map((deposit) => {
+              const isOwn = deposit.ownerCharacterId === user?.characterId;
+              return (
+                <HStack
+                  key={deposit.ownerCharacterId}
+                  justify="space-between"
+                  bg="whiteAlpha.600"
+                  border="2px solid #8a89a8"
+                  px={2}
+                  py={1}
+                >
+                  <Box minW={0}>
+                    <Text fontFamily="mono" fontWeight="800" fontSize="sm" color="#4a4964" noOfLines={1}>
+                      {deposit.ownerCharacterName}
+                      {isOwn ? ` ${t('pc.you')}` : ''}
+                    </Text>
+                    <Text fontFamily="mono" fontSize="xs" color="#7a4b20">${deposit.amount}</Text>
+                  </Box>
+                  <Button
+                    size="xs"
+                    colorScheme="blue"
+                    flexShrink={0}
+                    isDisabled={amount <= 0 || amount > deposit.amount}
+                    onClick={() =>
+                      withdrawPcMoney(
+                        isOwn
+                          ? { amount }
+                          : { amount, ownerCharacterId: deposit.ownerCharacterId }
+                      )
+                    }
+                  >
+                    {t('pc.withdraw')}
+                  </Button>
+                </HStack>
+              );
+            })}
+          </VStack>
+          <Text fontFamily="mono" fontSize="xs" color="#8a89a8" mt={2}>
+            {t('pc.medalHint')}
+          </Text>
+        </Box>
+      ) : null}
 
       <Box>
         <Text fontFamily="mono" fontWeight="800" fontSize="xs" color="#4a4964" mb={1}>Amount</Text>

@@ -107,6 +107,12 @@ export type TrainerCardPlayer = {
   playerId: string;
   username?: string;
   name?: string;
+  /** Account/character identity mirrored from addPlayer payloads (optional:
+   * older payloads may not carry them; the trainer:card fetch fills them). */
+  accountId?: number | null;
+  accountName?: string;
+  characterId?: number | null;
+  characterName?: string;
   profileImage?: string;
   description?: string;
   characterSkinId?: string;

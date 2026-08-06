@@ -6,7 +6,11 @@
  *    battle challenge / trade — same map only —, unfriend).
  *  - Requests: incoming (accept/decline) and outgoing (cancel) requests.
  *  - Add: send a friend request by exact username.
+ *  - Blocked: account-level blocks with unblock.
  *  - Config: server-enforced social preferences.
+ *
+ * Friendship (and blocking) is account-level: rows lead with the permanent
+ * @account handle and show the currently played character as secondary info.
  */
 
 import {
@@ -32,7 +36,13 @@ import { useContext, useState, type ReactNode } from 'react';
 import { AppContext } from '../../../../context/appContext';
 import { useT } from '../../../../i18n';
 import { useSocial } from './SocialContext';
-import type { FriendEntry } from './socialTypes';
+import type { FriendEntry, SocialPrefs } from './socialTypes';
+
+/** Compact locale date for "last seen" info (server sends an ISO string). */
+function formatLastSeen(lastSeenAt: string): string {
+  const date = new Date(lastSeenAt);
+  return Number.isNaN(date.getTime()) ? lastSeenAt : date.toLocaleString();
+}
 
 function FriendRow({ friend }: { friend: FriendEntry }) {
   const t = useT();
@@ -57,7 +67,7 @@ function FriendRow({ friend }: { friend: FriendEntry }) {
             borderRadius="full"
             bg={friend.online ? 'green.400' : 'gray.500'}
           />
-          <Text fontWeight="700">{friend.username}</Text>
+          <Text fontWeight="700">@{friend.accountName || friend.username}</Text>
         </HStack>
         <Text fontSize="xs" color="gray.400">
           {friend.online
@@ -66,6 +76,23 @@ function FriendRow({ friend }: { friend: FriendEntry }) {
               : t('friends.online')
             : t('friends.offline')}
         </Text>
+        {friend.online && friend.activeCharacterName ? (
+          <Text fontSize="xs" color="teal.200">
+            {t('friends.playing', { name: friend.activeCharacterName })}
+          </Text>
+        ) : null}
+        {!friend.online && friend.lastSeenAt ? (
+          <Text fontSize="xs" color="gray.500">
+            {t('friends.lastSeen', { when: formatLastSeen(friend.lastSeenAt) })}
+          </Text>
+        ) : null}
+        {!friend.online && (friend.activeCharacterName || friend.characterName) ? (
+          <Text fontSize="xs" color="gray.500">
+            {t('friends.lastCharacter', {
+              name: friend.activeCharacterName || friend.characterName
+            })}
+          </Text>
+        ) : null}
       </Box>
       <Menu placement="bottom-end">
         <MenuButton as={Button} size="sm" variant="outline" color="white" borderColor="whiteAlpha.400">
@@ -133,7 +160,7 @@ function FriendsTab() {
     if (a.online !== b.online) {
       return a.online ? -1 : 1;
     }
-    return a.username.localeCompare(b.username);
+    return (a.accountName || a.username).localeCompare(b.accountName || b.username);
   });
 
   return (
@@ -166,7 +193,12 @@ function RequestsTab() {
                 px={3}
                 py={2}
               >
-                <Text fontWeight="700">{request.username}</Text>
+                <Box>
+                  <Text fontWeight="700">@{request.username}</Text>
+                  {request.characterName && request.characterName !== request.username ? (
+                    <Text fontSize="xs" color="gray.400">{request.characterName}</Text>
+                  ) : null}
+                </Box>
                 <HStack>
                   <Button
                     size="xs"
@@ -204,7 +236,12 @@ function RequestsTab() {
                 px={3}
                 py={2}
               >
-                <Text fontWeight="700">{request.username}</Text>
+                <Box>
+                  <Text fontWeight="700">@{request.username}</Text>
+                  {request.characterName && request.characterName !== request.username ? (
+                    <Text fontSize="xs" color="gray.400">{request.characterName}</Text>
+                  ) : null}
+                </Box>
                 <Button
                   size="xs"
                   variant="ghost"
@@ -262,13 +299,51 @@ function AddFriendTab() {
   );
 }
 
+function BlockedTab() {
+  const t = useT();
+  const social = useSocial();
+
+  return (
+    <VStack align="stretch" spacing={3}>
+      <Text color="gray.300" fontSize="sm">{t('friends.blockedHint')}</Text>
+      {social.blocked.length === 0 ? (
+        <Text color="gray.400" fontSize="sm">{t('friends.noBlocked')}</Text>
+      ) : (
+        <VStack align="stretch" spacing={2}>
+          {social.blocked.map((entry) => (
+            <HStack
+              key={entry.accountId}
+              justify="space-between"
+              bg="whiteAlpha.100"
+              borderRadius="6px"
+              px={3}
+              py={2}
+            >
+              <Text fontWeight="700">@{entry.accountName}</Text>
+              <Button
+                size="xs"
+                variant="outline"
+                color="white"
+                borderColor="whiteAlpha.400"
+                onClick={() => social.unblockAccount(entry.accountId)}
+              >
+                {t('friends.unblock')}
+              </Button>
+            </HStack>
+          ))}
+        </VStack>
+      )}
+    </VStack>
+  );
+}
+
 function ConfigTab() {
   const t = useT();
   const social = useSocial();
   const prefs = social.prefs;
 
-  const row = (label: string, key: 'allowFriendRequests' | 'allowTeleportRequests' | 'allowChatInvites') => (
-    <HStack justify="space-between">
+  const row = (label: string, key: keyof SocialPrefs) => (
+    <HStack justify="space-between" key={key}>
       <Text>{label}</Text>
       <Switch
         colorScheme="teal"
@@ -284,6 +359,10 @@ function ConfigTab() {
       {row(t('friends.allowRequests'), 'allowFriendRequests')}
       {row(t('friends.allowTeleports'), 'allowTeleportRequests')}
       {row(t('friends.allowChatInvites'), 'allowChatInvites')}
+      {row(t('friends.showOnlineStatus'), 'showOnlineStatus')}
+      {row(t('friends.showActiveCharacter'), 'showActiveCharacter')}
+      {row(t('friends.showCurrentMap'), 'showCurrentMap')}
+      {row(t('friends.showLastSeen'), 'showLastSeen')}
     </VStack>
   );
 }
@@ -310,6 +389,7 @@ export default function FriendsWindow() {
       content: <RequestsTab />
     },
     { key: 'add', label: t('friends.tab.add'), content: <AddFriendTab /> },
+    { key: 'blocked', label: t('friends.tab.blocked'), content: <BlockedTab /> },
     { key: 'config', label: t('friends.tab.config'), content: <ConfigTab /> }
   ];
 

@@ -95,6 +95,12 @@ export interface TradeParticipant {
   displayName: string;
   characterSkinId: string;
   newAccount: boolean;
+  /** Account identity (`accountId` = `userId`, `accountName` = `username`). */
+  accountId: number;
+  accountName: string;
+  /** Active character identity (display-primary name). */
+  characterId: number;
+  characterName: string;
 }
 
 export interface TradeSnapshot {

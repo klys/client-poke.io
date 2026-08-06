@@ -26,6 +26,7 @@ import { loadGameSettings } from '../../../../settings/gameSettings';
 import { ensureNotificationPermission, notifyNative } from './notify';
 import type {
   ChatMessage,
+  FriendPresencePayload,
   FriendsStatePayload,
   PrivateChatMemberEntry,
   PrivateChatMessage,
@@ -49,6 +50,7 @@ interface SocialState {
   friends: FriendsStatePayload['friends'];
   incoming: FriendsStatePayload['incoming'];
   outgoing: FriendsStatePayload['outgoing'];
+  blocked: FriendsStatePayload['blocked'];
   prefs: SocialPrefs | null;
   notifications: SocialNotification[];
   mapMessages: ChatMessage[];
@@ -65,6 +67,7 @@ const INITIAL_STATE: SocialState = {
   friends: [],
   incoming: [],
   outgoing: [],
+  blocked: [],
   prefs: null,
   notifications: [],
   mapMessages: [],
@@ -77,7 +80,7 @@ const INITIAL_STATE: SocialState = {
 
 type SocialAction =
   | { type: 'friends-state'; payload: FriendsStatePayload }
-  | { type: 'presence'; payload: { userId: number; online: boolean; mapId?: string; playerId?: string } }
+  | { type: 'presence'; payload: FriendPresencePayload }
   | { type: 'notification-add'; payload: SocialNotification }
   | { type: 'notification-remove'; id: string }
   | { type: 'notifications-clear' }
@@ -122,6 +125,7 @@ function reducer(state: SocialState, action: SocialAction): SocialState {
         friends: action.payload.friends ?? [],
         incoming,
         outgoing: action.payload.outgoing ?? [],
+        blocked: action.payload.blocked ?? [],
         prefs: action.payload.prefs ?? state.prefs,
         notifications
       };
@@ -135,7 +139,11 @@ function reducer(state: SocialState, action: SocialAction): SocialState {
                 ...friend,
                 online: action.payload.online,
                 mapId: action.payload.mapId,
-                playerId: action.payload.playerId
+                playerId: action.payload.playerId,
+                accountName: action.payload.accountName ?? friend.accountName,
+                activeCharacterId: action.payload.activeCharacterId ?? null,
+                activeCharacterName: action.payload.activeCharacterName ?? null,
+                lastSeenAt: action.payload.lastSeenAt ?? friend.lastSeenAt ?? null
               }
             : friend
         )
@@ -253,9 +261,13 @@ export interface SocialApi extends SocialState {
   myUserId: number | null;
   myMapId: string | null;
   requestFriend: (username: string) => void;
+  /** Preferred over `requestFriend` when the account id is known (trainer card). */
+  requestFriendByAccountId: (accountId: number) => void;
   respondToFriendRequest: (userId: number, accepted: boolean) => void;
   cancelFriendRequest: (userId: number) => void;
   removeFriend: (userId: number) => void;
+  blockAccount: (accountId: number) => void;
+  unblockAccount: (accountId: number) => void;
   setSocialPrefs: (updates: Partial<SocialPrefs>) => void;
   requestTeleport: (userId: number) => void;
   sendMapMessage: (text: string) => void;
@@ -573,9 +585,12 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     myUserId,
     myMapId,
     requestFriend: (username) => emit('friends:request', { username }),
+    requestFriendByAccountId: (accountId) => emit('friends:request', { accountId }),
     respondToFriendRequest: (userId, accepted) => emit('friends:respond', { userId, accepted }),
     cancelFriendRequest: (userId) => emit('friends:cancel-request', { userId }),
     removeFriend: (userId) => emit('friends:remove', { userId }),
+    blockAccount: (accountId) => emit('friends:block', { accountId }),
+    unblockAccount: (accountId) => emit('friends:unblock', { accountId }),
     setSocialPrefs: (updates) => emit('friends:set-prefs', updates),
     requestTeleport: (userId) => emit('friends:teleport-request', { userId }),
     sendMapMessage: (text) => emit('chat:map-message', { text }),

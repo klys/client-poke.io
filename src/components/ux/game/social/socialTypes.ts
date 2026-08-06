@@ -7,24 +7,46 @@
 export interface SocialUserSummary {
   userId: number;
   username: string;
+  /** The active character's name. */
   name: string;
   characterSkinId: string;
+  /** Account identity (`accountId` = `userId`, `accountName` = `username`). */
+  accountId: number;
+  accountName: string;
+  /** Active character identity. */
+  characterId: number;
+  characterName: string;
 }
 
 export interface FriendEntry extends SocialUserSummary {
   online: boolean;
   mapId?: string;
   playerId?: string;
+  activeCharacterId: number | null;
+  activeCharacterName: string | null;
+  lastSeenAt: string | null;
 }
 
 export interface FriendRequestRecord extends SocialUserSummary {
   createdAt: string;
+  requesterCharacterId?: number;
+  recipientCharacterId?: number;
+}
+
+export interface BlockedAccountEntry {
+  accountId: number;
+  accountName: string;
 }
 
 export interface SocialPrefs {
   allowFriendRequests: boolean;
   allowTeleportRequests: boolean;
   allowChatInvites: boolean;
+  /** Privacy toggles (default true, server enforced). */
+  showOnlineStatus: boolean;
+  showActiveCharacter: boolean;
+  showCurrentMap: boolean;
+  showLastSeen: boolean;
 }
 
 export interface FriendsStatePayload {
@@ -32,6 +54,21 @@ export interface FriendsStatePayload {
   incoming: FriendRequestRecord[];
   outgoing: FriendRequestRecord[];
   prefs: SocialPrefs;
+  /** Blocked accounts (blocking is account-level: all characters). */
+  blocked: BlockedAccountEntry[];
+}
+
+/** `friends:presence` payload. */
+export interface FriendPresencePayload {
+  userId: number;
+  accountId: number;
+  accountName: string;
+  online: boolean;
+  mapId?: string;
+  playerId?: string;
+  activeCharacterId: number | null;
+  activeCharacterName: string | null;
+  lastSeenAt: string | null;
 }
 
 export type ChatChannel = 'map' | 'whisper' | 'global' | 'system';
@@ -43,6 +80,10 @@ export interface ChatMessage {
   fromUserId?: number;
   fromUsername?: string;
   fromName?: string;
+  fromAccountId?: number;
+  fromAccountName?: string;
+  fromCharacterId?: number;
+  fromCharacterName?: string;
   toUsername?: string;
   text: string;
   at: string;
@@ -58,6 +99,10 @@ export interface PrivateChatMessage {
   fromUserId: number;
   fromUsername: string;
   fromName: string;
+  fromAccountId?: number;
+  fromAccountName?: string;
+  fromCharacterId?: number;
+  fromCharacterName?: string;
   text: string;
   at: string;
 }

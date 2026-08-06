@@ -90,7 +90,7 @@ import NotificationsBell from '../game/social/NotificationsBell';
 import { useSocial } from '../game/social/SocialContext';
 import { ChatSettingsSection } from './GameSettingsSections';
 
-type WindowKey = 'account' | 'settings' | 'bag' | 'pokemons' | 'map' | 'trainerCard' | 'battleHistory' | 'friends' | 'tradeHistory';
+type WindowKey = 'account' | 'characters' | 'settings' | 'bag' | 'pokemons' | 'map' | 'trainerCard' | 'battleHistory' | 'friends' | 'tradeHistory';
 type PokemonStatsWindowId = `pokemonStats:${string}`;
 type PrivateChatWindowId = `privateChat:${string}`;
 type OpenWindowId = WindowKey | PokemonStatsWindowId | PrivateChatWindowId;
@@ -116,6 +116,7 @@ type DraggableWindowProps = {
 // i18n keys — resolved with t() at render time so titles follow the language.
 const WINDOW_TITLE_KEYS: Record<WindowKey, string> = {
   account: 'menu.account',
+  characters: 'menu.characters',
   settings: 'menu.settings',
   bag: 'menu.bag',
   pokemons: 'menu.pokemons',
@@ -128,6 +129,7 @@ const WINDOW_TITLE_KEYS: Record<WindowKey, string> = {
 
 const DEFAULT_POSITIONS: Record<WindowKey, WindowPosition> = {
   account: { x: 48, y: 96 },
+  characters: { x: 72, y: 114 },
   settings: { x: 96, y: 132 },
   bag: { x: 132, y: 84 },
   pokemons: { x: 168, y: 120 },
@@ -784,6 +786,205 @@ function AccountWindow() {
         {tabs.map((tab) => <TabPanel key={tab.key} px={0}>{tab.content}</TabPanel>)}
       </TabPanels>
     </Tabs>
+  );
+}
+
+/**
+ * Account characters manager. The permanent @account handle owns up to
+ * `maxCharacters` characters; gameplay state (party, money, badges, position,
+ * bag) belongs to the selected one. Selecting another character makes the
+ * server drop this session's world entity — the `character:changed`
+ * ("selected") reply reloads the page so the game re-joins as it.
+ */
+function CharactersWindow() {
+  const {
+    user,
+    characterList,
+    listCharacters,
+    createCharacter,
+    selectCharacter,
+    deleteCharacter,
+    restoreCharacter
+  } = useAuth();
+  const t = useT();
+  const skins = useCharacterSkinCatalog();
+  const [newName, setNewName] = useState('');
+
+  // Refresh the roster on open; every successful character action is followed
+  // by a fresh auth:session, which keeps user.characters current after that.
+  useEffect(() => {
+    listCharacters();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const characters = user?.characters ?? [];
+  const activeCharacterId = user?.characterId;
+  const maxCharacters = characterList?.maxCharacters ?? 6;
+  const aliveCount = characters.filter((character) => !character.deletedAt).length;
+  const canCreate = aliveCount < maxCharacters;
+
+  const trimmedName = newName.trim();
+  // Client-side hint only — the server validates (letters only, 2-30).
+  const nameLooksValid = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]{2,30}$/.test(trimmedName);
+
+  const handleCreate = () => {
+    if (!nameLooksValid) {
+      return;
+    }
+    createCharacter({ name: trimmedName });
+    setNewName('');
+  };
+
+  return (
+    <VStack align="stretch" spacing={4}>
+      <HStack justify="space-between">
+        <Text fontWeight="800" fontSize="lg" noOfLines={1}>
+          @{user?.accountName || user?.username}
+        </Text>
+        <Badge colorScheme="teal" flexShrink={0}>
+          {t('characters.slots', { count: String(aliveCount), max: String(maxCharacters) })}
+        </Badge>
+      </HStack>
+
+      <VStack align="stretch" spacing={2}>
+        {characters.map((character) => {
+          const isActive = character.characterId === activeCharacterId;
+          const isDeleted = Boolean(character.deletedAt);
+          const previewSrc = getCharacterSkinPreview(
+            skins.find((skin) => skin.id === character.characterSkinId)?.profile
+          );
+          const lastPlayed = character.lastPlayedAt ? new Date(character.lastPlayedAt) : null;
+          const lastPlayedLabel =
+            lastPlayed && !Number.isNaN(lastPlayed.getTime()) ? lastPlayed.toLocaleString() : '—';
+
+          return (
+            <Box
+              key={character.characterId}
+              bg={isActive ? 'rgba(20, 184, 166, 0.16)' : 'whiteAlpha.100'}
+              border={isActive ? '2px solid #38b2ac' : '1px solid rgba(255,255,255,0.14)'}
+              borderRadius="8px"
+              p={3}
+              opacity={isDeleted ? 0.5 : 1}
+            >
+              <HStack justify="space-between" align="start" spacing={3}>
+                <HStack spacing={3} minW={0} align="center">
+                  <Box
+                    boxSize="48px"
+                    flexShrink={0}
+                    display="flex"
+                    alignItems="flex-end"
+                    justifyContent="center"
+                    bg="blackAlpha.400"
+                    borderRadius="8px"
+                    border="1px solid rgba(255,255,255,0.14)"
+                    overflow="hidden"
+                  >
+                    {previewSrc ? (
+                      <Image
+                        src={previewSrc}
+                        alt={character.characterName}
+                        maxH="44px"
+                        objectFit="contain"
+                        style={{ imageRendering: 'pixelated' }}
+                      />
+                    ) : (
+                      <Text fontWeight="900" fontSize="lg" opacity={0.7} alignSelf="center">
+                        {character.characterName.slice(0, 1).toUpperCase()}
+                      </Text>
+                    )}
+                  </Box>
+                  <Box minW={0}>
+                    <HStack spacing={2}>
+                      <Text fontWeight="800" noOfLines={1}>{character.characterName}</Text>
+                      {isActive ? (
+                        <Badge colorScheme="teal" flexShrink={0}>{t('characters.active')}</Badge>
+                      ) : null}
+                      {isDeleted ? (
+                        <Badge colorScheme="red" flexShrink={0}>{t('characters.deleted')}</Badge>
+                      ) : null}
+                    </HStack>
+                    <Text fontSize="xs" color="gray.400" noOfLines={1}>
+                      {`${t('characters.badges')}: ${character.badges.length} · ${t('characters.money')}: $${character.money} · ${t('characters.party')}: ${character.partyCount}`}
+                    </Text>
+                    <Text fontSize="xs" color="gray.500" noOfLines={1}>
+                      {`${t('characters.lastPlayed')}: ${lastPlayedLabel}`}
+                    </Text>
+                  </Box>
+                </HStack>
+                <HStack spacing={2} flexShrink={0}>
+                  {isDeleted ? (
+                    <Button
+                      size="xs"
+                      colorScheme="yellow"
+                      onClick={() => restoreCharacter({ characterId: character.characterId })}
+                    >
+                      {t('characters.restore')}
+                    </Button>
+                  ) : !isActive ? (
+                    <>
+                      <Button
+                        size="xs"
+                        colorScheme="teal"
+                        onClick={() => {
+                          if (window.confirm(t('characters.playConfirm', { name: character.characterName }))) {
+                            selectCharacter({ characterId: character.characterId });
+                          }
+                        }}
+                      >
+                        {t('characters.play')}
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        colorScheme="red"
+                        onClick={() => {
+                          if (window.confirm(t('characters.deleteConfirm', { name: character.characterName }))) {
+                            deleteCharacter({ characterId: character.characterId });
+                          }
+                        }}
+                      >
+                        {t('characters.delete')}
+                      </Button>
+                    </>
+                  ) : null}
+                </HStack>
+              </HStack>
+            </Box>
+          );
+        })}
+      </VStack>
+
+      <Divider borderColor="whiteAlpha.300" />
+      <Box>
+        <Text fontWeight="700" mb={2}>{t('characters.createTitle')}</Text>
+        {canCreate ? (
+          <>
+            <HStack>
+              <Input
+                value={newName}
+                placeholder={t('characters.namePlaceholder')}
+                maxLength={30}
+                onChange={(event) => setNewName(event.target.value)}
+                onKeyDown={(event) => {
+                  event.stopPropagation();
+                  if (event.key === 'Enter') {
+                    handleCreate();
+                  }
+                }}
+              />
+              <Button colorScheme="teal" isDisabled={!nameLooksValid} onClick={handleCreate}>
+                {t('characters.create')}
+              </Button>
+            </HStack>
+            <Text fontSize="xs" color="gray.400" mt={1}>{t('characters.nameHint')}</Text>
+          </>
+        ) : (
+          <Text color="yellow.200" fontSize="sm">
+            {t('characters.maxReached', { max: String(maxCharacters) })}
+          </Text>
+        )}
+      </Box>
+    </VStack>
   );
 }
 
@@ -2466,6 +2667,10 @@ const AccountMenu = () => {
       return <AccountWindow />;
     }
 
+    if (windowKey === 'characters') {
+      return <CharactersWindow />;
+    }
+
     if (windowKey === 'settings') {
       return (
         <SettingsWindow
@@ -2522,7 +2727,7 @@ const AccountMenu = () => {
       <Menu>
         <MenuButton as={Button} colorScheme="teal" variant="solid" boxShadow="lg">
           <Text as="span" display={{ base: 'none', sm: 'inline' }}>
-            {user?.username ?? 'Account'}
+            {user?.characterName || user?.username || 'Account'}
           </Text>
           <Text as="span" display={{ base: 'inline', sm: 'none' }}>
             {t('menu.menu')}
@@ -2542,6 +2747,7 @@ const AccountMenu = () => {
           }}
         >
           <MenuItem onClick={() => openWindow('account')}>{t('menu.account')}</MenuItem>
+          <MenuItem onClick={() => openWindow('characters')}>{t('menu.characters')}</MenuItem>
           <MenuItem onClick={() => openWindow('settings')}>{t('menu.settings')}</MenuItem>
           <MenuItem onClick={() => openWindow('bag')}>{t('menu.bag')}</MenuItem>
           <MenuItem onClick={() => openWindow('pokemons')}>{t('menu.pokemons')}</MenuItem>

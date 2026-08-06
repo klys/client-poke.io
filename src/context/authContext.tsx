@@ -16,10 +16,45 @@ export type UserRole =
   | 'moderator'
   | 'user'
 
+/** One character owned by the account (mirror of the server's summary). */
+export type CharacterSummary = {
+  characterId: number
+  characterName: string
+  characterSkinId: string
+  trainerGender: string
+  badges: number[]
+  money: number
+  partyCount: number
+  lastMapId: string | null
+  createdAt: string
+  lastPlayedAt: string
+  /** Set when soft-deleted (restorable for a grace period). */
+  deletedAt: string | null
+}
+
+/** One per-character deposit in the account's shared PC money box. */
+export type SharedMoneyDeposit = {
+  accountId: number
+  ownerCharacterId: number
+  ownerCharacterName: string
+  amount: number
+  depositedByCharacterId: number
+  depositedAt: string
+  updatedAt: string
+}
+
 export type AuthUser = {
   id: number
   name: string
   username: string
+  /** Account identity: `accountId` = `id`, `accountName` = `username`. */
+  accountId: number
+  accountName: string
+  /** Active character: gameplay fields on this payload describe it. */
+  characterId: number
+  characterName: string
+  characters: CharacterSummary[]
+  sharedMoneyDeposits: SharedMoneyDeposit[]
   email: string
   emailVerified: boolean
   profileImage: string
@@ -71,6 +106,10 @@ export type InventoryItem = {
   category: 'usable' | 'berries' | 'moves' | 'quest'
   quantity: number
   description: string
+  /** Boxed stacks only: the character that owns this stored asset. */
+  ownerCharacterId?: number
+  storedByCharacterId?: number
+  storedAt?: string
 }
 
 export type PokemonSummary = {
@@ -97,6 +136,10 @@ export type PokemonSummary = {
    * hatches after the player walks `eggStepsToHatch` more tiles. */
   isEgg?: boolean
   eggStepsToHatch?: number
+  /** Boxed venomon only: the character that owns this stored asset. */
+  ownerCharacterId?: number
+  storedByCharacterId?: number
+  storedAt?: string
   statBonuses?: {
     hp: number
     attack: number
@@ -204,6 +247,18 @@ type ChooseStarterPayload = {
   nickname: string
 }
 
+/** `character:list-data` payload (mirror of the server contract). */
+type CharacterListPayload = {
+  characters: CharacterSummary[]
+  activeCharacterId: number
+  maxCharacters: number
+}
+
+type CharacterChangedPayload = {
+  action: 'created' | 'selected' | 'deleted' | 'restored'
+  characterId: number
+}
+
 type AuthContextValue = {
   socket: Socket | null
   authReady: boolean
@@ -248,7 +303,17 @@ type AuthContextValue = {
   createItemBox: () => void
   styleItemBox: (payload: { boxId: string; name?: string; bgColor?: string; bgImage?: string; borderColor?: string }) => void
   depositPcMoney: (payload: { amount: number }) => void
-  withdrawPcMoney: (payload: { amount: number }) => void
+  /** `ownerCharacterId` picks whose shared deposit to withdraw from; omit for
+   * the active character's own (cross-character withdrawal is medal-gated,
+   * server enforced). */
+  withdrawPcMoney: (payload: { amount: number; ownerCharacterId?: number }) => void
+  /** Latest `character:list-data` snapshot (null until requested). */
+  characterList: CharacterListPayload | null
+  listCharacters: () => void
+  createCharacter: (payload: { name: string }) => void
+  selectCharacter: (payload: { characterId: number }) => void
+  deleteCharacter: (payload: { characterId: number }) => void
+  restoreCharacter: (payload: { characterId: number }) => void
   healNpcParty: (payload: { npcPlacementId: string }) => void
   buyFromNpcStore: (payload: { npcPlacementId: string; itemId: string; quantity: number }) => void
   sellToNpcStore: (payload: { npcPlacementId: string; itemId: string; quantity: number }) => void
@@ -315,6 +380,7 @@ export const AuthProvider = (
   const [token, setToken] = useState<string | null>(() => getStoredAuthToken());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [characterList, setCharacterList] = useState<CharacterListPayload | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
   const clearMessages = useCallback(() => {
@@ -472,11 +538,26 @@ export const AuthProvider = (
       });
     };
 
+    const handleCharacterList = (payload: CharacterListPayload) => {
+      setCharacterList(payload);
+    };
+
+    const handleCharacterChanged = (payload: CharacterChangedPayload) => {
+      if (payload?.action === 'selected') {
+        // The server dropped this session's world entity; the game must fully
+        // re-join as the newly selected character.
+        window.location.reload();
+      }
+    };
+
     socket.on('connect', handleConnect);
     socket.on('auth:session', handleSession);
     socket.on('auth:info', handleInfo);
     socket.on('auth:error', handleError);
     socket.on('auth:account-deleted', handleAccountDeleted);
+    socket.on('character:list-data', handleCharacterList);
+    socket.on('character:changed', handleCharacterChanged);
+    socket.on('character:error', handleError);
 
     if (!socket.connected) {
       socket.connect();
@@ -488,6 +569,9 @@ export const AuthProvider = (
       socket.off('auth:info', handleInfo);
       socket.off('auth:error', handleError);
       socket.off('auth:account-deleted', handleAccountDeleted);
+      socket.off('character:list-data', handleCharacterList);
+      socket.off('character:changed', handleCharacterChanged);
+      socket.off('character:error', handleError);
       socket.disconnect();
     };
   }, [clearMessages, socketUrl, syncToken, toast]);
@@ -560,6 +644,12 @@ export const AuthProvider = (
     styleItemBox: (payload) => emitAuthEvent('item:box-style', payload),
     depositPcMoney: (payload) => emitAuthEvent('pc:money-deposit', payload),
     withdrawPcMoney: (payload) => emitAuthEvent('pc:money-withdraw', payload),
+    characterList,
+    listCharacters: () => emitAuthEvent('character:list'),
+    createCharacter: (payload) => emitAuthEvent('character:create', payload),
+    selectCharacter: (payload) => emitAuthEvent('character:select', payload),
+    deleteCharacter: (payload) => emitAuthEvent('character:delete', payload),
+    restoreCharacter: (payload) => emitAuthEvent('character:restore', payload),
     healNpcParty: (payload) => emitAuthEvent('npc:heal-party', payload),
     buyFromNpcStore: (payload) => emitAuthEvent('npc:store-buy', payload),
     sellToNpcStore: (payload) => emitAuthEvent('npc:store-sell', payload),
@@ -570,6 +660,7 @@ export const AuthProvider = (
   }), [
     authReady,
     authenticated,
+    characterList,
     clearMessages,
     emitAuthEvent,
     errorMessage,

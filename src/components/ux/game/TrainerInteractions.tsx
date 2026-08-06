@@ -20,6 +20,12 @@ type FetchedTrainerCard = {
   userId: number | null;
   name: string;
   username: string;
+  /** Account identity (`accountId` = `userId`, `accountName` = `username`). */
+  accountId: number | null;
+  accountName: string;
+  /** Active character identity (`characterName` is the display-primary name). */
+  characterId: number | null;
+  characterName: string;
   description: string;
   characterSkinId: string;
   trainerCardColor: string;
@@ -67,7 +73,13 @@ export function TrainerInteractionCard() {
     return null;
   }
 
-  const displayName = selectedTrainer.username || selectedTrainer.name || "Trainer";
+  // Character name is display-primary; the @account handle is secondary.
+  const displayName =
+    card?.characterName ||
+    selectedTrainer.characterName ||
+    selectedTrainer.name ||
+    selectedTrainer.username ||
+    "Trainer";
 
   return (
     <Box
@@ -93,8 +105,8 @@ export function TrainerInteractionCard() {
       onPointerDown={stopUxEvent}
     >
       <TrainerCardView
-        name={card?.name || selectedTrainer.name}
-        username={card?.username || selectedTrainer.username}
+        name={displayName}
+        username={card?.accountName || card?.username || selectedTrainer.username}
         description={card?.description ?? selectedTrainer.description}
         characterSkinId={card?.characterSkinId ?? selectedTrainer.characterSkinId}
         badges={card?.badges ?? []}
@@ -116,7 +128,12 @@ export function TrainerInteractionCard() {
         if (targetUserId === null || targetUserId === social.myUserId) {
           return null;
         }
+        // Friendship and blocking are account-level: prefer the account id
+        // from the card, falling back to the legacy userId (they are equal).
+        const targetAccountId = card?.accountId ?? targetUserId;
+        const targetAccountName = card?.accountName || card?.username || '';
         const isFriend = social.friends.some((friend) => friend.userId === targetUserId);
+        const isBlocked = social.blocked.some((entry) => entry.accountId === targetAccountId);
         const requestPending =
           social.outgoing.some((request) => request.userId === targetUserId) ||
           social.incoming.some((request) => request.userId === targetUserId);
@@ -132,12 +149,35 @@ export function TrainerInteractionCard() {
                 variant={requestPending ? 'outline' : 'solid'}
                 isDisabled={requestPending}
                 onClick={() => {
-                  if (card?.username) {
+                  if (typeof card?.accountId === 'number') {
+                    social.requestFriendByAccountId(card.accountId);
+                  } else if (card?.username) {
                     social.requestFriend(card.username);
                   }
                 }}
               >
                 {requestPending ? t('trainer.friendRequestPending') : t('trainer.addFriend')}
+              </Button>
+            )}
+            {isBlocked ? (
+              <Text color="red.300" fontSize="sm" fontWeight="700" textAlign="center">
+                {t('trainer.blocked')}
+              </Text>
+            ) : (
+              <Button
+                variant="outline"
+                colorScheme="red"
+                onClick={() => {
+                  if (
+                    window.confirm(t('trainer.blockConfirm', { name: targetAccountName })) &&
+                    typeof targetAccountId === 'number'
+                  ) {
+                    social.blockAccount(targetAccountId);
+                    setSelectedTrainer(null);
+                  }
+                }}
+              >
+                {t('trainer.block')}
               </Button>
             )}
             {isFriend ? (
