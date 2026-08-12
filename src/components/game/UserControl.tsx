@@ -4,6 +4,7 @@ import { useEventListener } from 'usehooks-ts'
 import { useGameSettings } from "../../settings/gameSettings";
 import { getPlayableMapById } from "./playableMapRuntime";
 import { getPointerPosition } from "./pointerPosition";
+import { getLiveSelfPosition } from "./livePlayerPosition";
 
 const MOVEMENT_KEYS = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
 
@@ -112,9 +113,16 @@ const UserControl = () => {
         if (typeof myId === 'undefined') return;
         const direction = DIRECTION_BY_KEY[key];
         const me = stateRef.current.players[myId];
+        // Aim from the freshest server-confirmed position. The context mirror
+        // (`me`) is cell-quantized and settles on a 200ms trail, so targets
+        // computed from it drift by up to a tile — visible as overshoot jerks
+        // when reversing direction. Fall back to it when the live position
+        // isn't available yet (or belongs to a previous map).
+        const live = getLiveSelfPosition();
+        const origin = live && live.currentMapId === me.currentMapId ? live : me;
         socket.emit("move", {
-            x: me.x + direction.dx * DRIVE_LOOKAHEAD_PX,
-            y: me.y + direction.dy * DRIVE_LOOKAHEAD_PX,
+            x: origin.x + direction.dx * DRIVE_LOOKAHEAD_PX,
+            y: origin.y + direction.dy * DRIVE_LOOKAHEAD_PX,
         });
     };
 

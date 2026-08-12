@@ -1,6 +1,7 @@
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AppContext } from "../../context/appContext";
-import { applyCameraToPosition, reapplyCamera } from "./camera";
+import { applyCameraToPosition, reapplyCamera, snapCameraToPosition } from "./camera";
+import { clearLiveSelfPosition, setLiveSelfPosition } from "./livePlayerPosition";
 import { assetUrl } from "../tilemap/serverAssets";
 import {
   DESIGNER_CACHE_UPDATED_EVENT,
@@ -33,20 +34,33 @@ const DEFAULT_POSITION: Position = {
 }
 
 /*
- * Movement timing guide:
- * - MOVEMENT_DURATION_PER_PIXEL is the main "feel" control. Higher values make each step glide longer.
- * - MIN_MOVEMENT_DURATION keeps tiny corrections from animating faster than a frame.
- * - MAX_MOVEMENT_DURATION caps long moves so the client does not feel sluggish when several updates queue up.
+ * Movement timing: positions are rendered through an interpolation buffer.
  *
- * Current examples:
- * - A 4px server tick uses about 28ms (4 * 7).
- * - A 16px keyboard step uses about 112ms total across four server ticks.
- * - Raising MIN_MOVEMENT_DURATION makes tiny corrections more visible.
- * - Lowering MAX_MOVEMENT_DURATION makes catch-up movement more responsive when network updates stack.
+ * Every move packet is stamped onto a local playback timeline (spaced by the
+ * server clock `t` it carries, so network jitter can't bunch steps up) and
+ * the render loop samples that timeline slightly in the past, linearly
+ * interpolating between the two surrounding samples. Constant-velocity
+ * sampling is what makes a held walk read as one continuous glide instead of
+ * 35 tiny eased hops per second.
+ *
+ * - INTERP_DELAY_* is the main "feel" control: how far in the past we render.
+ *   Larger = smoother under jitter but laggier. The self delay is kept tight
+ *   (input already pays a round trip); remote players can afford more.
+ * - NOMINAL_STEP_MS mirrors the server movement tick (player.ts).
+ * - A gap above MAX_SEGMENT_MS means the walk stopped and restarted, so the
+ *   timeline re-anchors instead of interpolating across the pause.
  */
-const MIN_MOVEMENT_DURATION = 16;
-const MAX_MOVEMENT_DURATION = 180;
-const MOVEMENT_DURATION_PER_PIXEL = 7;
+const INTERP_DELAY_SELF_MS = 60;
+const INTERP_DELAY_REMOTE_MS = 120;
+const NOMINAL_STEP_MS = 28;
+const MAX_SEGMENT_MS = 250;
+// Keeps the reconstructed (server-clock-spaced) timeline glued to the local
+// clock even if the two tick at slightly different rates.
+const TIMELINE_DRIFT_CLAMP_MS = 200;
+// The walk sprite only drops back to standing after this much stillness, so
+// a single late packet can't flicker the GIF mid-stride.
+const WALK_STOP_HYSTERESIS_MS = 100;
+const MAX_BUFFER_SAMPLES = 64;
 
 // Context-dispatch throttling: positions are mirrored into AppContext at tile
 // granularity (plus a trailing settle) instead of per server packet.
@@ -69,13 +83,66 @@ const getDirectionFromAngle = (angle: number): Direction => {
   }
 }
 
-const sameCoordinates = (first: Position, second: Position) =>
-  first.x === second.x && first.y === second.y && first.currentMapId === second.currentMapId;
+type MoveSample = {
+  x: number;
+  y: number;
+  angle: number;
+  currentMapId: string;
+  /** Playback-timeline timestamp (performance.now() domain). */
+  time: number;
+  /** Server clock from the packet, used to space consecutive samples. */
+  serverT: number | null;
+};
 
-const samePosition = (first: Position, second: Position) =>
-  sameCoordinates(first, second) && first.angle === second.angle;
+/**
+ * Stamps a move packet onto the local playback timeline. Consecutive samples
+ * are spaced by the server clock deltas when available (arrival spacing as a
+ * fallback), clamped so the timeline can never drift away from the local
+ * clock. A gap longer than MAX_SEGMENT_MS re-anchors the timeline and
+ * re-times the resting sample one nominal step back, so the first step of a
+ * fresh walk still glides instead of interpolating across the idle pause.
+ */
+const appendMoveSample = (
+  buffer: MoveSample[],
+  position: Position,
+  serverT: number | null,
+  arrival: number
+) => {
+  const last = buffer[buffer.length - 1];
+  let time = arrival;
 
-const easeOutCubic = (progress: number) => 1 - Math.pow(1 - progress, 3);
+  if (last) {
+    const delta =
+      serverT !== null && last.serverT !== null ? serverT - last.serverT : arrival - last.time;
+
+    if (delta >= 0 && delta <= MAX_SEGMENT_MS) {
+      time = Math.min(
+        Math.max(last.time + delta, arrival - TIMELINE_DRIFT_CLAMP_MS),
+        arrival + NOMINAL_STEP_MS
+      );
+      time = Math.max(time, last.time);
+    } else {
+      const previous = buffer[buffer.length - 2];
+      last.time = Math.max(
+        previous ? previous.time : Number.NEGATIVE_INFINITY,
+        arrival - NOMINAL_STEP_MS
+      );
+    }
+  }
+
+  buffer.push({
+    x: position.x,
+    y: position.y,
+    angle: position.angle,
+    currentMapId: position.currentMapId,
+    time,
+    serverT
+  });
+
+  if (buffer.length > MAX_BUFFER_SAMPLES) {
+    buffer.splice(0, buffer.length - MAX_BUFFER_SAMPLES);
+  }
+};
 
 const buildSpritePath = (direction: Direction, isWalking: boolean) =>
   assetUrl(`/character0/player_${isWalking ? "walk" : "stand"}_${direction}.${isWalking ? "gif" : "png"}`);
@@ -110,9 +177,9 @@ const Player = (props: any) => {
   const posRef = useRef(initialPosition);
   const deathRef = useRef(death);
   const movePlayerRef = useRef(movePlayer);
-  const moveQueueRef = useRef<Position[]>([]);
+  const moveBufferRef = useRef<MoveSample[]>([]);
   const animationFrameRef = useRef<number | null>(null);
-  const currentTargetRef = useRef<Position | null>(null);
+  const lastMovedAtRef = useRef(0);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const isSelfRef = useRef(false);
   const lastDispatchedCellRef = useRef<{ cx: number; cy: number; angle: number; mapId: string } | null>(null);
@@ -124,16 +191,27 @@ const Player = (props: any) => {
   // frame and a React commit per frame per visible player is the single
   // biggest render cost in the world view. React state (`pos`) only tracks
   // the semantic bits a render actually depends on (currentMapId).
-  const applyVisualPosition = useCallback((position: Position) => {
-    posRef.current = position;
-    const node = rootRef.current;
-    if (node) {
-      node.style.transform = `translate3d(${position.x}px, ${position.y}px, 0)`;
-    }
-    if (isSelfRef.current) {
-      applyCameraToPosition(position.x, position.y);
-    }
-  }, []);
+  const applyVisualPosition = useCallback(
+    (position: Position, options?: { snapCamera?: boolean }) => {
+      posRef.current = position;
+      const node = rootRef.current;
+      if (node) {
+        // The sprite itself snaps to whole CSS pixels (pixel art); the camera
+        // gets the raw interpolated focus so its easing stays sub-pixel smooth.
+        node.style.transform = `translate3d(${Math.round(position.x)}px, ${Math.round(
+          position.y
+        )}px, 0)`;
+      }
+      if (isSelfRef.current) {
+        if (options?.snapCamera) {
+          snapCameraToPosition(position.x, position.y);
+        } else {
+          applyCameraToPosition(position.x, position.y);
+        }
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     deathRef.current = death;
@@ -165,98 +243,76 @@ const Player = (props: any) => {
       animationFrameRef.current = null;
     }
 
-    currentTargetRef.current = null;
-    moveQueueRef.current = [];
+    moveBufferRef.current = [];
     setIsWalking(false);
   }, []);
 
-  // Queue one server movement at a time so each update can be animated smoothly.
-  const processMoveQueue = useCallback(() => {
+  // Render loop: samples the move buffer INTERP_DELAY ms in the past and
+  // linearly interpolates between the surrounding samples, so a held walk is
+  // one constant-velocity glide no matter how the packets arrived. Runs only
+  // while there is buffered movement to play out; idles otherwise and is
+  // restarted by the next packet.
+  const runRenderLoop = useCallback(() => {
     if (animationFrameRef.current !== null) {
       return;
     }
 
-    const nextPosition = moveQueueRef.current.shift();
-
-    if (!nextPosition) {
-      currentTargetRef.current = null;
-      setIsWalking(false);
-      return;
-    }
-
-    const startPosition = posRef.current;
-    const nextDirection = getDirectionFromAngle(nextPosition.angle);
-
-    setDirection(nextDirection);
-
-    if (
-      nextPosition.teleported ||
-      nextPosition.stopped ||
-      startPosition.currentMapId !== nextPosition.currentMapId
-    ) {
-      currentTargetRef.current = null;
-      moveQueueRef.current = [];
-      applyVisualPosition(nextPosition);
-      setPos(nextPosition);
-      setIsWalking(false);
-      return;
-    }
-
-    if (samePosition(startPosition, nextPosition)) {
-      currentTargetRef.current = null;
-      applyVisualPosition(nextPosition);
-      processMoveQueue();
-      return;
-    }
-
-    if (sameCoordinates(startPosition, nextPosition)) {
-      currentTargetRef.current = null;
-      applyVisualPosition(nextPosition);
-      processMoveQueue();
-      return;
-    }
-
-    currentTargetRef.current = nextPosition;
-    setIsWalking(true);
-
-    const distance = Math.hypot(nextPosition.x - startPosition.x, nextPosition.y - startPosition.y);
-    // Clamp duration so short steps remain visible and long catch-up steps do not drag.
-    const duration = Math.max(
-      MIN_MOVEMENT_DURATION,
-      Math.min(MAX_MOVEMENT_DURATION, distance * MOVEMENT_DURATION_PER_PIXEL)
-    );
-    const startedAt = performance.now();
-
-    const animate = (currentTime: number) => {
-      const progress = Math.min(1, (currentTime - startedAt) / duration);
-      const easedProgress = easeOutCubic(progress);
-      const animatedPosition = {
-        x: Math.round(startPosition.x + (nextPosition.x - startPosition.x) * easedProgress),
-        y: Math.round(startPosition.y + (nextPosition.y - startPosition.y) * easedProgress),
-        angle: nextPosition.angle,
-        currentMapId: nextPosition.currentMapId
-      };
-
-      applyVisualPosition(animatedPosition);
-
-      if (progress < 1) {
-        animationFrameRef.current = requestAnimationFrame(animate);
-        return;
-      }
-
+    const step = (now: number) => {
       animationFrameRef.current = null;
-      currentTargetRef.current = null;
-      applyVisualPosition(nextPosition);
 
-      if (moveQueueRef.current.length === 0) {
+      const buffer = moveBufferRef.current;
+      if (buffer.length === 0) {
         setIsWalking(false);
         return;
       }
 
-      processMoveQueue();
+      const delay = isSelfRef.current ? INTERP_DELAY_SELF_MS : INTERP_DELAY_REMOTE_MS;
+      const renderTime = now - delay;
+
+      // Drop samples fully behind the render time (always keep the newest —
+      // it is the resting position while the player stands still).
+      while (buffer.length >= 2 && buffer[1].time <= renderTime) {
+        buffer.shift();
+      }
+
+      const from = buffer[0];
+      const to = buffer.length >= 2 ? buffer[1] : null;
+      let x = from.x;
+      let y = from.y;
+
+      if (to && renderTime > from.time) {
+        const span = Math.max(1, to.time - from.time);
+        const fraction = Math.min(1, (renderTime - from.time) / span);
+        x = from.x + (to.x - from.x) * fraction;
+        y = from.y + (to.y - from.y) * fraction;
+      }
+
+      const previous = posRef.current;
+      const moved = Math.abs(x - previous.x) > 0.05 || Math.abs(y - previous.y) > 0.05;
+      const latest = buffer[buffer.length - 1];
+
+      applyVisualPosition({
+        x,
+        y,
+        angle: latest.angle,
+        currentMapId: from.currentMapId
+      });
+
+      if (moved) {
+        lastMovedAtRef.current = now;
+        setIsWalking(true);
+      } else if (now - lastMovedAtRef.current > WALK_STOP_HYSTERESIS_MS) {
+        setIsWalking(false);
+        if (!to) {
+          // Settled on the newest sample with nothing left to play — idle.
+          return;
+        }
+      }
+
+      animationFrameRef.current = requestAnimationFrame(step);
     };
 
-    animationFrameRef.current = requestAnimationFrame(animate);
+    animationFrameRef.current = requestAnimationFrame(step);
   }, [applyVisualPosition]);
 
   useEffect(() => {
@@ -324,6 +380,7 @@ const Player = (props: any) => {
         return;
       }
 
+      const arrival = performance.now();
       const nextPosition = {
         x: data.x ?? posRef.current.x,
         y: data.y ?? posRef.current.y,
@@ -333,32 +390,50 @@ const Player = (props: any) => {
         stopped: data.stopped === true
       };
 
+      // Publish the raw authoritative position for the drive loop
+      // (UserControl) — fresher than the cell-quantized context mirror.
+      if (isSelfRef.current) {
+        setLiveSelfPosition({
+          x: nextPosition.x,
+          y: nextPosition.y,
+          angle: nextPosition.angle,
+          currentMapId: nextPosition.currentMapId
+        });
+      }
+
+      // Facing is discrete: apply the newest packet's angle immediately so
+      // turns feel responsive instead of trailing the interpolation delay.
+      setDirection(getDirectionFromAngle(nextPosition.angle));
+
+      // Only genuine discontinuities snap. `stopped` packets (turn-in-place,
+      // blocked step, end of a walk) flow through the buffer like any other
+      // sample so the sprite glides to rest instead of jerking to it.
       if (
         nextPosition.teleported ||
-        nextPosition.stopped ||
         nextPosition.currentMapId !== posRef.current.currentMapId
       ) {
         stopMovement();
-        applyVisualPosition(nextPosition);
-        setDirection(getDirectionFromAngle(nextPosition.angle));
+        applyVisualPosition(nextPosition, { snapCamera: true });
         setPos(nextPosition);
         dispatchMoveToContext(nextPosition, true);
+        // Seed the (just cleared) buffer with the landing spot as a resting
+        // sample so the first step walked after arrival glides from it
+        // instead of popping straight onto the first path node.
+        moveBufferRef.current.push({
+          x: nextPosition.x,
+          y: nextPosition.y,
+          angle: nextPosition.angle,
+          currentMapId: nextPosition.currentMapId,
+          time: arrival,
+          serverT: typeof data.t === "number" && Number.isFinite(data.t) ? data.t : null
+        });
         return;
       }
 
-      const lastKnownTarget =
-        moveQueueRef.current[moveQueueRef.current.length - 1] ??
-        currentTargetRef.current ??
-        posRef.current;
-
-      if (!samePosition(lastKnownTarget, nextPosition)) {
-        if (animationFrameRef.current !== null) {
-          moveQueueRef.current = [nextPosition];
-        } else {
-          moveQueueRef.current.push(nextPosition);
-        }
-        processMoveQueue();
-      }
+      const serverT =
+        typeof data.t === "number" && Number.isFinite(data.t) ? data.t : null;
+      appendMoveSample(moveBufferRef.current, nextPosition, serverT, arrival);
+      runRenderLoop();
 
       dispatchMoveToContext(nextPosition, false);
     };
@@ -404,8 +479,11 @@ const Player = (props: any) => {
         dispatchTimerRef.current = null;
       }
       pendingDispatchRef.current = null;
+      if (isSelfRef.current) {
+        clearLiveSelfPosition();
+      }
     };
-  }, [applyVisualPosition, playerId, playerIndex, processMoveQueue, socket, stopMovement]);
+  }, [applyVisualPosition, playerId, playerIndex, runRenderLoop, socket, stopMovement]);
 
   // Re-seed traversal state whenever the server re-presents this player
   // (map change, reconnect, visibility refresh).
@@ -420,9 +498,17 @@ const Player = (props: any) => {
     }
 
     // Snap the camera when this player becomes "me" (login, map switch,
-    // reconnect). While moving, applyVisualPosition keeps the camera glued to
-    // the tween without a React commit per frame.
-    applyCameraToPosition(posRef.current.x, posRef.current.y);
+    // reconnect). While moving, applyVisualPosition steers the camera's
+    // smoothed follow without a React commit per frame.
+    snapCameraToPosition(posRef.current.x, posRef.current.y);
+    // Seed the drive loop's live position so the very first keypress after
+    // login/teleport aims from the right spot even before any move packet.
+    setLiveSelfPosition({
+      x: posRef.current.x,
+      y: posRef.current.y,
+      angle: posRef.current.angle,
+      currentMapId: posRef.current.currentMapId
+    });
   }, [myplayer, playerId, pos]);
 
   useEffect(() => {
@@ -526,7 +612,7 @@ const Player = (props: any) => {
         // Movement animates transform (compositor-only, no layout) via
         // applyVisualPosition. Rendering from posRef (not `pos` state) keeps
         // an unrelated re-render mid-tween from snapping the sprite back.
-        transform: `translate3d(${posRef.current.x}px, ${posRef.current.y}px, 0)`,
+        transform: `translate3d(${Math.round(posRef.current.x)}px, ${Math.round(posRef.current.y)}px, 0)`,
         width: "32px",
         height: "32px",
         zIndex: 999,
