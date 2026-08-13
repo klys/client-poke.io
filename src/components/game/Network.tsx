@@ -12,6 +12,18 @@ import {
 } from "./playableMapRuntime";
 import { getBackendBaseUrl } from "./backendConfig";
 import { applyNpcSteps, applyNpcSync, applyNpcTurn } from "./npcActors";
+import {
+    applyFollowerSteps,
+    applyFollowerSync,
+    applyFollowerUpdate,
+    applyFollowerRemove
+} from "./followerActors";
+import {
+    applyBallSync,
+    applyBallSpawn,
+    applyBallStep,
+    applyBallDeflate
+} from "./beachBalls";
 import { isBattleUiHeld } from "../ux/game/battle/battleUiHold";
 
 const AUTH_TOKEN_STORAGE_KEY = "client-poke.io.auth.token";
@@ -393,6 +405,56 @@ const Network = () => {
             }
         };
 
+        // Follower venomons (party leaders trailing their trainers) and
+        // /pelota beach balls — same server-authoritative pattern as NPCs.
+        const handleFollowerSteps = (data:any) => {
+            if (typeof data?.mapId === "string") {
+                applyFollowerSteps(data.mapId, data.steps ?? []);
+            }
+        };
+
+        const handleFollowerSync = (data:any) => {
+            if (typeof data?.mapId === "string") {
+                applyFollowerSync(data.mapId, data.followers ?? []);
+            }
+        };
+
+        const handleFollowerUpdate = (data:any) => {
+            if (typeof data?.mapId === "string" && data?.follower) {
+                applyFollowerUpdate(data.mapId, data.follower);
+            }
+        };
+
+        const handleFollowerRemove = (data:any) => {
+            if (typeof data?.mapId === "string" && typeof data?.ownerId === "string") {
+                applyFollowerRemove(data.mapId, data.ownerId);
+            }
+        };
+
+        const handleBallSync = (data:any) => {
+            if (typeof data?.mapId === "string") {
+                applyBallSync(data.mapId, data.balls ?? []);
+            }
+        };
+
+        const handleBallSpawn = (data:any) => {
+            if (typeof data?.mapId === "string" && data?.ball) {
+                applyBallSpawn(data.mapId, data.ball);
+            }
+        };
+
+        const handleBallStep = (data:any) => {
+            if (typeof data?.mapId === "string") {
+                applyBallStep(data.mapId, data);
+            }
+        };
+
+        const handleBallDeflate = (data:any) => {
+            if (typeof data?.mapId === "string" && typeof data?.id === "string") {
+                applyBallDeflate(data.mapId, data.id);
+            }
+        };
+
         // A field skill (Surf/Dive/Strength/Waterfall) was rejected — surface
         // the server's specific reason instead of failing silently.
         const handleFieldSkillError = (data:any) => {
@@ -453,6 +515,14 @@ const Network = () => {
         socket.on("npc:steps", handleNpcSteps)
         socket.on("npc:sync", handleNpcSync)
         socket.on("npc:turn", handleNpcTurn)
+        socket.on("follower:steps", handleFollowerSteps)
+        socket.on("follower:sync", handleFollowerSync)
+        socket.on("follower:update", handleFollowerUpdate)
+        socket.on("follower:remove", handleFollowerRemove)
+        socket.on("ball:sync", handleBallSync)
+        socket.on("ball:spawn", handleBallSpawn)
+        socket.on("ball:step", handleBallStep)
+        socket.on("ball:deflate", handleBallDeflate)
 
         return () => {
             socket.off("connect", joinGame)
@@ -483,6 +553,14 @@ const Network = () => {
             socket.off("npc:steps", handleNpcSteps)
             socket.off("npc:sync", handleNpcSync)
             socket.off("npc:turn", handleNpcTurn)
+            socket.off("follower:steps", handleFollowerSteps)
+            socket.off("follower:sync", handleFollowerSync)
+            socket.off("follower:update", handleFollowerUpdate)
+            socket.off("follower:remove", handleFollowerRemove)
+            socket.off("ball:sync", handleBallSync)
+            socket.off("ball:spawn", handleBallSpawn)
+            socket.off("ball:step", handleBallStep)
+            socket.off("ball:deflate", handleBallDeflate)
             if (battleClearTimerRef.current !== null) {
                 window.clearTimeout(battleClearTimerRef.current);
                 battleClearTimerRef.current = null;

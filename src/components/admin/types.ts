@@ -135,6 +135,10 @@ export type AdminUserDetails = {
   inventory: AdminInventoryItem[]
   pokemonParty: AdminPokemonSummary[]
   battleHistory: AdminBattleHistoryEntry[]
+  /** Whether the party leader walks behind the player on the map. */
+  followerEnabled?: boolean
+  /** Secret push-chain depth (bodies-in-a-row one bump can displace). */
+  pushDepth?: number
   role: AdminUserRole
   permissions: AdminRolePermission[]
   createdAt: string

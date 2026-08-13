@@ -11,6 +11,7 @@ import NpcInteractionOverlay from "../ux/game/NpcInteractions";
 import WaterInteractionController, { WATER_MENU_EVENT } from "./WaterInteractionController";
 import { isFishableWaterCell } from "./fishing";
 import NpcSprite from "./NpcSprite";
+import { Followers, BeachBallsLayer } from "./WorldCompanions";
 import { getNpcCell } from "./npcActors";
 import { assetUrl, resolveServerAssetUrl } from "../tilemap/serverAssets";
 import {
@@ -503,6 +504,12 @@ const Map = ({children}:{children:any}) => {
                         />
                     ))
                 : null}
+            {activeMapConfig && activeMapId ? (
+                <>
+                    <Followers mapId={activeMapId} cellSize={activeMapConfig.cellSize} />
+                    <BeachBallsLayer mapId={activeMapId} cellSize={activeMapConfig.cellSize} />
+                </>
+            ) : null}
             {(children) ? children : null}
             <Cursor
                 gridSize={activeMapConfig?.cellSize ?? 32}

@@ -68,6 +68,8 @@ export type AuthUser = {
   visitedTowns?: string[]
   /** Palette key chosen for the Trainer Card background. */
   trainerCardColor: string
+  /** Whether the party leader walks behind the player on the map. */
+  followerEnabled?: boolean
   inventory: InventoryItem[]
   pokemonParty: PokemonSummary[]
   pokemonStorage: PokemonStorageBox[]
@@ -288,6 +290,8 @@ type AuthContextValue = {
   holdInventoryItem: (payload: { pokemonId: string; itemId: string }) => void
   takeHeldItem: (payload: { pokemonId: string }) => void
   reorderPokemonParty: (payload: { order: string[] }) => void
+  /** Toggles the follower venomon (party leader walking behind the player). */
+  setFollowerEnabled: (payload: { enabled: boolean }) => void
   learnPokemonMove: (payload: { pokemonId: string; moveName: string; replaceMoveName?: string }) => void
   forgetPokemonMove: (payload: { pokemonId: string; moveName: string }) => void
   depositPokemonToBox: (payload: { pokemonIds: string[]; boxId?: string }) => void
@@ -628,6 +632,7 @@ export const AuthProvider = (
     holdInventoryItem: (payload) => emitAuthEvent('inventory:hold-item', payload),
     takeHeldItem: (payload) => emitAuthEvent('inventory:take-held-item', payload),
     reorderPokemonParty: (payload) => emitAuthEvent('pokemon:reorder', payload),
+    setFollowerEnabled: (payload) => emitAuthEvent('follower:set-enabled', payload),
     learnPokemonMove: (payload) => emitAuthEvent('pokemon:learn-move', payload),
     forgetPokemonMove: (payload) => emitAuthEvent('pokemon:forget-move', payload),
     depositPokemonToBox: (payload) => emitAuthEvent('pokemon:box-deposit', payload),

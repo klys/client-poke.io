@@ -265,6 +265,8 @@ const STRINGS: Record<string, Entry> = {
   },
   'party.empty': { en: 'No Venomons in your party yet.', es: 'Aún no tienes Venomons en tu equipo.' },
   'party.lead': { en: 'Lead', es: 'Líder' },
+  'party.followerEnable': { en: 'Let it follow you', es: 'Que te siga en el mapa' },
+  'party.followerDisable': { en: 'Return it to its Venoball', es: 'Que vuelva a su Venoball' },
   'party.moves': { en: 'Moves', es: 'Movimientos' },
   'party.noMoves': { en: 'No moves learned.', es: 'No ha aprendido movimientos.' },
 

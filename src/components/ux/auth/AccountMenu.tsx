@@ -2160,7 +2160,9 @@ function PokemonCard({
   onSetLeader,
   onGiveBerry,
   onEquipItem,
-  onOpenWorldMap
+  onOpenWorldMap,
+  followerEnabled,
+  onToggleFollower
 }: {
   pokemon: PokemonSummary;
   catalogEntry: PokemonCatalogEntry | null;
@@ -2172,6 +2174,8 @@ function PokemonCard({
   onGiveBerry: (pokemonId: string) => void;
   onEquipItem: (pokemonId: string) => void;
   onOpenWorldMap: () => void;
+  followerEnabled: boolean;
+  onToggleFollower: () => void;
 }) {
   const { namePokemon, takeHeldItem } = useAuth();
   const { socket } = useContext(AppContext);
@@ -2294,6 +2298,12 @@ function PokemonCard({
               <MenuItem isDisabled={partyIndex === 0} onClick={() => onSetLeader(partyIndex)}>
                 Set as Leader
               </MenuItem>
+              {partyIndex === 0 ? (
+                // Only the leader walks the map: the follower option lives on it.
+                <MenuItem onClick={onToggleFollower}>
+                  {followerEnabled ? t('party.followerDisable') : t('party.followerEnable')}
+                </MenuItem>
+              ) : null}
               <MenuItem isDisabled={partyIndex === 0} onClick={() => onMoveInParty(partyIndex, -1)}>
                 Move Up
               </MenuItem>
@@ -2357,9 +2367,10 @@ function PokemonsWindow({
   onOpenStats: (pokemonId: string) => void;
   onOpenWorldMap: () => void;
 }) {
-  const { user, reorderPokemonParty, holdInventoryItem } = useAuth();
+  const { user, reorderPokemonParty, holdInventoryItem, setFollowerEnabled } = useAuth();
   const t = useT();
   const [itemPicker, setItemPicker] = useState<{ pokemonId: string; kind: 'berry' | 'equip' } | null>(null);
+  const followerEnabled = user?.followerEnabled !== false;
 
   const handleMoveInParty = (partyIndex: number, direction: -1 | 1) => {
     const targetIndex = partyIndex + direction;
@@ -2420,6 +2431,8 @@ function PokemonsWindow({
             onGiveBerry={(pokemonId) => setItemPicker({ pokemonId, kind: 'berry' })}
             onEquipItem={(pokemonId) => setItemPicker({ pokemonId, kind: 'equip' })}
             onOpenWorldMap={onOpenWorldMap}
+            followerEnabled={followerEnabled}
+            onToggleFollower={() => setFollowerEnabled({ enabled: !followerEnabled })}
           />
         ))}
       </Grid>

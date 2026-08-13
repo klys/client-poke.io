@@ -63,6 +63,7 @@ export type UserUpdatePayload = Partial<{
   savedLocation: UserSavedLocationInput
   inventory: AdminInventoryItem[]
   pokemonParty: AdminPokemonSummary[]
+  pushDepth: number
 }>
 
 type UserEditorProps = {
@@ -98,6 +99,7 @@ type EditorState = {
   trainerGender: string
   money: string
   emailVerified: boolean
+  pushDepth: string
   mapId: string
   mapX: string
   mapY: string
@@ -109,7 +111,7 @@ type EditorState = {
 type EditableTab = 'profile' | 'location' | 'inventory' | 'party'
 
 const TAB_FIELDS: Record<EditableTab, Array<keyof EditorState>> = {
-  profile: ['name', 'role', 'profileImage', 'description', 'trainerGender', 'money', 'emailVerified'],
+  profile: ['name', 'role', 'profileImage', 'description', 'trainerGender', 'money', 'emailVerified', 'pushDepth'],
   location: ['mapId', 'mapX', 'mapY', 'mapAuto'],
   inventory: ['inventory'],
   party: ['pokemonParty']
@@ -124,6 +126,7 @@ function buildEditorState(user: AdminUserDetails): EditorState {
     trainerGender: user.trainerGender,
     money: String(user.money),
     emailVerified: user.emailVerified,
+    pushDepth: String(user.pushDepth ?? 2),
     mapId: user.savedLocation?.mapId ?? '',
     mapX: String(user.savedLocation?.x ?? 0),
     mapY: String(user.savedLocation?.y ?? 0),
@@ -256,6 +259,12 @@ export default function UserEditor(props: UserEditorProps) {
       return;
     }
 
+    const pushDepth = Number(editor.pushDepth);
+    if (!Number.isFinite(pushDepth) || pushDepth < 0 || pushDepth > 8) {
+      toast({ title: 'Push depth must be a number between 0 and 8.', status: 'error', duration: 3500, position: 'top' });
+      return;
+    }
+
     apply('profile', {
       name: editor.name,
       role: editor.role,
@@ -263,7 +272,8 @@ export default function UserEditor(props: UserEditorProps) {
       description: editor.description,
       trainerGender: editor.trainerGender,
       money,
-      emailVerified: editor.emailVerified
+      emailVerified: editor.emailVerified,
+      pushDepth
     });
   };
 
@@ -407,6 +417,19 @@ export default function UserEditor(props: UserEditorProps) {
                 <FormControl>
                   <FormLabel>Profile Image</FormLabel>
                   <Input value={editor.profileImage} onChange={(event) => patchProfile({ profileImage: event.target.value })} />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Push Depth (hidden stat)</FormLabel>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={8}
+                    value={editor.pushDepth}
+                    onChange={(event) => patchProfile({ pushDepth: event.target.value })}
+                  />
+                  <Text fontSize="xs" color="gray.500" mt={1}>
+                    Bodies-in-a-row this player can shove (2 = push-over-push). Never shown to the player; reserved for item bonuses.
+                  </Text>
                 </FormControl>
               </SimpleGrid>
 

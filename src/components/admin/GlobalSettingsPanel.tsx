@@ -5,6 +5,7 @@ import {
   HStack,
   Input,
   Stack,
+  Switch,
   Text,
   useToast
 } from '@chakra-ui/react';
@@ -18,6 +19,7 @@ type GlobalGameSettings = {
   characterRecoveryDays: number;
   skinChangePrice: number;
   startingMoney: number;
+  allowMultipleBeachBalls: boolean;
 };
 
 type SettingsPayload = {
@@ -25,15 +27,26 @@ type SettingsPayload = {
   defaults: GlobalGameSettings;
 };
 
-const FIELDS: Array<{
-  key: keyof GlobalGameSettings;
-  label: string;
-  help: string;
-  min: number;
-  max: number;
-}> = [
+type FieldSpec =
+  | {
+      key: keyof GlobalGameSettings;
+      type: 'number';
+      label: string;
+      help: string;
+      min: number;
+      max: number;
+    }
+  | {
+      key: keyof GlobalGameSettings;
+      type: 'boolean';
+      label: string;
+      help: string;
+    };
+
+const FIELDS: FieldSpec[] = [
   {
     key: 'maxCharactersPerAccount',
+    type: 'number',
     label: 'Max characters per account',
     help: 'How many non-deleted characters one account may own.',
     min: 1,
@@ -41,6 +54,7 @@ const FIELDS: Array<{
   },
   {
     key: 'crossCharacterStorageMinMedals',
+    type: 'number',
     label: 'Cross-character storage medal requirement',
     help: 'Gym medals the active character needs before it can use shared-box assets (venomons, items, money) owned by the account’s other characters.',
     min: 0,
@@ -48,6 +62,7 @@ const FIELDS: Array<{
   },
   {
     key: 'characterRecoveryDays',
+    type: 'number',
     label: 'Character recovery window (days)',
     help: 'How long a soft-deleted character stays restorable before it is purged (its frozen money becomes an unclaimed box deposit).',
     min: 0,
@@ -55,6 +70,7 @@ const FIELDS: Array<{
   },
   {
     key: 'skinChangePrice',
+    type: 'number',
     label: 'Skin change price ($)',
     help: 'Cost of a paid character-skin change in the skin shop.',
     min: 0,
@@ -62,10 +78,17 @@ const FIELDS: Array<{
   },
   {
     key: 'startingMoney',
+    type: 'number',
     label: 'Starting money ($)',
     help: 'Wallet money a brand-new account or freshly created character starts with.',
     min: 0,
     max: 999999999
+  },
+  {
+    key: 'allowMultipleBeachBalls',
+    type: 'boolean',
+    label: 'Allow multiple beach balls per map',
+    help: 'Bypasses the one-/pelota-ball-per-map rule: with this on, every /pelota spawns a ball even when the map already has one.'
   }
 ];
 
@@ -117,13 +140,20 @@ export default function GlobalSettingsPanel() {
     }
     const updates: Partial<GlobalGameSettings> = {};
     for (const field of FIELDS) {
+      if (field.type === 'boolean') {
+        const value = drafts[field.key] === 'true';
+        if (value !== payload.settings[field.key]) {
+          (updates as Record<string, boolean>)[field.key] = value;
+        }
+        continue;
+      }
       const parsed = Number(drafts[field.key]);
       if (!Number.isFinite(parsed)) {
         toast({ title: `${field.label}: enter a number.`, status: 'error', duration: 4000 });
         return;
       }
       if (parsed !== payload.settings[field.key]) {
-        updates[field.key] = parsed;
+        (updates as Record<string, number>)[field.key] = parsed;
       }
     }
     setSaving(true);
@@ -152,7 +182,7 @@ export default function GlobalSettingsPanel() {
             <HStack justify="space-between" align="start" mb={1}>
               <Text fontWeight="600">{field.label}</Text>
               {!isDefault ? (
-                <Badge colorScheme="purple">custom (default: {payload.defaults[field.key]})</Badge>
+                <Badge colorScheme="purple">custom (default: {String(payload.defaults[field.key])})</Badge>
               ) : (
                 <Badge colorScheme="gray">default</Badge>
               )}
@@ -160,17 +190,29 @@ export default function GlobalSettingsPanel() {
             <Text fontSize="sm" color="gray.600" mb={2}>
               {field.help}
             </Text>
-            <Input
-              type="number"
-              size="sm"
-              maxW="200px"
-              min={field.min}
-              max={field.max}
-              value={drafts[field.key] ?? ''}
-              onChange={(event) =>
-                setDrafts((previous) => ({ ...previous, [field.key]: event.target.value }))
-              }
-            />
+            {field.type === 'boolean' ? (
+              <Switch
+                isChecked={drafts[field.key] === 'true'}
+                onChange={(event) =>
+                  setDrafts((previous) => ({
+                    ...previous,
+                    [field.key]: event.target.checked ? 'true' : 'false'
+                  }))
+                }
+              />
+            ) : (
+              <Input
+                type="number"
+                size="sm"
+                maxW="200px"
+                min={field.min}
+                max={field.max}
+                value={drafts[field.key] ?? ''}
+                onChange={(event) =>
+                  setDrafts((previous) => ({ ...previous, [field.key]: event.target.value }))
+                }
+              />
+            )}
           </Box>
         );
       })}
