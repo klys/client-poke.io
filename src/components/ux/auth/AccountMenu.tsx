@@ -59,7 +59,15 @@ import { classifyInventoryItem, type ItemUsage } from '../game/itemUsage';
 import { fieldMovesForPokemon, type FieldMoveAction } from '../game/fieldMoves';
 import { AppContext } from '../../../context/appContext';
 import { getBackendBaseUrl } from '../../game/backendConfig';
-import { isEquipableBonusItem } from '../game/equipableItems';
+import {
+  applyAppearanceToSpritePath,
+  getItemInternalId,
+  getSpeciesInternalId,
+  isEquipableBonusItem,
+  isEquipableForSlot,
+  resolveAppearanceEffect,
+  type EquipmentSlot
+} from '../game/equipableItems';
 import GamepadSettings from './GamepadSettings';
 import { isTextInputFocused } from '../../../input/gamepadConfig';
 import {
@@ -210,7 +218,29 @@ function resolvePokemonCatalogEntry(
   pokemon: PokemonSummary,
   pokemonCatalog: Map<string, PokemonCatalogEntry>
 ) {
-  return pokemonCatalog.get(pokemon.sourcePokemonId ?? '') ?? pokemonCatalog.get(pokemon.id) ?? null;
+  const entry =
+    pokemonCatalog.get(pokemon.sourcePokemonId ?? '') ?? pokemonCatalog.get(pokemon.id) ?? null;
+  if (!entry || !pokemon.appearanceItemId) {
+    return entry;
+  }
+
+  // An equipped appearance item (Equipo tab) re-skins the menu sprites the
+  // same way the server re-skins the battle payload.
+  const appearance = resolveAppearanceEffect(
+    getItemInternalId({ id: pokemon.appearanceItemId }),
+    getSpeciesInternalId(pokemon)
+  );
+  if (!appearance) {
+    return entry;
+  }
+  return {
+    ...entry,
+    profile: {
+      ...entry.profile,
+      frontImageSrc: applyAppearanceToSpritePath(entry.profile.frontImageSrc, appearance, 'front'),
+      backImageSrc: applyAppearanceToSpritePath(entry.profile.backImageSrc, appearance, 'back')
+    }
+  };
 }
 
 function MoreActionsIcon() {
@@ -1672,13 +1702,163 @@ function PokemonStatsTab({
           label="Speed"
           value={catalogEntry ? String(catalogEntry.profile.speed) : 'Unknown'}
         />
-        <PokemonStatTile label="Held Item" value={pokemon.heldItemName ?? 'None'} />
+        <PokemonStatTile
+          label="Equipo"
+          value={
+            [pokemon.heldItemName, pokemon.battleItemName, pokemon.appearanceItemName]
+              .filter(Boolean)
+              .join(', ') || 'Ninguno'
+          }
+        />
       </SimpleGrid>
 
       {!catalogEntry ? (
         <Text color="yellow.200" fontSize="sm">
           Extra stat art was not found in the local Venomon catalog, so this card is using the party data only.
         </Text>
+      ) : null}
+    </VStack>
+  );
+}
+
+type EquipmentSlotSpec = {
+  slot: EquipmentSlot;
+  title: string;
+  description: string;
+  pickHint: string;
+  emptyText: string;
+};
+
+const EQUIPMENT_SLOT_SPECS: EquipmentSlotSpec[] = [
+  {
+    slot: 'bonus',
+    title: 'Bonificación',
+    description: 'Otorga su bonificación pasiva mientras el venomon lo lleva en batalla.',
+    pickHint: 'Elige un objeto equipable; su bonificación se aplica automáticamente en batalla.',
+    emptyText: 'No tienes objetos de bonificación en la mochila.'
+  },
+  {
+    slot: 'battle',
+    title: 'Batalla',
+    description: 'El venomon lo usa por sí mismo en batalla cuando se cumple su condición; se consume al usarse.',
+    pickHint: 'Elige una baya u objeto de batalla; se usará automáticamente cuando haga falta.',
+    emptyText: 'No tienes bayas ni objetos de batalla en la mochila.'
+  },
+  {
+    slot: 'appearance',
+    title: 'Apariencia',
+    description: 'Cambia el aspecto del venomon mientras lo lleva equipado.',
+    pickHint: 'Elige un objeto de apariencia válido para esta especie.',
+    emptyText: 'No tienes objetos de apariencia válidos para este venomon.'
+  }
+];
+
+function getEquippedSlotItem(pokemon: PokemonSummary, slot: EquipmentSlot) {
+  if (slot === 'bonus') {
+    return { id: pokemon.heldItemId, name: pokemon.heldItemName };
+  }
+  if (slot === 'battle') {
+    return { id: pokemon.battleItemId, name: pokemon.battleItemName };
+  }
+  return { id: pokemon.appearanceItemId, name: pokemon.appearanceItemName };
+}
+
+/**
+ * "Equipo" tab: the three equipment slots (bonus / battle-use / appearance).
+ * Equips go through `inventory:hold-item` with an explicit slot and unequips
+ * through `inventory:take-held-item`; the server validates the item really
+ * belongs to the slot and returns the previous item to the bag.
+ */
+function PokemonEquipmentTab({ pokemon }: { pokemon: PokemonSummary }) {
+  const { user, holdInventoryItem, takeHeldItem } = useAuth();
+  const [pickerSlot, setPickerSlot] = useState<EquipmentSlot | null>(null);
+  const speciesInternalId = getSpeciesInternalId(pokemon);
+
+  const pickerSpec = pickerSlot
+    ? EQUIPMENT_SLOT_SPECS.find((spec) => spec.slot === pickerSlot) ?? null
+    : null;
+  const pickerItems = pickerSlot
+    ? (user?.inventory ?? []).filter((item) => isEquipableForSlot(item, pickerSlot, speciesInternalId))
+    : [];
+
+  if (pokemon.isEgg) {
+    return <Text color="gray.300">Un huevo no puede llevar objetos.</Text>;
+  }
+
+  return (
+    <VStack align="stretch" spacing={3}>
+      {EQUIPMENT_SLOT_SPECS.map((spec) => {
+        const equipped = getEquippedSlotItem(pokemon, spec.slot);
+        const appearance =
+          spec.slot === 'appearance' && equipped.id
+            ? resolveAppearanceEffect(getItemInternalId({ id: equipped.id }), speciesInternalId)
+            : null;
+
+        return (
+          <Box
+            key={spec.slot}
+            bg="whiteAlpha.100"
+            border="1px solid rgba(255,255,255,0.12)"
+            p={3}
+            borderRadius="8px"
+          >
+            <HStack align="flex-start" justify="space-between" spacing={3}>
+              <Box minW={0}>
+                <HStack spacing={2}>
+                  <Text fontSize="sm" fontWeight="800">{spec.title}</Text>
+                  {equipped.name ? (
+                    <Badge colorScheme="purple" noOfLines={1}>{equipped.name}</Badge>
+                  ) : (
+                    <Badge colorScheme="gray">Vacío</Badge>
+                  )}
+                  {appearance?.formName ? (
+                    <Badge colorScheme="teal" noOfLines={1}>{appearance.formName}</Badge>
+                  ) : null}
+                </HStack>
+                <Text mt={1} fontSize="xs" color="gray.400">{spec.description}</Text>
+              </Box>
+              <VStack spacing={1} flexShrink={0} align="stretch">
+                <Button
+                  size="xs"
+                  colorScheme="teal"
+                  variant="outline"
+                  onClick={() => setPickerSlot(spec.slot)}
+                >
+                  {equipped.id ? 'Reemplazar' : 'Equipar'}
+                </Button>
+                {equipped.id ? (
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    borderColor="whiteAlpha.400"
+                    onClick={() => takeHeldItem({ pokemonId: pokemon.id, slot: spec.slot })}
+                  >
+                    Quitar
+                  </Button>
+                ) : null}
+              </VStack>
+            </HStack>
+          </Box>
+        );
+      })}
+      <Text color="gray.500" fontSize="xs">
+        Los objetos equipados viajan con el venomon (intercambios incluidos). El objeto de batalla se
+        pierde al consumirse.
+      </Text>
+      {pickerSlot && pickerSpec ? (
+        <HeldItemSelectModal
+          pokemon={pokemon}
+          title={`Equipar — ${pickerSpec.title}`}
+          hint={pickerSpec.pickHint}
+          items={pickerItems}
+          emptyText={pickerSpec.emptyText}
+          currentItemName={getEquippedSlotItem(pokemon, pickerSlot).name}
+          onSelect={(itemId) => {
+            holdInventoryItem({ pokemonId: pokemon.id, itemId, slot: pickerSlot });
+            setPickerSlot(null);
+          }}
+          onCancel={() => setPickerSlot(null)}
+        />
       ) : null}
     </VStack>
   );
@@ -2058,12 +2238,16 @@ function PokemonStatsWindow({
       <Tabs variant="soft-rounded" colorScheme="teal" size="sm" isLazy>
         <TabList gap={1}>
           <Tab color="gray.300">Stats</Tab>
+          <Tab color="gray.300">Equipo</Tab>
           <Tab color="gray.300">Moves</Tab>
           <Tab color="gray.300">CanaimaDex</Tab>
         </TabList>
         <TabPanels>
           <TabPanel px={0} pb={0}>
             <PokemonStatsTab pokemon={pokemon} catalogEntry={catalogEntry} />
+          </TabPanel>
+          <TabPanel px={0} pb={0}>
+            <PokemonEquipmentTab pokemon={pokemon} />
           </TabPanel>
           <TabPanel px={0} pb={0}>
             <PokemonMovesTab pokemon={pokemon} catalogEntry={catalogEntry} onOpenWorldMap={onOpenWorldMap} />
@@ -2088,6 +2272,7 @@ function HeldItemSelectModal({
   hint,
   items,
   emptyText,
+  currentItemName,
   onSelect,
   onCancel
 }: {
@@ -2096,6 +2281,8 @@ function HeldItemSelectModal({
   hint: string;
   items: InventoryItem[];
   emptyText: string;
+  /** Item currently occupying the slot being filled (returns to the bag). */
+  currentItemName?: string | null;
   onSelect: (itemId: string) => void;
   onCancel: () => void;
 }) {
@@ -2108,9 +2295,9 @@ function HeldItemSelectModal({
         <ModalBody>
           <VStack align="stretch" spacing={2}>
             <Text color="gray.400" fontSize="xs">{hint}</Text>
-            {pokemon.heldItemName ? (
+            {currentItemName ? (
               <Text color="purple.200" fontSize="xs">
-                {`Currently holding ${pokemon.heldItemName} — it will return to your bag.`}
+                {`Lleva ${currentItemName} — volverá a tu mochila.`}
               </Text>
             ) : null}
             {items.length === 0 ? (
@@ -2332,9 +2519,11 @@ function PokemonCard({
       </HStack>
       <HStack mt={2} flexWrap="wrap">
         {pokemon.types.map((type) => <Badge key={type}>{type}</Badge>)}
-        {pokemon.heldItemName ? (
-          <Badge colorScheme="purple">Holding: {pokemon.heldItemName}</Badge>
-        ) : null}
+        {[pokemon.heldItemName, pokemon.battleItemName, pokemon.appearanceItemName]
+          .filter(Boolean)
+          .map((itemName) => (
+            <Badge key={itemName} colorScheme="purple">Holding: {itemName}</Badge>
+          ))}
       </HStack>
       <Text mt={3} fontSize="sm">HP {pokemon.hp}/{pokemon.maxHp}</Text>
       <Progress value={(pokemon.hp / pokemon.maxHp) * 100} colorScheme="green" size="sm" borderRadius="8px" />
@@ -2452,6 +2641,9 @@ function PokemonsWindow({
             itemPicker.kind === 'berry'
               ? 'You do not have any berries to give.'
               : 'You do not have any equipable items.'
+          }
+          currentItemName={
+            itemPicker.kind === 'berry' ? pickerPokemon.battleItemName : pickerPokemon.heldItemName
           }
           onSelect={handlePickItem}
           onCancel={() => setItemPicker(null)}

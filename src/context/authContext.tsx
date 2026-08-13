@@ -128,8 +128,15 @@ export type PokemonSummary = {
   experience: number
   experienceCurve: 'fast' | 'medium' | 'slow'
   nextLevelExperience: number
+  /** Equipment slots: heldItem* = bonus (passive equip), battleItem* = the
+   * consumable used automatically in battle, appearanceItem* = form/shiny
+   * item baked into the sprites the server sends. */
   heldItemId?: string
   heldItemName?: string
+  battleItemId?: string
+  battleItemName?: string
+  appearanceItemId?: string
+  appearanceItemName?: string
   /** Level-up moves offered in battle but never answered (the prompt was
    * missed, e.g. the battle UI closed) — learnable later from the stats window. */
   pendingMoveLearns?: string[]
@@ -287,8 +294,12 @@ type AuthContextValue = {
   useInventoryItem: (payload: { itemId: string; targetPokemonId?: string; targetMoveName?: string }) => void
   teachInventoryMove: (payload: { itemId: string; targetPokemonId: string; replaceMoveName?: string }) => void
   throwAwayInventoryItem: (payload: { itemId: string; quantity: number }) => void
-  holdInventoryItem: (payload: { pokemonId: string; itemId: string }) => void
-  takeHeldItem: (payload: { pokemonId: string }) => void
+  holdInventoryItem: (payload: {
+    pokemonId: string
+    itemId: string
+    slot?: 'bonus' | 'battle' | 'appearance'
+  }) => void
+  takeHeldItem: (payload: { pokemonId: string; slot?: 'bonus' | 'battle' | 'appearance' }) => void
   reorderPokemonParty: (payload: { order: string[] }) => void
   /** Toggles the follower venomon (party leader walking behind the player). */
   setFollowerEnabled: (payload: { enabled: boolean }) => void
