@@ -666,7 +666,9 @@ const Player = (props: any) => {
           data-player-name-label={playerId}
           style={{
             position: "absolute",
-            bottom: "34px",
+            // Under the cell's bottom edge (the sprite is bottom-anchored to
+            // the 32px logical cell, so this sits just below the feet).
+            top: "34px",
             left: "50%",
             transform: "translateX(-50%)",
             padding: "3px 7px",
