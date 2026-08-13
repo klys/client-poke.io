@@ -3,7 +3,9 @@
 .vc-root {
   position: fixed;
   inset: 0;
-  z-index: 2147483000;
+  /* UX_LAYER.VIRTUAL_PAD (ux/layers.ts) — above NPC dialogs so A/B stay
+     tappable mid-conversation, below the system menu and its windows. */
+  z-index: 4400;
   pointer-events: none; /* let the game surface receive touches between the pads */
   touch-action: none;
   -webkit-user-select: none;

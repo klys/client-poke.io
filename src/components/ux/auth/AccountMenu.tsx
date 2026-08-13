@@ -61,6 +61,7 @@ import { AppContext } from '../../../context/appContext';
 import { getBackendBaseUrl } from '../../game/backendConfig';
 import { isEquipableBonusItem } from '../game/equipableItems';
 import GamepadSettings from './GamepadSettings';
+import { isTextInputFocused } from '../../../input/gamepadConfig';
 import {
   AudioSettingsSection,
   ControlsSettingsSection,
@@ -2483,6 +2484,29 @@ const AccountMenu = () => {
   const [openWindows, setOpenWindows] = useState<OpenWindowId[]>([]);
   const [positions, setPositions] = useState<Record<string, WindowPosition>>(() => loadStoredPositions());
   const [dragEnabled, setDragEnabledState] = useState(() => window.localStorage.getItem(DRAG_SETTING_KEY) !== '0');
+  // Compact (touch) screens swap the corner dropdown for a centered,
+  // scrollable panel — the dropdown overflows small viewports and its
+  // bottom entries become unreachable.
+  const compact = useCompactUx();
+  const [compactMenuOpen, setCompactMenuOpen] = useState(false);
+
+  // The touch pad's "Open Menu" face button (and the same physical-gamepad
+  // action) synthesises an 'm' keydown (gamepadConfig.ts) — toggle the
+  // compact panel from it so the menu is reachable without a precise tap on
+  // the small corner button.
+  useEffect(() => {
+    if (!compact) {
+      return undefined;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'm' || event.repeat || isTextInputFocused()) {
+        return;
+      }
+      setCompactMenuOpen((current) => !current);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [compact]);
 
   const orderedWindows = useMemo(() => openWindows, [openWindows]);
 
@@ -2725,6 +2749,50 @@ const AccountMenu = () => {
     return <TrainerCardWindow openBattleHistory={() => openWindow('battleHistory')} />;
   };
 
+  // Single source for the menu entries — rendered as a dropdown on desktop
+  // and as the centered compact panel on touch screens.
+  const menuEntries: Array<{
+    key: string;
+    label: ReactNode;
+    action?: () => void;
+    to?: string;
+    color?: string;
+  }> = [
+    { key: 'account', label: t('menu.account'), action: () => openWindow('account') },
+    { key: 'characters', label: t('menu.characters'), action: () => openWindow('characters') },
+    { key: 'settings', label: t('menu.settings'), action: () => openWindow('settings') },
+    { key: 'bag', label: t('menu.bag'), action: () => openWindow('bag') },
+    { key: 'pokemons', label: t('menu.pokemons'), action: () => openWindow('pokemons') },
+    { key: 'map', label: t('menu.map'), action: () => openWindow('map') },
+    { key: 'trainerCard', label: t('menu.trainerCard'), action: () => openWindow('trainerCard') },
+    {
+      key: 'friends',
+      label: (
+        <>
+          {t('menu.friends')}
+          {social.incoming.length > 0 ? (
+            <Badge ml={2} borderRadius="full" colorScheme="red" variant="solid" fontSize="0.7em">
+              {social.incoming.length}
+            </Badge>
+          ) : null}
+        </>
+      ),
+      action: () => openWindow('friends')
+    },
+    { key: 'battleHistory', label: t('menu.battleHistory'), action: () => openWindow('battleHistory') },
+    { key: 'tradeHistory', label: t('menu.tradeHistory'), action: () => openWindow('tradeHistory') },
+    ...(hasPermission('designer.access')
+      ? [{ key: 'designer', label: t('menu.designer'), to: '/designer' }]
+      : []),
+    ...(hasPermission('moderator.access')
+      ? [{ key: 'moderator', label: t('menu.moderator'), to: '/moderator' }]
+      : []),
+    ...(hasPermission('admin.access')
+      ? [{ key: 'admin', label: t('menu.admin'), to: '/admin' }]
+      : []),
+    { key: 'logout', label: t('menu.logout'), action: logout, color: 'red.300' }
+  ];
+
   return (
     <Box
       position="fixed"
@@ -2744,6 +2812,17 @@ const AccountMenu = () => {
     >
       <HStack spacing={2} align="flex-start">
       <NotificationsBell />
+      {compact ? (
+        <Button
+          colorScheme="teal"
+          variant="solid"
+          boxShadow="lg"
+          onClick={() => setCompactMenuOpen((current) => !current)}
+        >
+          {t('menu.menu')}
+          <Text as="span" ml={2}>v</Text>
+        </Button>
+      ) : (
       <Menu>
         <MenuButton as={Button} colorScheme="teal" variant="solid" boxShadow="lg">
           <Text as="span" display={{ base: 'none', sm: 'inline' }}>
@@ -2766,36 +2845,104 @@ const AccountMenu = () => {
             },
           }}
         >
-          <MenuItem onClick={() => openWindow('account')}>{t('menu.account')}</MenuItem>
-          <MenuItem onClick={() => openWindow('characters')}>{t('menu.characters')}</MenuItem>
-          <MenuItem onClick={() => openWindow('settings')}>{t('menu.settings')}</MenuItem>
-          <MenuItem onClick={() => openWindow('bag')}>{t('menu.bag')}</MenuItem>
-          <MenuItem onClick={() => openWindow('pokemons')}>{t('menu.pokemons')}</MenuItem>
-          <MenuItem onClick={() => openWindow('map')}>{t('menu.map')}</MenuItem>
-          <MenuItem onClick={() => openWindow('trainerCard')}>{t('menu.trainerCard')}</MenuItem>
-          <MenuItem onClick={() => openWindow('friends')}>
-            {t('menu.friends')}
-            {social.incoming.length > 0 ? (
-              <Badge ml={2} borderRadius="full" colorScheme="red" variant="solid" fontSize="0.7em">
-                {social.incoming.length}
-              </Badge>
-            ) : null}
-          </MenuItem>
-          <MenuItem onClick={() => openWindow('battleHistory')}>{t('menu.battleHistory')}</MenuItem>
-          <MenuItem onClick={() => openWindow('tradeHistory')}>{t('menu.tradeHistory')}</MenuItem>
-          {hasPermission('designer.access') ? (
-            <MenuItem as={RouterLink} to="/designer">{t('menu.designer')}</MenuItem>
-          ) : null}
-          {hasPermission('moderator.access') ? (
-            <MenuItem as={RouterLink} to="/moderator">{t('menu.moderator')}</MenuItem>
-          ) : null}
-          {hasPermission('admin.access') ? (
-            <MenuItem as={RouterLink} to="/admin">{t('menu.admin')}</MenuItem>
-          ) : null}
-          <MenuItem color="red.300" onClick={logout}>{t('menu.logout')}</MenuItem>
+          {menuEntries.map((entry) => (
+            entry.to ? (
+              <MenuItem key={entry.key} as={RouterLink} to={entry.to}>{entry.label}</MenuItem>
+            ) : (
+              <MenuItem key={entry.key} color={entry.color} onClick={entry.action}>
+                {entry.label}
+              </MenuItem>
+            )
+          ))}
         </MenuList>
       </Menu>
+      )}
       </HStack>
+      {compact && compactMenuOpen ? (
+        <>
+          {/* Backdrop + centered panel. z-indexes are local to this fixed
+              container's stacking context (SYSTEM_UX), so 4000/4001 only
+              need to beat the windows (3600+) and the menu bar. */}
+          <Box
+            position="fixed"
+            inset={0}
+            bg="blackAlpha.600"
+            zIndex={4000}
+            onClick={() => setCompactMenuOpen(false)}
+          />
+          <Box
+            position="fixed"
+            top="50%"
+            left="50%"
+            transform="translate(-50%, -50%)"
+            width="min(88vw, 340px)"
+            maxH="min(80dvh, 560px)"
+            display="flex"
+            flexDirection="column"
+            overflow="hidden"
+            bg="rgba(17, 24, 39, 0.97)"
+            border="1px solid rgba(255,255,255,0.16)"
+            borderRadius="10px"
+            boxShadow="0 24px 60px rgba(0,0,0,0.55)"
+            color="white"
+            zIndex={4001}
+          >
+            <HStack justify="space-between" px={4} py={2} bg="rgba(255,255,255,0.08)" flexShrink={0}>
+              <Text fontWeight="700" noOfLines={1}>
+                {user?.characterName || user?.username || t('menu.menu')}
+              </Text>
+              <Button
+                aria-label={`Close ${t('menu.menu')}`}
+                size="sm"
+                variant="ghost"
+                color="white"
+                onClick={() => setCompactMenuOpen(false)}
+              >
+                X
+              </Button>
+            </HStack>
+            {/* The list scrolls, so every entry stays reachable no matter how
+                many the account's permissions add. */}
+            <VStack align="stretch" spacing={0} p={2} overflowY="auto" flex="1" minH={0}>
+              {menuEntries.map((entry) => {
+                const shared = {
+                  variant: 'ghost',
+                  justifyContent: 'flex-start',
+                  fontWeight: '600',
+                  color: entry.color ?? 'white',
+                  minH: '44px',
+                  flexShrink: 0,
+                  _hover: { bg: 'whiteAlpha.200' },
+                  _active: { bg: 'whiteAlpha.300' }
+                } as const;
+
+                return entry.to ? (
+                  <Button
+                    key={entry.key}
+                    as={RouterLink}
+                    to={entry.to}
+                    {...shared}
+                    onClick={() => setCompactMenuOpen(false)}
+                  >
+                    {entry.label}
+                  </Button>
+                ) : (
+                  <Button
+                    key={entry.key}
+                    {...shared}
+                    onClick={() => {
+                      setCompactMenuOpen(false);
+                      entry.action?.();
+                    }}
+                  >
+                    {entry.label}
+                  </Button>
+                );
+              })}
+            </VStack>
+          </Box>
+        </>
+      ) : null}
       {orderedWindows.map((windowKey) => (
         <DraggableWindow
           key={windowKey}

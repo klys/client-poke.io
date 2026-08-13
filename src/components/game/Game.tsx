@@ -29,7 +29,14 @@ const Game = ({ socketUrl }:{ socketUrl:string }) => {
     return (
         <div
             style={{
-                position: "fixed",
+                // absolute, NOT fixed: position:fixed creates a stacking
+                // context, which would trap every inline overlay's z-index
+                // (menu, HUD, battle, trade, touch pad) below the overlays
+                // that portal to <body> (NPC dialogs, PC box) no matter how
+                // high their UX_LAYER value is. With absolute + z-index auto
+                // all of them compete in the root stacking context, so the
+                // ordering in ux/layers.ts actually holds.
+                position: "absolute",
                 inset: 0,
                 background: "#000",
                 overflow: "hidden",
