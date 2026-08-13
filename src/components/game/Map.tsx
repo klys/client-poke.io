@@ -11,6 +11,7 @@ import NpcInteractionOverlay from "../ux/game/NpcInteractions";
 import WaterInteractionController, { WATER_MENU_EVENT } from "./WaterInteractionController";
 import { isFishableWaterCell } from "./fishing";
 import NpcSprite from "./NpcSprite";
+import { getNpcCell } from "./npcActors";
 import { assetUrl, resolveServerAssetUrl } from "../tilemap/serverAssets";
 import {
     selectActiveEventPage,
@@ -301,11 +302,17 @@ const Map = ({children}:{children:any}) => {
         const targetY = playerCellY + delta.y;
 
         const candidates = activeMapEditorData.npcs.filter((npc) => {
-            if (npc.x === targetX && npc.y === targetY) {
+            // Walking NPCs are wherever the server says they are, not on their
+            // authored tile — talking to one has to follow it around.
+            const live = activeMapId ? getNpcCell(activeMapId, npc.id) : null;
+            const npcX = live ? live.x : npc.x;
+            const npcY = live ? live.y : npc.y;
+
+            if (npcX === targetX && npcY === targetY) {
                 return true;
             }
             // Floor triggers (signs placed on the player's own tile).
-            return npc.x === playerCellX && npc.y === playerCellY;
+            return npcX === playerCellX && npcY === playerCellY;
         });
 
         for (const npc of candidates) {
@@ -432,6 +439,7 @@ const Map = ({children}:{children:any}) => {
                                         movement: activePage.move,
                                         graphic: activePage.graphic,
                                     }}
+                                    mapId={activeMapId ?? ""}
                                     cellSize={activeMapConfig.cellSize}
                                     imageSrc={imageSrc}
                                     onClick={() => openNpcInteraction(npc)}
@@ -469,6 +477,7 @@ const Map = ({children}:{children:any}) => {
                             <NpcSprite
                                 key={npc.id}
                                 npc={npc as MapEditorNpcPlacement & { spriteAspect?: number }}
+                                mapId={activeMapId ?? ""}
                                 cellSize={activeMapConfig.cellSize}
                                 imageSrc={imageSrc}
                                 onClick={() => openNpcInteraction(npc)}

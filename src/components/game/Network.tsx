@@ -11,6 +11,7 @@ import {
     sanitizePlayableMapsSyncPayload,
 } from "./playableMapRuntime";
 import { getBackendBaseUrl } from "./backendConfig";
+import { applyNpcSteps, applyNpcSync, applyNpcTurn } from "./npcActors";
 import { isBattleUiHeld } from "../ux/game/battle/battleUiHold";
 
 const AUTH_TOKEN_STORAGE_KEY = "client-poke.io.auth.token";
@@ -371,6 +372,27 @@ const Network = () => {
             }
         };
 
+        // Walking NPCs are server-authoritative: these three feed the live
+        // position store the map sprites interpolate from, so every player on
+        // a map sees the same NPC on the same tile.
+        const handleNpcSteps = (data:any) => {
+            if (typeof data?.mapId === "string") {
+                applyNpcSteps(data.mapId, data.steps ?? []);
+            }
+        };
+
+        const handleNpcSync = (data:any) => {
+            if (typeof data?.mapId === "string") {
+                applyNpcSync(data.mapId, data.npcs ?? []);
+            }
+        };
+
+        const handleNpcTurn = (data:any) => {
+            if (typeof data?.mapId === "string" && typeof data?.id === "string") {
+                applyNpcTurn(data.mapId, data.id, data.facing);
+            }
+        };
+
         // A field skill (Surf/Dive/Strength/Waterfall) was rejected — surface
         // the server's specific reason instead of failing silently.
         const handleFieldSkillError = (data:any) => {
@@ -428,6 +450,9 @@ const Network = () => {
         socket.on("auth:session", handleAuthSession)
         socket.on("player:field-skill-error", handleFieldSkillError)
         socket.on("player:surf-state", handleSurfState)
+        socket.on("npc:steps", handleNpcSteps)
+        socket.on("npc:sync", handleNpcSync)
+        socket.on("npc:turn", handleNpcTurn)
 
         return () => {
             socket.off("connect", joinGame)
@@ -455,6 +480,9 @@ const Network = () => {
             socket.off("auth:session", handleAuthSession)
             socket.off("player:field-skill-error", handleFieldSkillError)
             socket.off("player:surf-state", handleSurfState)
+            socket.off("npc:steps", handleNpcSteps)
+            socket.off("npc:sync", handleNpcSync)
+            socket.off("npc:turn", handleNpcTurn)
             if (battleClearTimerRef.current !== null) {
                 window.clearTimeout(battleClearTimerRef.current);
                 battleClearTimerRef.current = null;
