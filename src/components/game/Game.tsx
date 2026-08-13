@@ -36,8 +36,18 @@ const Game = ({ socketUrl }:{ socketUrl:string }) => {
                 // high their UX_LAYER value is. With absolute + z-index auto
                 // all of them compete in the root stacking context, so the
                 // ordering in ux/layers.ts actually holds.
+                //
+                // Sized in viewport units, NOT inset:0 — Chakra styles <body>
+                // as position:relative with zero height, so inset:0 resolves
+                // to a 0-tall box and the world disappears behind the theme
+                // background. minHeight is the fallback where dvh is
+                // unsupported (old WebViews).
                 position: "absolute",
-                inset: 0,
+                left: 0,
+                top: 0,
+                width: "100vw",
+                minHeight: "100vh",
+                height: "100dvh",
                 background: "#000",
                 overflow: "hidden",
             }}
