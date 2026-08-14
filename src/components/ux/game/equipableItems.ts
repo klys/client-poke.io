@@ -134,27 +134,65 @@ export type AppearanceEffect = {
   formSuffix?: string;
   shiny?: boolean;
   formName?: string;
+  /** Venova forms only — server-authoritative; mirrored for tab hints. */
+  grantsMoveName?: string;
 };
 
 const ARCEUS = ['ARCEUS'];
 const GENESECT = ['GENESECT'];
 
-/** Mirror of the server registry (BW v3.1.1 form numbering). */
-export const APPEARANCE_ITEMS_BY_INTERNAL_ID: Record<string, AppearanceEffect> = {
+/**
+ * Mirror of the server registry (BW v3.1.1 form numbering + the Venova
+ * Adventure custom forms from Pokemon_MultipleForms). Items shared between
+ * species carry one variant per species. Type/stat overrides live server-side
+ * only — the client sees them through the session payload.
+ */
+export const APPEARANCE_ITEMS_BY_INTERNAL_ID: Record<
+  string,
+  AppearanceEffect | AppearanceEffect[]
+> = {
   SHINYCHARM: { shiny: true, formName: 'Variocolor' },
-  GRISEOUSORB: { onlySpecies: ['GIRATINA'], formSuffix: '_1', formName: 'Forma Origen' },
+  GRISEOUSORB: [
+    { onlySpecies: ['HAUNTER'], formSuffix: '_1', formName: 'Forma Origen' },
+    { onlySpecies: ['GIRATINA'], formSuffix: '_1', formName: 'Forma Origen' }
+  ],
+  PENDRIVE: {
+    onlySpecies: ['ARIADOS'],
+    formSuffix: '_1',
+    formName: 'Forma Origen',
+    grantsMoveName: 'Hackeo'
+  },
+  ADAMANTORB: { onlySpecies: ['HOOTHOOT'], formSuffix: '_1', formName: 'Forma Origen' },
+  ZAFIRO: { onlySpecies: ['GOLDUCK'], formSuffix: '_1', formName: 'Forma Origen' },
+  CAPARAZON: { onlySpecies: ['PARASECT'], formSuffix: '_1', formName: 'Forma Origen' },
+  LAPIDA: { onlySpecies: ['TYPHLOSION'], formSuffix: '_1', formName: 'Forma Origen' },
   SHOCKDRIVE: { onlySpecies: GENESECT, formSuffix: '_1', formName: 'FulgoROM' },
   BURNDRIVE: { onlySpecies: GENESECT, formSuffix: '_2', formName: 'PiroROM' },
   CHILLDRIVE: { onlySpecies: GENESECT, formSuffix: '_3', formName: 'CrioROM' },
   DOUSEDRIVE: { onlySpecies: GENESECT, formSuffix: '_4', formName: 'HidroROM' },
-  FISTPLATE: { onlySpecies: ARCEUS, formSuffix: '_1', formName: 'Tipo Lucha' },
-  SKYPLATE: { onlySpecies: ARCEUS, formSuffix: '_2', formName: 'Tipo Volador' },
+  FISTPLATE: [
+    { onlySpecies: ARCEUS, formSuffix: '_1', formName: 'Tipo Lucha' },
+    { onlySpecies: ['MEW'], formSuffix: '_2', formName: 'Tambór Mágico' }
+  ],
+  SKYPLATE: [
+    { onlySpecies: ARCEUS, formSuffix: '_2', formName: 'Tipo Volador' },
+    { onlySpecies: ['MEW'], formSuffix: '_1', formName: 'Flauta Mágica' }
+  ],
   TOXICPLATE: { onlySpecies: ARCEUS, formSuffix: '_3', formName: 'Tipo Veneno' },
-  EARTHPLATE: { onlySpecies: ARCEUS, formSuffix: '_4', formName: 'Tipo Tierra' },
-  STONEPLATE: { onlySpecies: ARCEUS, formSuffix: '_5', formName: 'Tipo Roca' },
+  EARTHPLATE: [
+    { onlySpecies: ARCEUS, formSuffix: '_4', formName: 'Tipo Tierra' },
+    { onlySpecies: ['MEW'], formSuffix: '_3', formName: 'Maraca Mágica' }
+  ],
+  STONEPLATE: [
+    { onlySpecies: ARCEUS, formSuffix: '_5', formName: 'Tipo Roca' },
+    { onlySpecies: ['MEW'], formSuffix: '_4', formName: 'Cuatro Mágico' }
+  ],
   INSECTPLATE: { onlySpecies: ARCEUS, formSuffix: '_6', formName: 'Tipo Bicho' },
   SPOOKYPLATE: { onlySpecies: ARCEUS, formSuffix: '_7', formName: 'Tipo Fantasma' },
-  IRONPLATE: { onlySpecies: ARCEUS, formSuffix: '_8', formName: 'Tipo Acero' },
+  IRONPLATE: [
+    { onlySpecies: ARCEUS, formSuffix: '_8', formName: 'Tipo Acero' },
+    { onlySpecies: ['MEW'], formSuffix: '_5', formName: 'Arpa Mágica' }
+  ],
   FLAMEPLATE: { onlySpecies: ARCEUS, formSuffix: '_10', formName: 'Tipo Fuego' },
   SPLASHPLATE: { onlySpecies: ARCEUS, formSuffix: '_11', formName: 'Tipo Agua' },
   MEADOWPLATE: { onlySpecies: ARCEUS, formSuffix: '_12', formName: 'Tipo Planta' },
@@ -186,10 +224,14 @@ export function resolveAppearanceEffect(
   internalId: string,
   speciesInternalId: string
 ): AppearanceEffect | null {
-  const effect = APPEARANCE_ITEMS_BY_INTERNAL_ID[internalId];
-  if (!effect) return null;
-  if (effect.onlySpecies && !effect.onlySpecies.includes(speciesInternalId)) return null;
-  return effect;
+  const entry = APPEARANCE_ITEMS_BY_INTERNAL_ID[internalId];
+  if (!entry) return null;
+  const variants = Array.isArray(entry) ? entry : [entry];
+  return (
+    variants.find(
+      (variant) => !variant.onlySpecies || variant.onlySpecies.includes(speciesInternalId)
+    ) ?? null
+  );
 }
 
 /**

@@ -1827,6 +1827,9 @@ function PokemonEquipmentTab({ pokemon }: { pokemon: PokemonSummary }) {
                   {appearance?.formName ? (
                     <Badge colorScheme="teal" noOfLines={1}>{appearance.formName}</Badge>
                   ) : null}
+                  {appearance?.grantsMoveName ? (
+                    <Badge colorScheme="cyan" noOfLines={1}>{`Otorga ${appearance.grantsMoveName}`}</Badge>
+                  ) : null}
                 </HStack>
                 <Text mt={1} fontSize="xs" color="gray.400">{spec.description}</Text>
               </Box>
