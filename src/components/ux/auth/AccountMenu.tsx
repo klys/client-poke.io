@@ -504,8 +504,12 @@ function DeleteAccountSection() {
       </Box>
 
       <Modal isOpen={isOpen} onClose={handleClose} isCentered>
-        <ModalOverlay />
-        <ModalContent bg="gray.800" color="white">
+        <ModalOverlay zIndex={UX_LAYER.SYSTEM_MODAL} />
+        <ModalContent
+          bg="gray.800"
+          color="white"
+          containerProps={{ zIndex: UX_LAYER.SYSTEM_MODAL }}
+        >
           <ModalHeader color="red.300">{t('account.deleteAccount')}</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
@@ -1188,8 +1192,13 @@ function ItemTargetModal({
 
   return (
     <Modal isOpen onClose={onCancel} isCentered size="sm" scrollBehavior="inside">
-      <ModalOverlay />
-      <ModalContent bg="#1f2937" color="white" onClick={stopUxEvent}>
+      <ModalOverlay zIndex={UX_LAYER.SYSTEM_MODAL} />
+      <ModalContent
+        bg="#1f2937"
+        color="white"
+        onClick={stopUxEvent}
+        containerProps={{ zIndex: UX_LAYER.SYSTEM_MODAL }}
+      >
         <ModalHeader>
           {needsMove && selectedPokemon
             ? `Restore which move? — ${getPokemonDisplayName(selectedPokemon)}`
@@ -1446,8 +1455,12 @@ function BagWindow({ onOpenWorldMap }: { onOpenWorldMap: () => void }) {
       ) : null}
       {replacePrompt ? (
         <Modal isOpen onClose={() => setReplacePrompt(null)} isCentered>
-          <ModalOverlay />
-          <ModalContent bg="gray.800" color="white">
+          <ModalOverlay zIndex={UX_LAYER.SYSTEM_MODAL} />
+          <ModalContent
+            bg="gray.800"
+            color="white"
+            containerProps={{ zIndex: UX_LAYER.SYSTEM_MODAL }}
+          >
             <ModalHeader>{t('bag.replaceMoveTitle')}</ModalHeader>
             <ModalCloseButton />
             <ModalBody>
@@ -2288,8 +2301,13 @@ function HeldItemSelectModal({
 }) {
   return (
     <Modal isOpen onClose={onCancel} isCentered size="sm" scrollBehavior="inside">
-      <ModalOverlay />
-      <ModalContent bg="#1f2937" color="white" onClick={stopUxEvent}>
+      <ModalOverlay zIndex={UX_LAYER.SYSTEM_MODAL} />
+      <ModalContent
+        bg="#1f2937"
+        color="white"
+        onClick={stopUxEvent}
+        containerProps={{ zIndex: UX_LAYER.SYSTEM_MODAL }}
+      >
         <ModalHeader>{`${title} — ${getPokemonDisplayName(pokemon)}`}</ModalHeader>
         <ModalCloseButton />
         <ModalBody>

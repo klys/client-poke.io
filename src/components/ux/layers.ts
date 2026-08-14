@@ -19,6 +19,13 @@
  *   4400     VIRTUAL_PAD   on-screen touch gamepad (value mirrored in
  *                          VirtualControls.css — keep both in sync)
  *   4500     SYSTEM_UX     game system interface: account menu and its windows
+ *   4550     SYSTEM_MODAL  Chakra modals opened from the system UX (equip
+ *                          pickers, item targets, confirmations). Chakra
+ *                          portals them to <body> at its default z-index
+ *                          (1400), which is under SYSTEM_UX — every such
+ *                          modal must set this on ModalOverlay AND
+ *                          ModalContent's containerProps. Kept below
+ *                          TAKEOVER so battle/trade still cover a stale menu.
  *   4600     TAKEOVER      full-screen takeovers: battle, PC box, trade
  *   4700     TAKEOVER_PROMPT  incoming trade/battle requests (must stay clickable)
  *
@@ -44,6 +51,7 @@ export const UX_LAYER = {
   NPC_DIALOG_TOP: 4300,
   VIRTUAL_PAD: 4400,
   SYSTEM_UX: 4500,
+  SYSTEM_MODAL: 4550,
   TAKEOVER: 4600,
   TAKEOVER_PROMPT: 4700,
 } as const;
