@@ -1,4 +1,4 @@
-import { Box, Button, Flex, Input, Text, VStack } from "@chakra-ui/react";
+import { Box, Button, Flex, Input, Text, VStack, keyframes } from "@chakra-ui/react";
 import { useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { AppContext } from "../../../context/appContext";
@@ -7,6 +7,12 @@ import { readStoredDesignerSectionPayload } from "../../designer/designerCache";
 import { assetUrl, resolveServerAssetUrl } from "../../tilemap/serverAssets";
 import { cleanRmxpText } from "./NpcInteractions";
 import { gameAudio } from "./gameAudio";
+import {
+  cameraEffectsActive,
+  clearCameraEffects,
+  scrollCameraBy,
+  shakeCamera
+} from "../../game/camera";
 import { useCompactUx } from "../useCompactUx";
 import { useGameSettings } from "../../../settings/gameSettings";
 
@@ -17,7 +23,9 @@ type EventStep =
   | { type: "nameInput"; npcName: string; text: string; defaultName: string }
   | { type: "picture"; op: "show" | "move" | "erase"; slot: number; name?: string; origin?: number; x?: number; y?: number; opacity?: number; durationMs?: number }
   | { type: "sound"; kind: "SE" | "ME" | "BGM" | "BGS" | "BGMStop" | "BGSStop"; name?: string; volume?: number }
-  | { type: "screen"; effect: "fadeout" | "fadein" | "tone"; durationMs?: number; darken?: number }
+  | { type: "screen"; effect: "fadeout" | "fadein" | "tone" | "flash" | "shake"; durationMs?: number; darken?: number; power?: number }
+  | { type: "camera"; op: "scroll"; direction: number; distanceTiles: number; durationMs: number }
+  | { type: "animation"; animationId: number; name?: string; se?: string; targetCell?: { x: number; y: number } | null }
   | {
       type: "store";
       npcName: string;
@@ -51,6 +59,12 @@ type PictureState = {
 // RMXP virtual screen the Venova pictures were authored for.
 const STAGE_WIDTH = 640;
 const STAGE_HEIGHT = 480;
+
+// Screen Flash (224): a white overlay that decays over the flash duration.
+const flashFade = keyframes`
+  from { opacity: 0.9; }
+  to { opacity: 0; }
+`;
 
 let pictureManifest: Record<string, string> | null = null;
 let pictureManifestRequested = false;
@@ -93,7 +107,7 @@ function resolvePokemonPortrait(pokemonId?: string): string | null {
  * server owns all logic; this component displays steps and relays replies.
  */
 export default function EventDialog() {
-  const { socket, setActiveNpcInteraction } = useContext(AppContext);
+  const { socket, setActiveNpcInteraction, myplayer } = useContext(AppContext);
   const { user } = useAuth();
   const [step, setStep] = useState<BlockingStep | null>(null);
   const [choiceIndex, setChoiceIndex] = useState(0);
@@ -101,6 +115,16 @@ export default function EventDialog() {
   const [pictures, setPictures] = useState<Record<number, PictureState>>({});
   const [screenFx, setScreenFx] = useState<{ darken: number; durationMs: number }>({ darken: 0, durationMs: 400 });
   const [stageScale, setStageScale] = useState(1);
+  // Cutscene camera (Scroll Map / Screen Shake): while the viewport is away
+  // from the player the event stays "active" so movement input stays frozen.
+  const [cameraBusy, setCameraBusy] = useState(false);
+  const cameraPollRef = useRef<number | null>(null);
+  // Screen Flash (224): keyed so consecutive flashes restart the animation.
+  const [flash, setFlash] = useState<{ id: number; durationMs: number } | null>(null);
+  // Show Animation (207) rendered as an emote bubble over the player (or the
+  // event's cell for non-player targets).
+  const [emote, setEmote] = useState<{ id: number; glyph: string; targetCell: { x: number; y: number } | null } | null>(null);
+  const fxIdRef = useRef(0);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
   // Touch screens (and short landscape viewports) get a smaller message box:
   // width-based breakpoints alone would pick the desktop sizes on a landscape
@@ -132,12 +156,63 @@ export default function EventDialog() {
       if (!payload) {
         return;
       }
+      // The camera stays "busy" (movement frozen, dialog layer mounted) until
+      // pans/shakes finished AND the viewport is back on the player.
+      const holdWhileCameraMoves = () => {
+        setCameraBusy(true);
+        if (cameraPollRef.current === null) {
+          cameraPollRef.current = window.setInterval(() => {
+            if (!cameraEffectsActive()) {
+              if (cameraPollRef.current !== null) {
+                window.clearInterval(cameraPollRef.current);
+                cameraPollRef.current = null;
+              }
+              setCameraBusy(false);
+            }
+          }, 250);
+        }
+      };
+
       switch (payload.type) {
         case "end":
           setStep(null);
           setPictures({});
           setScreenFx({ darken: 0, durationMs: 400 });
+          clearCameraEffects();
+          if (cameraPollRef.current !== null) {
+            window.clearInterval(cameraPollRef.current);
+            cameraPollRef.current = null;
+          }
+          setCameraBusy(false);
+          setEmote(null);
+          setFlash(null);
           return;
+        case "camera":
+          if (payload.op === "scroll") {
+            // RMXP numpad direction: 2 down, 4 left, 6 right, 8 up; 32px tiles.
+            const distancePx = (payload.distanceTiles ?? 0) * 32;
+            const dx = payload.direction === 4 ? -distancePx : payload.direction === 6 ? distancePx : 0;
+            const dy = payload.direction === 8 ? -distancePx : payload.direction === 2 ? distancePx : 0;
+            scrollCameraBy(dx, dy, payload.durationMs ?? 0);
+            holdWhileCameraMoves();
+          }
+          return;
+        case "animation": {
+          if (payload.se) {
+            gameAudio.playEffect(payload.se, "SE");
+          }
+          const animationName = (payload.name ?? "").toLowerCase();
+          const glyph = animationName.includes("exclaim")
+            ? "!"
+            : animationName.includes("question")
+            ? "?"
+            : null;
+          if (glyph) {
+            fxIdRef.current += 1;
+            setEmote({ id: fxIdRef.current, glyph, targetCell: payload.targetCell ?? null });
+          }
+          return;
+        }
         case "picture":
           setPictures((current) => {
             const next = { ...current };
@@ -179,6 +254,18 @@ export default function EventDialog() {
           // BGS ambience is not supported yet; ignore quietly.
           return;
         case "screen":
+          if (payload.effect === "shake") {
+            // RMXP power 1-9 → pixel amplitude; the classic earthquake (9) is
+            // a hard ~18px rattle.
+            shakeCamera((payload.power ?? 5) * 2, payload.durationMs ?? 400);
+            holdWhileCameraMoves();
+            return;
+          }
+          if (payload.effect === "flash") {
+            fxIdRef.current += 1;
+            setFlash({ id: fxIdRef.current, durationMs: payload.durationMs ?? 200 });
+            return;
+          }
           setScreenFx({
             darken: payload.effect === "fadeout" ? 1 : payload.effect === "fadein" ? 0 : payload.darken ?? 0,
             durationMs: payload.durationMs ?? 400
@@ -235,8 +322,30 @@ export default function EventDialog() {
     socket.on("event:step", handleStep);
     return () => {
       socket.off("event:step", handleStep);
+      if (cameraPollRef.current !== null) {
+        window.clearInterval(cameraPollRef.current);
+        cameraPollRef.current = null;
+      }
+      clearCameraEffects();
     };
   }, [socket]);
+
+  // Emote bubbles ("!"/"?") and flashes are one-shots that clear themselves.
+  useEffect(() => {
+    if (!emote) {
+      return;
+    }
+    const timer = window.setTimeout(() => setEmote(null), 1400);
+    return () => window.clearTimeout(timer);
+  }, [emote]);
+
+  useEffect(() => {
+    if (!flash) {
+      return;
+    }
+    const timer = window.setTimeout(() => setFlash(null), flash.durationMs + 100);
+    return () => window.clearTimeout(timer);
+  }, [flash]);
 
   // Keep the 640x480 picture stage fitted to the viewport.
   useEffect(() => {
@@ -314,7 +423,8 @@ export default function EventDialog() {
   // Freeze player movement/clicks while an event is on screen (UserControl reads
   // this flag) — including picture-only intro segments between text boxes.
   const hasPictures = Object.keys(pictures).length > 0;
-  const eventActive = Boolean(step) || hasPictures || screenFx.darken > 0;
+  const eventActive =
+    Boolean(step) || hasPictures || screenFx.darken > 0 || cameraBusy || Boolean(emote) || Boolean(flash);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -341,6 +451,13 @@ export default function EventDialog() {
   ) || null;
   const portraitIsPokemon = Boolean(pokemonPortrait);
   const stageLeft = (typeof window !== "undefined" ? window.innerWidth : STAGE_WIDTH) / 2;
+  // Show Animation emote host: the player's own sprite element, or the map
+  // surface for animations targeted at the event's cell.
+  const emoteHost = emote
+    ? emote.targetCell
+      ? document.getElementById("map")
+      : document.getElementById(myplayer)
+    : null;
 
   return createPortal(
     <>
@@ -354,6 +471,51 @@ export default function EventDialog() {
         opacity={screenFx.darken}
         transition={`opacity ${Math.max(50, screenFx.durationMs)}ms linear`}
       />
+
+      {/* Screen Flash (224). */}
+      {flash ? (
+        <Box
+          key={flash.id}
+          position="fixed"
+          inset={0}
+          zIndex={4285}
+          pointerEvents="none"
+          bg="white"
+          animation={`${flashFade} ${Math.max(50, flash.durationMs)}ms linear forwards`}
+        />
+      ) : null}
+
+      {/* Show Animation (207) emote bubble over the player / event cell. */}
+      {emote && emoteHost
+        ? createPortal(
+            <Box
+              key={emote.id}
+              position="absolute"
+              {...(emote.targetCell
+                ? {
+                    left: `${emote.targetCell.x * 32 + 16}px`,
+                    top: `${emote.targetCell.y * 32 - 34}px`
+                  }
+                : { left: "50%", top: "-34px" })}
+              transform="translateX(-50%)"
+              zIndex={40}
+              pointerEvents="none"
+              bg="white"
+              border="2px solid #2b2b3d"
+              borderRadius="6px"
+              px="6px"
+              fontFamily="monospace"
+              fontWeight="bold"
+              fontSize="20px"
+              lineHeight="26px"
+              color="#2b2b3d"
+              boxShadow="0 2px 0 rgba(0,0,0,0.35)"
+            >
+              {emote.glyph}
+            </Box>,
+            emoteHost
+          )
+        : null}
 
       {/* RMXP picture stage: 640x480 design space scaled to the viewport. */}
       {hasPictures ? (
