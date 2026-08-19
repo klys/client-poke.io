@@ -47,13 +47,35 @@ export function normalizeBattleBackName(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-/** Returns the entry for a battleback name, kicking off the fetch if needed. */
+/** Essentials variant suffixes, ordered so compound tails strip cleanly
+ * (fieldgrassnight -> fieldgrass -> field). Mirrors SUFFIX_TOKENS in
+ * server-poke.io/tools/exportBattleBacksToAssetStorage.py. */
+const VARIANT_SUFFIXES = ["grass", "sand", "puddle", "water", "darker", "dark", "eve", "night"];
+
+/** Returns the entry for a battleback name, kicking off the fetch if needed.
+ * A name the manifest doesn't know (a variant added after the last asset
+ * export) degrades to its parent backdrop by stripping variant suffixes,
+ * so battles keep a plausible backdrop instead of the empty fallback. */
 export function getBattleBackManifestEntry(name: string): BattleBackManifestEntry | null {
   startFetch();
   if (!manifest) {
     return null;
   }
-  return manifest[normalizeBattleBackName(name)] ?? null;
+  let slug = normalizeBattleBackName(name);
+  while (slug) {
+    const entry = manifest[slug];
+    if (entry?.backgroundSrc) {
+      return entry;
+    }
+    const suffix = VARIANT_SUFFIXES.find(
+      (token) => slug.endsWith(token) && slug.length > token.length
+    );
+    if (!suffix) {
+      return entry ?? null;
+    }
+    slug = slug.slice(0, -suffix.length);
+  }
+  return null;
 }
 
 /** Notifies when the manifest finishes loading (for re-render hooks). */
