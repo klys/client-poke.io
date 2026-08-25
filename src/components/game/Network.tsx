@@ -24,6 +24,7 @@ import {
     applyBallStep,
     applyBallDeflate
 } from "./beachBalls";
+import { applyBerrySync, applyBerryUpdate } from "./berryPlots";
 import { isBattleUiHeld } from "../ux/game/battle/battleUiHold";
 
 const AUTH_TOKEN_STORAGE_KEY = "client-poke.io.auth.token";
@@ -455,6 +456,20 @@ const Network = () => {
             }
         };
 
+        // Global berry plots: full roster on map arrival, single-plot deltas
+        // when anybody plants / harvests / clears.
+        const handleBerrySync = (data:any) => {
+            if (typeof data?.mapId === "string") {
+                applyBerrySync(data.mapId, data.t, data.plots ?? []);
+            }
+        };
+
+        const handleBerryUpdate = (data:any) => {
+            if (typeof data?.mapId === "string" && data?.plot) {
+                applyBerryUpdate(data.mapId, data.t, data.plot);
+            }
+        };
+
         // A field skill (Surf/Dive/Strength/Waterfall) was rejected — surface
         // the server's specific reason instead of failing silently.
         const handleFieldSkillError = (data:any) => {
@@ -523,6 +538,8 @@ const Network = () => {
         socket.on("ball:spawn", handleBallSpawn)
         socket.on("ball:step", handleBallStep)
         socket.on("ball:deflate", handleBallDeflate)
+        socket.on("berry:sync", handleBerrySync)
+        socket.on("berry:update", handleBerryUpdate)
 
         return () => {
             socket.off("connect", joinGame)
@@ -561,6 +578,8 @@ const Network = () => {
             socket.off("ball:spawn", handleBallSpawn)
             socket.off("ball:step", handleBallStep)
             socket.off("ball:deflate", handleBallDeflate)
+            socket.off("berry:sync", handleBerrySync)
+            socket.off("berry:update", handleBerryUpdate)
             if (battleClearTimerRef.current !== null) {
                 window.clearTimeout(battleClearTimerRef.current);
                 battleClearTimerRef.current = null;

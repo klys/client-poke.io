@@ -31,7 +31,8 @@ const isEventDialogActive = () =>
     (document.body.dataset.eventActive === "1" ||
         // The water context menu owns the keys while it's open (its own
         // capture-phase handler navigates the entries).
-        document.body.dataset.waterMenuActive === "1");
+        document.body.dataset.waterMenuActive === "1" ||
+        document.body.dataset.berryMenuActive === "1");
 
 const isUxEventTarget = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false;

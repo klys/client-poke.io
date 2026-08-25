@@ -11,7 +11,9 @@ import NpcInteractionOverlay from "../ux/game/NpcInteractions";
 import WaterInteractionController, { WATER_MENU_EVENT } from "./WaterInteractionController";
 import { isFishableWaterCell } from "./fishing";
 import NpcSprite from "./NpcSprite";
-import { Followers, BeachBallsLayer } from "./WorldCompanions";
+import { Followers, BeachBallsLayer, BerryPlantsLayer } from "./WorldCompanions";
+import BerryInteractionController from "./BerryInteractionController";
+import { BERRY_MENU_EVENT, getBerryPlotAt, isBerryPlotPlacement } from "./berryPlots";
 import { getNpcCell } from "./npcActors";
 import { assetUrl, resolveServerAssetUrl } from "../tilemap/serverAssets";
 import {
@@ -302,7 +304,19 @@ const Map = ({children}:{children:any}) => {
         const targetX = playerCellX + delta.x;
         const targetY = playerCellY + delta.y;
 
+        // Facing a berry plot: open its menu (Collect / Clear / Plant). Plots
+        // are global state, so the imported event pages are never consulted.
+        const facingPlot = activeMapId ? getBerryPlotAt(activeMapId, targetX, targetY) : null;
+        if (facingPlot) {
+            socket.emit("stopMove");
+            window.dispatchEvent(new CustomEvent(BERRY_MENU_EVENT, { detail: { plotId: facingPlot.id } }));
+            return;
+        }
+
         const candidates = activeMapEditorData.npcs.filter((npc) => {
+            if (isBerryPlotPlacement(npc)) {
+                return false;
+            }
             // Walking NPCs are wherever the server says they are, not on their
             // authored tile — talking to one has to follow it around.
             const live = activeMapId ? getNpcCell(activeMapId, npc.id) : null;
@@ -419,6 +433,12 @@ const Map = ({children}:{children:any}) => {
                     );
                     const essentialsEvent = (npc as { essentialsEvent?: EssentialsEvent }).essentialsEvent;
 
+                    // Berry plots are drawn by BerryPlantsLayer from the global,
+                    // server-timed state — not from their authored event page.
+                    if (isBerryPlotPlacement(npc)) {
+                        return null;
+                    }
+
                     // Imported Venova events: only render according to the page that
                     // is active for the player's current switch/variable state, so
                     // conditionally-hidden events (cutscene actors, later story NPCs)
@@ -508,6 +528,7 @@ const Map = ({children}:{children:any}) => {
                 <>
                     <Followers mapId={activeMapId} cellSize={activeMapConfig.cellSize} />
                     <BeachBallsLayer mapId={activeMapId} cellSize={activeMapConfig.cellSize} />
+                    <BerryPlantsLayer mapId={activeMapId} cellSize={activeMapConfig.cellSize} />
                 </>
             ) : null}
             {(children) ? children : null}
@@ -528,6 +549,12 @@ const Map = ({children}:{children:any}) => {
             mapId={activeMapId}
             cellSize={activeMapConfig?.cellSize ?? 32}
             tileMap={activeMapEditorData?.tileMap ?? null}
+        />
+        <BerryInteractionController
+            socket={socket}
+            player={currentPlayer}
+            mapId={activeMapId}
+            cellSize={activeMapConfig?.cellSize ?? 32}
         />
     </>)
 }
