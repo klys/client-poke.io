@@ -60,6 +60,8 @@ export interface GameSettings {
     showFps: boolean;
     /** Show the server round-trip latency chip (top-left). */
     showLatency: boolean;
+    /** Show the remaining repellent (Baygon) steps chip while one is active (top-left). */
+    showRepelSteps: boolean;
     /** Always show trainer names over players' heads (off = hover only). */
     showPlayerNames: boolean;
   };
@@ -94,6 +96,7 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   hud: {
     showFps: false,
     showLatency: false,
+    showRepelSteps: true,
     showPlayerNames: true,
   },
 };
@@ -165,6 +168,7 @@ function normalizeSettings(raw: unknown): GameSettings {
     hud: {
       showFps: toBool(input.hud?.showFps, base.hud.showFps),
       showLatency: toBool(input.hud?.showLatency, base.hud.showLatency),
+      showRepelSteps: toBool(input.hud?.showRepelSteps, base.hud.showRepelSteps),
       showPlayerNames: toBool(input.hud?.showPlayerNames, base.hud.showPlayerNames),
     },
   };

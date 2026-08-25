@@ -97,6 +97,11 @@ const STRINGS: Record<string, Entry> = {
     en: 'Show server latency (ms)',
     es: 'Mostrar latencia del servidor (ms)',
   },
+  'settings.display.showRepelSteps': {
+    en: 'Show repellent steps left',
+    es: 'Mostrar pasos restantes del repelente',
+  },
+  'hud.repelSteps': { en: 'Repellent: {steps} steps', es: 'Repelente: {steps} pasos' },
   'settings.display.showPlayerNames': {
     en: 'Show player names over their heads',
     es: 'Mostrar nombres de jugadores sobre sus cabezas',

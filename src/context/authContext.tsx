@@ -70,6 +70,8 @@ export type AuthUser = {
   trainerCardColor: string
   /** Whether the party leader walks behind the player on the map. */
   followerEnabled?: boolean
+  /** Remaining repellent (Baygon) steps; 0/absent = no repellent active. */
+  repelSteps?: number
   inventory: InventoryItem[]
   pokemonParty: PokemonSummary[]
   pokemonStorage: PokemonStorageBox[]

@@ -1,5 +1,7 @@
 import { useContext, useEffect, useState, type CSSProperties } from "react";
 import { AppContext } from "../../context/appContext";
+import { useAuth } from "../../context/authContext";
+import { useT } from "../../i18n";
 import { useGameSettings } from "../../settings/gameSettings";
 
 const LATENCY_PROBE_INTERVAL_MS = 3000;
@@ -34,19 +36,41 @@ export const summarizeFrameDeltas = (deltas: number[], elapsedMs: number): Frame
 };
 
 /**
- * Optional performance chips (top-left, clear of the top-center map banner and
- * the top-right account menu): FPS and server round-trip latency. Both are
- * off by default and toggled in Settings -> Display; each meter only runs its
- * measurement loop while its chip is visible.
+ * Optional top-left chips (clear of the top-center map banner and the
+ * top-right account menu): FPS, server round-trip latency, and the remaining
+ * repellent (Baygon) steps. All toggled in Settings -> Display; the meters
+ * only run their measurement loop while their chip is visible, and the
+ * repellent chip only renders while a charge is active.
  */
 const HudMetrics = () => {
   const { socket } = useContext(AppContext);
+  const { user } = useAuth();
+  const t = useT();
   const [settings] = useGameSettings();
   const [frameStats, setFrameStats] = useState<FrameStats | null>(null);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  // Live charge from player:repel-state; null until the first push, when the
+  // session snapshot (user.repelSteps) is the source of truth.
+  const [liveRepelSteps, setLiveRepelSteps] = useState<number | null>(null);
 
   const showFps = settings.hud.showFps;
   const showLatency = settings.hud.showLatency;
+  const showRepelSteps = settings.hud.showRepelSteps;
+  const repelSteps = liveRepelSteps ?? user?.repelSteps ?? 0;
+
+  useEffect(() => {
+    if (!socket) {
+      return;
+    }
+    const handleRepelState = (data: { steps?: number }) => {
+      const steps = typeof data?.steps === "number" && Number.isFinite(data.steps) ? data.steps : 0;
+      setLiveRepelSteps(Math.max(0, Math.round(steps)));
+    };
+    socket.on("player:repel-state", handleRepelState);
+    return () => {
+      socket.off("player:repel-state", handleRepelState);
+    };
+  }, [socket]);
 
   useEffect(() => {
     if (!showFps) {
@@ -104,7 +128,8 @@ const HudMetrics = () => {
     };
   }, [showLatency, socket]);
 
-  if (!showFps && !showLatency) {
+  const showRepelChip = showRepelSteps && repelSteps > 0;
+  if (!showFps && !showLatency && !showRepelChip) {
     return null;
   }
 
@@ -144,6 +169,11 @@ const HudMetrics = () => {
       {showLatency ? (
         <div data-hud-latency="true" style={chipStyle}>
           {latencyMs === null ? "-- ms" : `${latencyMs} ms`}
+        </div>
+      ) : null}
+      {showRepelChip ? (
+        <div data-hud-repel-steps="true" style={chipStyle}>
+          {t("hud.repelSteps", { steps: String(repelSteps) })}
         </div>
       ) : null}
     </div>

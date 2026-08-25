@@ -126,6 +126,16 @@ export const DisplaySettingsSection = () => {
         />
       </FormControl>
       <FormControl display="flex" alignItems="center" justifyContent="space-between">
+        <FormLabel mb={0}>{t('settings.display.showRepelSteps')}</FormLabel>
+        <Switch
+          colorScheme="teal"
+          isChecked={settings.hud.showRepelSteps}
+          onChange={(event) =>
+            update({ hud: { ...settings.hud, showRepelSteps: event.target.checked } })
+          }
+        />
+      </FormControl>
+      <FormControl display="flex" alignItems="center" justifyContent="space-between">
         <FormLabel mb={0}>{t('settings.display.showPlayerNames')}</FormLabel>
         <Switch
           colorScheme="teal"
