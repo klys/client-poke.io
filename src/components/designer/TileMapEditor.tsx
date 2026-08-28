@@ -371,6 +371,30 @@ export default function TileMapEditor({
     [paletteSelection, setCell]
   );
 
+  // Pencil strokes stamp the whole palette block at the pointer (RPG Maker XP
+  // style): a 3x2 selection paints 3x2 cells per click. Tiles are picked
+  // relative to the stroke anchor so dragging continues the pattern instead
+  // of restarting it at every cell.
+  const stampBlock = useCallback(
+    (
+      layer: Uint16Array,
+      x: number,
+      y: number,
+      anchor: { x: number; y: number },
+      changes: Map<number, number>
+    ) => {
+      const blockWidth = paletteSelection.kind === "tiles" ? paletteSelection.width : 1;
+      const blockHeight = paletteSelection.kind === "tiles" ? paletteSelection.height : 1;
+
+      for (let dy = 0; dy < blockHeight; dy += 1) {
+        for (let dx = 0; dx < blockWidth; dx += 1) {
+          stampCell(layer, x + dx, y + dy, anchor, changes);
+        }
+      }
+    },
+    [paletteSelection, stampCell]
+  );
+
   const finishStroke = useCallback(
     (changes: Map<number, number>, boundsCells: Array<{ x: number; y: number }>) => {
       const layers = layersRef.current;
@@ -695,13 +719,18 @@ export default function TileMapEditor({
         (bottom - top + 1) * TILE_SIZE
       );
     } else if (hoverCell && !strokeRef.current) {
-      drawStampPreview(context, hoverCell.x, hoverCell.y, hoverCell);
+      const previewWidth = paletteSelection.kind === "tiles" ? paletteSelection.width : 1;
+      const previewHeight = paletteSelection.kind === "tiles" ? paletteSelection.height : 1;
+
+      for (let dy = 0; dy < previewHeight && hoverCell.y + dy < tileMapHeight; dy += 1) {
+        for (let dx = 0; dx < previewWidth && hoverCell.x + dx < tileMapWidth; dx += 1) {
+          drawStampPreview(context, hoverCell.x + dx, hoverCell.y + dy, hoverCell);
+        }
+      }
+
       context.globalAlpha = 1;
       context.strokeStyle = canvasTheme.hoverStroke;
       context.lineWidth = 2 / zoom;
-
-      const previewWidth = paletteSelection.kind === "tiles" ? paletteSelection.width : 1;
-      const previewHeight = paletteSelection.kind === "tiles" ? paletteSelection.height : 1;
 
       context.strokeRect(
         hoverCell.x * TILE_SIZE,
@@ -839,7 +868,7 @@ export default function TileMapEditor({
     if (tool === "eraser") {
       setCell(layer, cell.x, cell.y, 0, changes);
     } else {
-      stampCell(layer, cell.x, cell.y, cell, changes);
+      stampBlock(layer, cell.x, cell.y, cell, changes);
     }
 
     scheduleRedraw();
@@ -864,7 +893,7 @@ export default function TileMapEditor({
       if (tool === "eraser") {
         setCell(layer, cell.x, cell.y, 0, changes);
       } else {
-        stampCell(layer, cell.x, cell.y, anchor, changes);
+        stampBlock(layer, cell.x, cell.y, anchor, changes);
       }
     }
 
