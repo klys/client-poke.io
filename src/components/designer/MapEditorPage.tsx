@@ -28,6 +28,7 @@ import { useAuth } from "../../context/authContext";
 import {
   buildPlayableMapsSnapshot,
   getPlayableMapsCacheVersion,
+  loadPlayableMapEditorData,
   loadPlayableMapsState,
   persistPlayableMapsSyncPayload,
   sanitizePlayableMapsSyncPayload,
@@ -78,7 +79,6 @@ type DesignerSectionState = {
 };
 
 const MAP_EDITOR_STORAGE_PREFIX = "designer:mapEditor:";
-const LEGACY_MAP_EDITOR_STORAGE_PREFIX = "designer-demo:mapEditor:";
 const MAP_CELL_SIZE_OPTIONS = [8, 16, 32, 64, 128] as const;
 const MAP_BACKGROUND_IMAGE_MODES: DesignerPlayableMapBackgroundImageMode[] = [
   "repeat",
@@ -315,10 +315,6 @@ function getMapEditorStorageKey(mapId: string) {
   return `${MAP_EDITOR_STORAGE_PREFIX}${mapId}`;
 }
 
-function getLegacyMapEditorStorageKey(mapId: string) {
-  return `${LEGACY_MAP_EDITOR_STORAGE_PREFIX}${mapId}`;
-}
-
 function parseNumericDetail(details: DesignerItemSeed["details"], label: string, fallback: number) {
   const match = details.find((item) => item.label === label)?.value ?? "";
   const parsed = Number.parseInt(match, 10);
@@ -481,26 +477,14 @@ function loadNpcCatalog() {
 }
 
 function loadMapEditorData(mapId: string) {
-  if (typeof window === "undefined" || !mapId) {
+  if (!mapId) {
     return sanitizePlayableMapEditorData(undefined);
   }
 
-  try {
-    const raw =
-      window.localStorage.getItem(getMapEditorStorageKey(mapId)) ??
-      window.localStorage.getItem(getLegacyMapEditorStorageKey(mapId));
-    const parsed = raw ? JSON.parse(raw) : undefined;
-    const editorData =
-      parsed && typeof parsed === "object" && "data" in parsed
-        ? (parsed as { data?: unknown }).data
-        : parsed;
-
-    return editorData
-      ? sanitizePlayableMapEditorData(editorData)
-      : sanitizePlayableMapEditorData(undefined);
-  } catch {
-    return sanitizePlayableMapEditorData(undefined);
-  }
+  // Memory first, then localStorage: the per-map localStorage entry is a
+  // best-effort write (a baked tile map can push it past the quota), so the
+  // synced payload kept in memory is the authoritative copy for this session.
+  return sanitizePlayableMapEditorData(loadPlayableMapEditorData(mapId));
 }
 
 function saveMapEditorData(mapId: string, data: PlayableMapEditorData) {
@@ -860,9 +844,14 @@ export default function MapEditorPage() {
     }
 
     const joinMapsRoom = () => {
+      // seedState only bootstraps an empty server store; once we hold a synced
+      // version the server has state, so skip the multi-MB snapshot upload.
+      const cachedVersion = getPlayableMapsCacheVersion();
+
       socket.emit("designer:maps:join", {
-        version: getPlayableMapsCacheVersion(),
-        seedState: buildPlayableMapsSnapshot(loadPlayableMapsState()),
+        version: cachedVersion,
+        seedState:
+          cachedVersion === null ? buildPlayableMapsSnapshot(loadPlayableMapsState()) : undefined,
       });
     };
 
@@ -902,7 +891,18 @@ export default function MapEditorPage() {
       });
     };
 
+    // When our cached version already matches, the server answers the join
+    // with a version stub instead of the full state: the local cache IS the
+    // sync, so a map that is still missing from it is really gone.
+    const handleMapsVersion = (payload: { hasState?: boolean; version: number | null }) => {
+      if (payload?.hasState === true && payload.version === getPlayableMapsCacheVersion()) {
+        setHasMapsSync(true);
+        setMapsState(loadMapsState());
+      }
+    };
+
     socket.on("playableMaps:state", handleMapsState);
+    socket.on("playableMaps:version", handleMapsVersion);
     socket.on("playableMaps:error", handleMapsError);
     socket.on("connect", joinMapsRoom);
 
@@ -915,6 +915,7 @@ export default function MapEditorPage() {
     return () => {
       socket.emit("designer:maps:leave");
       socket.off("playableMaps:state", handleMapsState);
+      socket.off("playableMaps:version", handleMapsVersion);
       socket.off("playableMaps:error", handleMapsError);
       socket.off("connect", joinMapsRoom);
     };

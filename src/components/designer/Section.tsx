@@ -2783,9 +2783,16 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
 
     const joinMapsRoom = () => {
       setIsObjectsStateHydrated(false);
+      // seedState only bootstraps an empty server store; with a synced
+      // version in hand the server has state, so skip the multi-MB upload.
+      const cachedVersion = getPlayableMapsCacheVersion();
+
       socket.emit("designer:maps:join", {
-        version: getPlayableMapsCacheVersion(),
-        seedState: buildPlayableMapsSnapshot(latestSectionStateRef.current),
+        version: cachedVersion,
+        seedState:
+          cachedVersion === null
+            ? buildPlayableMapsSnapshot(latestSectionStateRef.current)
+            : undefined,
       });
     };
 

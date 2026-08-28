@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { dispatchDesignerCacheUpdated } from "../designer/designerCache";
+import { persistStoredDesignerSectionPayload } from "../designer/designerCache";
 import { resolveServerAssetUrl } from "../tilemap/serverAssets";
 import {
   designerSectionsByKey,
@@ -494,6 +494,23 @@ export function persistPlayableMapsSyncPayload(payload: PlayableMapsSyncPayload)
     return;
   }
 
+  // The maps list goes through the shared designer cache so it lands in the
+  // memory copy the designer pages read (MapEditorPage.loadMapsState and
+  // Section's mapsEditor state come from readStoredDesignerSectionPayload).
+  // A raw localStorage write here used to fail silently under quota, leaving
+  // those readers with the demo fallback while getPlayableMapsCacheVersion()
+  // already reported the synced version — the map editor then joined with a
+  // matching version, got only a stub back, and sat on "Loading map data...".
+  persistStoredDesignerSectionPayload("mapsEditor", {
+    state: {
+      categories: sanitizedPayload.state.categories,
+      items: sanitizedPayload.state.items,
+    },
+    version: sanitizedPayload.version,
+    updatedAt: sanitizedPayload.updatedAt,
+    updatedByUsername: sanitizedPayload.updatedByUsername,
+  });
+
   try {
     pruneStaleMapEditorStorage(new Set(sanitizedPayload.state.items.map((item) => item.id)));
     tryStorageRemove(LEGACY_MAPS_STORAGE_KEY);
@@ -501,23 +518,6 @@ export function persistPlayableMapsSyncPayload(payload: PlayableMapsSyncPayload)
     if (!tryStorageWrite(PLAYABLE_MAPS_CACHE_KEY, JSON.stringify(sanitizedPayload))) {
       // Quota pressure: never let a stale payload shadow the in-memory one next session.
       tryStorageRemove(PLAYABLE_MAPS_CACHE_KEY);
-    }
-
-    if (
-      !tryStorageWrite(
-        MAPS_STORAGE_KEY,
-        JSON.stringify({
-          state: {
-            categories: sanitizedPayload.state.categories,
-            items: sanitizedPayload.state.items,
-          },
-          version: sanitizedPayload.version,
-          updatedAt: sanitizedPayload.updatedAt,
-          updatedByUsername: sanitizedPayload.updatedByUsername,
-        })
-      )
-    ) {
-      tryStorageRemove(MAPS_STORAGE_KEY);
     }
 
     sanitizedPayload.state.items.forEach((item) => {
@@ -546,8 +546,6 @@ export function persistPlayableMapsSyncPayload(payload: PlayableMapsSyncPayload)
   } catch {
     /* storage is an optimization; the in-memory payload above is authoritative */
   }
-
-  dispatchDesignerCacheUpdated("mapsEditor");
 }
 
 function resolvePlayableMapsSnapshot(snapshot?: PlayableMapsStateSnapshot) {

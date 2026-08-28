@@ -570,7 +570,9 @@ export default function TileMapEditor({
       context.fillText(
         !tilesetProfile
           ? "Select a tileset to start tile editing."
-          : "Loading tileset graphics...",
+          : !layers
+            ? `Click "Create Tile Map" to add tile layers to this map.`
+            : "Loading tileset graphics...",
         16,
         28
       );
