@@ -254,7 +254,8 @@ export type DesignerItemType =
   | "machines"
   | "general items"
   | "berries"
-  | "quest item";
+  | "quest item"
+  | "furniture";
 
 export interface DesignerItemStatModifiers {
   hp: number;
@@ -651,6 +652,8 @@ export interface DesignerPlayableMapConfig {
   width: number;
   height: number;
   isInitialMap: boolean;
+  /** HOUSE template: apartments instance this map per owner (housing). */
+  isHouse?: boolean;
   initialPositionX: number | null;
   initialPositionY: number | null;
   regionName: string;

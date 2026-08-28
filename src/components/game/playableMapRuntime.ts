@@ -100,6 +100,7 @@ function normalizePlayableMapConfig(
         ? Math.max(1, Math.round(config.height))
         : 500,
     isInitialMap: config?.isInitialMap === true,
+    isHouse: config?.isHouse === true ? true : undefined,
     initialPositionX:
       typeof config?.initialPositionX === "number" && Number.isFinite(config.initialPositionX)
         ? Math.round(config.initialPositionX)
@@ -620,22 +621,42 @@ export function getPlayableMapById(
   }
 
   const mapsState = resolvePlayableMapsSnapshot(snapshot);
-  const item =
+  const direct =
     mapsState.items.find((candidate) => candidate.id === mapId) ?? null;
+  // House instances (`<template>--house-<apartment>`, see houses.ts) render
+  // with their template's config/tiles/placements under the INSTANCE id, so
+  // every map-scoped store (players, followers, furniture) keys on the id
+  // the server broadcasts.
+  const templateId = direct ? mapId : houseTemplateMapId(mapId);
+  const template =
+    direct ?? mapsState.items.find((candidate) => candidate.id === templateId) ?? null;
 
-  if (!item) {
+  if (!template) {
     return null;
   }
 
-  const config = normalizePlayableMapConfig(item.playableMapConfig);
+  const item = direct ?? { ...template, id: mapId };
+  const config = normalizePlayableMapConfig(template.playableMapConfig);
 
   return {
     item,
     config,
     editorData:
-      mapsState.editorDataByMapId[item.id] ??
-      loadPlayableMapEditorData(item.id),
+      mapsState.editorDataByMapId[template.id] ??
+      loadPlayableMapEditorData(template.id),
   };
+}
+
+const HOUSE_INSTANCE_MARKER = "--house-";
+
+/** Template map of a house instance id (identity for ordinary map ids). */
+export function houseTemplateMapId(mapId: string): string {
+  const at = mapId.indexOf(HOUSE_INSTANCE_MARKER);
+  return at > 0 ? mapId.slice(0, at) : mapId;
+}
+
+export function isHouseInstanceMapId(mapId: string | null | undefined): boolean {
+  return typeof mapId === "string" && mapId.includes(HOUSE_INSTANCE_MARKER);
 }
 
 export function getInitialPlayableMap(snapshot?: PlayableMapsStateSnapshot) {

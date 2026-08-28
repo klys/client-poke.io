@@ -10,6 +10,8 @@ import FollowerSprite from "./FollowerSprite";
 import BeachBallSprite from "./BeachBallSprite";
 import { getBerryPlots, subscribeBerryPlots } from "./berryPlots";
 import BerryPlantSprite from "./BerryPlantSprite";
+import { getHouseFurniture, subscribeHouses } from "./houses";
+import { assetUrl } from "../tilemap/serverAssets";
 
 export function Followers({ mapId, cellSize }: { mapId: string; cellSize: number }) {
   const [, setVersion] = useState(0);
@@ -39,6 +41,48 @@ export function BeachBallsLayer({ mapId, cellSize }: { mapId: string; cellSize: 
     <>
       {getBeachBalls(mapId).map((ball) => (
         <BeachBallSprite key={ball.id} ball={ball} mapId={mapId} cellSize={cellSize} />
+      ))}
+    </>
+  );
+}
+
+/** Furniture placed inside a house instance (see houses.ts). */
+export function HouseFurnitureLayer({ mapId, cellSize }: { mapId: string; cellSize: number }) {
+  const [, setVersion] = useState(0);
+
+  useEffect(() => subscribeHouses(() => setVersion((value) => value + 1)), []);
+
+  return (
+    <>
+      {getHouseFurniture(mapId).map((piece) => (
+        <div
+          key={piece.id}
+          data-house-furniture={piece.id}
+          title={piece.itemName}
+          style={{
+            position: "absolute",
+            left: `${piece.x * cellSize}px`,
+            top: `${piece.y * cellSize}px`,
+            width: `${cellSize}px`,
+            height: `${cellSize}px`,
+            zIndex: 998,
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "center",
+            cursor: "pointer"
+          }}
+        >
+          {piece.iconSrc ? (
+            <img
+              src={assetUrl(piece.iconSrc)}
+              alt={piece.itemName}
+              style={{ maxWidth: `${cellSize}px`, maxHeight: `${cellSize * 1.5}px`, imageRendering: "pixelated" }}
+              draggable={false}
+            />
+          ) : (
+            <span style={{ fontSize: `${Math.round(cellSize * 0.7)}px`, lineHeight: 1 }}>🪑</span>
+          )}
+        </div>
       ))}
     </>
   );

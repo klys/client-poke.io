@@ -42,6 +42,8 @@ export interface MapEditorObjectCatalogItem {
 export interface MapEditorMapSummary {
   id: string;
   name: string;
+  /** Flagged "House Template" in its properties (house door room maps). */
+  isHouse?: boolean;
 }
 
 export interface MapEditorPokemonCatalogItem {
@@ -153,6 +155,25 @@ export interface MapEditorBoulder {
   id: string;
   x: number;
   y: number;
+}
+
+/** One purchasable apartment behind a house door (housing system). */
+export interface MapEditorHouseApartment {
+  price: number;
+  /** A map flagged "House Template" in its properties. */
+  mapId: string;
+}
+
+/**
+ * A cell players right-click / tap / face to enter a building's apartments.
+ * Each apartment is an independently owned instance of its room map.
+ */
+export interface MapEditorHouseDoor {
+  id: string;
+  x: number;
+  y: number;
+  name?: string;
+  apartments: MapEditorHouseApartment[];
 }
 
 export interface MapEditorNpcStoreItem {
@@ -280,6 +301,7 @@ export interface PlayableMapEditorData {
   grass: MapEditorGrassPlacement[];
   fishingSpots?: MapEditorFishingSpot[];
   boulders?: MapEditorBoulder[];
+  houseDoors?: MapEditorHouseDoor[];
   npcs: MapEditorNpcPlacement[];
   tileMap?: PlayableMapTileMapProfile;
   essentials?: {
@@ -323,7 +345,7 @@ interface PlayableMapEditorCanvasProps {
   isDirty: boolean;
 }
 
-type EditorTool = "selector" | "object" | "portal" | "grass" | "fishing" | "boulder" | "npc";
+type EditorTool = "selector" | "object" | "portal" | "grass" | "fishing" | "boulder" | "houseDoor" | "npc";
 
 interface GridCell {
   x: number;
@@ -357,6 +379,11 @@ interface ClipboardGrassPlacement extends MapEditorGrassPlacement {
   offsetY: number;
 }
 
+interface ClipboardHouseDoorPlacement extends MapEditorHouseDoor {
+  offsetX: number;
+  offsetY: number;
+}
+
 interface ClipboardFishingSpotPlacement extends MapEditorFishingSpot {
   offsetX: number;
   offsetY: number;
@@ -380,6 +407,7 @@ interface MapEditorClipboard {
   grass: ClipboardGrassPlacement[];
   fishingSpots: ClipboardFishingSpotPlacement[];
   boulders: ClipboardBoulderPlacement[];
+  houseDoors: ClipboardHouseDoorPlacement[];
   npcs: ClipboardNpcPlacement[];
 }
 
@@ -467,9 +495,43 @@ function createEmptyEditorData(): PlayableMapEditorData {
     grass: [],
     fishingSpots: [],
     boulders: [],
+    houseDoors: [],
     npcs: [],
     essentials: undefined,
   };
+}
+
+function createEmptyHouseDoor(cell: GridCell): MapEditorHouseDoor {
+  return {
+    id: createEditorId("housedoor"),
+    x: cell.x,
+    y: cell.y,
+    apartments: [{ price: 5000, mapId: "" }],
+  };
+}
+
+export function sanitizeHouseDoors(value: unknown): MapEditorHouseDoor[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter(
+      (item): item is MapEditorHouseDoor =>
+        typeof item?.id === "string" && typeof item?.x === "number" && typeof item?.y === "number"
+    )
+    .map((item) => ({
+      id: item.id,
+      x: Math.max(0, Math.round(item.x)),
+      y: Math.max(0, Math.round(item.y)),
+      name: typeof item.name === "string" && item.name.trim() ? item.name.trim().slice(0, 60) : undefined,
+      apartments: (Array.isArray(item.apartments) ? item.apartments : []).slice(0, 50).map((apartment) => ({
+        price:
+          typeof apartment?.price === "number" && Number.isFinite(apartment.price)
+            ? Math.max(0, Math.round(apartment.price))
+            : 0,
+        mapId: typeof apartment?.mapId === "string" ? apartment.mapId : "",
+      })),
+    }));
 }
 
 function buildClipboardFromBounds(
@@ -516,6 +578,13 @@ function buildClipboardFromBounds(
         offsetX: item.x - bounds.startX,
         offsetY: item.y - bounds.startY,
       })),
+    houseDoors: (data.houseDoors ?? [])
+      .filter((item) => isCellInsideBounds({ x: item.x, y: item.y }, bounds))
+      .map((item) => ({
+        ...item,
+        offsetX: item.x - bounds.startX,
+        offsetY: item.y - bounds.startY,
+      })),
     npcs: data.npcs
       .filter((item) => isCellInsideBounds({ x: item.x, y: item.y }, bounds))
       .map((item) => ({
@@ -545,6 +614,9 @@ function removeItemsInsideBounds(
       (item) => !isCellInsideBounds({ x: item.x, y: item.y }, bounds)
     ),
     boulders: (data.boulders ?? []).filter(
+      (item) => !isCellInsideBounds({ x: item.x, y: item.y }, bounds)
+    ),
+    houseDoors: (data.houseDoors ?? []).filter(
       (item) => !isCellInsideBounds({ x: item.x, y: item.y }, bounds)
     ),
     npcs: data.npcs.filter(
@@ -788,6 +860,7 @@ export function sanitizePlayableMapEditorData(value: unknown): PlayableMapEditor
     grass,
     fishingSpots,
     boulders,
+    houseDoors: sanitizeHouseDoors(candidate.houseDoors),
     npcs,
     tileMap: sanitizeTileMapProfile(candidate.tileMap),
     essentials,
@@ -821,6 +894,7 @@ export default function PlayableMapEditorCanvas({
   const [selectedGrassId, setSelectedGrassId] = useState<string | null>(null);
   const [selectedFishingSpotId, setSelectedFishingSpotId] = useState<string | null>(null);
   const [selectedBoulderId, setSelectedBoulderId] = useState<string | null>(null);
+  const [selectedHouseDoorId, setSelectedHouseDoorId] = useState<string | null>(null);
   const [selectedNpcId, setSelectedNpcId] = useState<string | null>(null);
   const [showTiles, setShowTiles] = useState(true);
   // The baked tile-map chunks are the actual rendered map graphics. Rendering
@@ -828,6 +902,7 @@ export default function PlayableMapEditorCanvas({
   // blank/black surface the live-game iframe left behind.
   const bakedTileMap = value.tileMap?.baked ? value.tileMap : null;
   const fishingSpots = value.fishingSpots ?? [];
+  const houseDoors = value.houseDoors ?? [];
   const boulders = value.boulders ?? [];
   const objectCategories = useMemo(
     () => Array.from(new Set(objectCatalog.map((item) => item.category))).sort(),
@@ -944,6 +1019,15 @@ export default function PlayableMapEditorCanvas({
   }, [selectedNpcId, value.npcs]);
 
   useEffect(() => {
+    if (
+      selectedHouseDoorId &&
+      !(value.houseDoors ?? []).some((door) => door.id === selectedHouseDoorId)
+    ) {
+      setSelectedHouseDoorId(null);
+    }
+  }, [selectedHouseDoorId, value.houseDoors]);
+
+  useEffect(() => {
     if (pokemonCatalog.length === 0) {
       setActiveGrassPokemonIds([]);
       return;
@@ -1032,6 +1116,10 @@ export default function PlayableMapEditorCanvas({
   const selectedNpc = useMemo(
     () => value.npcs.find((npc) => npc.id === selectedNpcId) ?? null,
     [selectedNpcId, value.npcs]
+  );
+  const selectedHouseDoor = useMemo(
+    () => (value.houseDoors ?? []).find((door) => door.id === selectedHouseDoorId) ?? null,
+    [selectedHouseDoorId, value.houseDoors]
   );
   const [martItemCatalog, setMartItemCatalog] = useState<MartCatalogItem[]>(() =>
     loadMartItemCatalog()
@@ -1271,6 +1359,15 @@ export default function PlayableMapEditorCanvas({
       }))
       .filter((item) => item.x >= 0 && item.y >= 0 && item.x < mapWidth && item.y < mapHeight)
       .map(({ offsetX: _offsetX, offsetY: _offsetY, ...item }) => item);
+    const nextHouseDoors = pendingTransform.clipboard.houseDoors
+      .map((item) => ({
+        ...item,
+        id: pendingTransform.type === "move" ? item.id : createEditorId("housedoor"),
+        x: targetCell.x + item.offsetX,
+        y: targetCell.y + item.offsetY,
+      }))
+      .filter((item) => item.x >= 0 && item.y >= 0 && item.x < mapWidth && item.y < mapHeight)
+      .map(({ offsetX: _offsetX, offsetY: _offsetY, ...item }) => item);
     const nextNpcs = pendingTransform.clipboard.npcs
       .map((item) => ({
         ...item,
@@ -1287,6 +1384,7 @@ export default function PlayableMapEditorCanvas({
       nextFishingSpots.map((item) => getCellKey(item.x, item.y))
     );
     const boulderTargetKeys = new Set(nextBoulders.map((item) => getCellKey(item.x, item.y)));
+    const houseDoorTargetKeys = new Set(nextHouseDoors.map((item) => getCellKey(item.x, item.y)));
     const npcTargetKeys = new Set(nextNpcs.map((item) => getCellKey(item.x, item.y)));
 
     setNextValue({
@@ -1320,6 +1418,12 @@ export default function PlayableMapEditorCanvas({
           (item) => !boulderTargetKeys.has(getCellKey(item.x, item.y))
         ),
         ...nextBoulders,
+      ],
+      houseDoors: [
+        ...(baseValue.houseDoors ?? []).filter(
+          (item) => !houseDoorTargetKeys.has(getCellKey(item.x, item.y))
+        ),
+        ...nextHouseDoors,
       ],
       npcs: [
         ...baseValue.npcs.filter((item) => !npcTargetKeys.has(getCellKey(item.x, item.y))),
@@ -1553,6 +1657,44 @@ export default function PlayableMapEditorCanvas({
     });
   };
 
+  const placeOrSelectHouseDoorAtCell = (cell: GridCell) => {
+    const existingDoor = houseDoors.find((item) => item.x === cell.x && item.y === cell.y) ?? null;
+    const focus = (id: string) => {
+      setSelectedHouseDoorId(id);
+      setSelectedPortalId(null);
+      setSelectedGrassId(null);
+      setSelectedFishingSpotId(null);
+      setSelectedBoulderId(null);
+      setSelectedNpcId(null);
+      setSelectionBounds({ startX: cell.x, startY: cell.y, endX: cell.x, endY: cell.y });
+    };
+    if (existingDoor) {
+      focus(existingDoor.id);
+      return;
+    }
+    const nextDoor = createEmptyHouseDoor(cell);
+    setNextValue({ ...value, houseDoors: [...houseDoors, nextDoor] });
+    focus(nextDoor.id);
+  };
+
+  const updateSelectedHouseDoor = (updater: (door: MapEditorHouseDoor) => MapEditorHouseDoor) => {
+    if (!selectedHouseDoorId) {
+      return;
+    }
+    setNextValue({
+      ...value,
+      houseDoors: houseDoors.map((door) => (door.id === selectedHouseDoorId ? updater(door) : door)),
+    });
+  };
+
+  const removeSelectedHouseDoor = () => {
+    if (!selectedHouseDoorId) {
+      return;
+    }
+    setNextValue({ ...value, houseDoors: houseDoors.filter((door) => door.id !== selectedHouseDoorId) });
+    setSelectedHouseDoorId(null);
+  };
+
   // Click places a boulder; clicking an existing one removes it again.
   const placeOrToggleBoulderAtCell = (cell: GridCell) => {
     const existingBoulder =
@@ -1781,6 +1923,11 @@ export default function PlayableMapEditorCanvas({
       return;
     }
 
+    if (activeTool === "houseDoor") {
+      placeOrSelectHouseDoorAtCell(cell);
+      return;
+    }
+
     if (activeTool === "npc") {
       placeOrSelectNpcAtCell(cell);
       return;
@@ -1865,6 +2012,13 @@ export default function PlayableMapEditorCanvas({
             (npc) => npc.x === nextBounds.startX && npc.y === nextBounds.startY
           ) ?? null
         : null;
+    const houseDoorAtSelection =
+      nextBounds.startX === nextBounds.endX && nextBounds.startY === nextBounds.endY
+        ? houseDoors.find(
+            (door) => door.x === nextBounds.startX && door.y === nextBounds.startY
+          ) ?? null
+        : null;
+    setSelectedHouseDoorId(houseDoorAtSelection?.id ?? null);
 
     setSelectedPortalId(portalAtSelection?.id ?? null);
     setSelectedGrassId(grassAtSelection?.id ?? null);
@@ -1892,6 +2046,8 @@ export default function PlayableMapEditorCanvas({
               ? "Click a cell to place or select a fishing spot."
               : activeTool === "boulder"
                 ? "Click a cell to place a Strength boulder; click it again to remove it."
+                : activeTool === "houseDoor"
+                  ? "Click a cell to place or select a house door (apartments)."
                 : activeNpc
                   ? `Click to place ${activeNpc.name}.`
                   : "Create an NPC in the designer, then place it here.";
@@ -1965,6 +2121,14 @@ export default function PlayableMapEditorCanvas({
                 onClick={() => setActiveTool("boulder")}
               >
                 Boulders
+              </Button>
+              <Button
+                size="sm"
+                colorScheme={activeTool === "houseDoor" ? "green" : undefined}
+                variant={activeTool === "houseDoor" ? "solid" : "outline"}
+                onClick={() => setActiveTool("houseDoor")}
+              >
+                House Doors
               </Button>
               <Button
                 size="sm"
@@ -2675,6 +2839,132 @@ export default function PlayableMapEditorCanvas({
 
                   <Button colorScheme="red" variant="outline" onClick={removeSelectedPortal}>
                     Remove Portal
+                  </Button>
+                </Stack>
+              </Box>
+            </>
+          ) : null}
+
+          {selectedHouseDoor ? (
+            <>
+              <Divider />
+              <Box>
+                <Text
+                  fontSize="xs"
+                  fontWeight="700"
+                  textTransform="uppercase"
+                  letterSpacing="0.14em"
+                  color="editor.accentMuted"
+                  mb={2}
+                >
+                  House Door Cell
+                </Text>
+                <Text fontSize="sm" color="editor.textSubtle" mb={3}>
+                  Cell X {selectedHouseDoor.x}, Y {selectedHouseDoor.y}
+                </Text>
+                <Stack spacing={3}>
+                  <FormControl>
+                    <FormLabel>Building Name</FormLabel>
+                    <Input
+                      value={selectedHouseDoor.name ?? ""}
+                      placeholder="Edificio Central"
+                      onChange={(event) =>
+                        updateSelectedHouseDoor((door) => ({
+                          ...door,
+                          name: event.target.value || undefined,
+                        }))
+                      }
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel>Apartments</FormLabel>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={String(selectedHouseDoor.apartments.length)}
+                      onChange={(event) => {
+                        const count = Math.max(1, Math.min(50, sanitizeCoordinate(event.target.value) || 1));
+                        updateSelectedHouseDoor((door) => {
+                          const last = door.apartments[door.apartments.length - 1] ?? { price: 5000, mapId: "" };
+                          const apartments = door.apartments.slice(0, count);
+                          while (apartments.length < count) {
+                            apartments.push({ price: last.price, mapId: last.mapId });
+                          }
+                          return { ...door, apartments };
+                        });
+                      }}
+                    />
+                    <Text fontSize="xs" color="editor.textSubtle" mt={1}>
+                      Each apartment is bought separately and is its own instance of its room map.
+                    </Text>
+                  </FormControl>
+                  {selectedHouseDoor.apartments.map((apartment, index) => (
+                    <Box
+                      key={index}
+                      borderWidth="1px"
+                      borderColor="editor.border"
+                      borderRadius="md"
+                      p={2}
+                    >
+                      <Text fontSize="xs" fontWeight="700" mb={2}>
+                        Apartment {index + 1}
+                      </Text>
+                      <SimpleGrid columns={2} spacing={2}>
+                        <FormControl>
+                          <FormLabel fontSize="xs">Price ($)</FormLabel>
+                          <Input
+                            size="sm"
+                            type="number"
+                            min={0}
+                            value={String(apartment.price)}
+                            onChange={(event) =>
+                              updateSelectedHouseDoor((door) => ({
+                                ...door,
+                                apartments: door.apartments.map((entry, entryIndex) =>
+                                  entryIndex === index
+                                    ? { ...entry, price: Math.max(0, sanitizeCoordinate(event.target.value)) }
+                                    : entry
+                                ),
+                              }))
+                            }
+                          />
+                        </FormControl>
+                        <FormControl>
+                          <FormLabel fontSize="xs">Room Map (House)</FormLabel>
+                          <Select
+                            size="sm"
+                            value={apartment.mapId}
+                            onChange={(event) =>
+                              updateSelectedHouseDoor((door) => ({
+                                ...door,
+                                apartments: door.apartments.map((entry, entryIndex) =>
+                                  entryIndex === index ? { ...entry, mapId: event.target.value } : entry
+                                ),
+                              }))
+                            }
+                          >
+                            <option value="">— none —</option>
+                            {maps
+                              .filter((map) => map.isHouse || map.id === apartment.mapId)
+                              .map((map) => (
+                                <option key={map.id} value={map.id}>
+                                  {map.name}
+                                  {map.isHouse ? "" : " (not a house template)"}
+                                </option>
+                              ))}
+                          </Select>
+                        </FormControl>
+                      </SimpleGrid>
+                    </Box>
+                  ))}
+                  {!maps.some((map) => map.isHouse) ? (
+                    <Text fontSize="xs" color="orange.300">
+                      No map is flagged as a House Template yet (Map Properties → House Template).
+                    </Text>
+                  ) : null}
+                  <Button colorScheme="red" variant="outline" onClick={removeSelectedHouseDoor}>
+                    Remove House Door
                   </Button>
                 </Stack>
               </Box>
@@ -3567,6 +3857,41 @@ export default function PlayableMapEditorCanvas({
                 pointerEvents="none"
                 zIndex={2}
               />
+            ))}
+
+            {houseDoors.map((door) => (
+              <Flex
+                key={door.id}
+                position="absolute"
+                left={`${door.x * cellSize}px`}
+                top={`${door.y * cellSize}px`}
+                width={`${cellSize}px`}
+                height={`${cellSize}px`}
+                align="center"
+                justify="center"
+                border={
+                  door.id === selectedHouseDoorId
+                    ? "2px solid rgba(255, 176, 0, 1)"
+                    : "2px solid rgba(120, 90, 255, 0.95)"
+                }
+                bg={
+                  door.id === selectedHouseDoorId
+                    ? "rgba(255, 176, 0, 0.5)"
+                    : "rgba(120, 90, 255, 0.45)"
+                }
+                boxShadow="0 0 10px rgba(120, 90, 255, 0.95)"
+                color="#ffffff"
+                textShadow="0 0 4px rgba(0,0,0,0.9)"
+                fontSize="10px"
+                fontWeight="800"
+                lineHeight="1.1"
+                textAlign="center"
+                pointerEvents="none"
+                zIndex={3}
+                title={`${door.name ?? "House door"} · ${door.apartments.length} apt`}
+              >
+                H{door.apartments.length}
+              </Flex>
             ))}
 
             {value.portals.map((portal) => (

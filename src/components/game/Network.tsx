@@ -18,6 +18,7 @@ import {
     applyFollowerUpdate,
     applyFollowerRemove
 } from "./followerActors";
+import { applyHouseFurnitureUpdate, applyHouseSync } from "./houses";
 import {
     applyBallSync,
     applyBallSpawn,
@@ -432,6 +433,18 @@ const Network = () => {
             }
         };
 
+        const handleHouseSync = (data:any) => {
+            if (data?.house) {
+                applyHouseSync(data.house);
+            }
+        };
+
+        const handleHouseFurnitureUpdate = (data:any) => {
+            if (typeof data?.mapId === "string") {
+                applyHouseFurnitureUpdate(data.mapId, data.placed ?? null, data.removedId ?? null);
+            }
+        };
+
         const handleBallSync = (data:any) => {
             if (typeof data?.mapId === "string") {
                 applyBallSync(data.mapId, data.balls ?? []);
@@ -540,6 +553,8 @@ const Network = () => {
         socket.on("ball:deflate", handleBallDeflate)
         socket.on("berry:sync", handleBerrySync)
         socket.on("berry:update", handleBerryUpdate)
+        socket.on("house:sync", handleHouseSync)
+        socket.on("house:furniture-update", handleHouseFurnitureUpdate)
 
         return () => {
             socket.off("connect", joinGame)

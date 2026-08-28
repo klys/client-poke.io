@@ -56,6 +56,7 @@ import {
 import type { DesignerItemSeed, DesignerPokemonProfile } from '../../designer/designerSections';
 import { getPokemonDisplayName, validatePokemonNickname } from '../game/pokemonName';
 import { classifyInventoryItem, type ItemUsage } from '../game/itemUsage';
+import { HOUSE_PLACE_EVENT, useHouse } from '../../game/houses';
 import { fieldMovesForPokemon, type FieldMoveAction } from '../game/fieldMoves';
 import { AppContext } from '../../../context/appContext';
 import { getBackendBaseUrl } from '../../game/backendConfig';
@@ -1260,7 +1261,7 @@ function ItemTargetModal({
   );
 }
 
-function BagWindow({ onOpenWorldMap }: { onOpenWorldMap: () => void }) {
+function BagWindow({ onOpenWorldMap, onRequestClose }: { onOpenWorldMap: () => void; onRequestClose?: () => void }) {
   const {
     user,
     useInventoryItem: requestUseInventoryItem,
@@ -1283,8 +1284,25 @@ function BagWindow({ onOpenWorldMap }: { onOpenWorldMap: () => void }) {
     { key: 'usable', label: t('bag.usable') },
     { key: 'berries', label: t('bag.berries') },
     { key: 'moves', label: t('bag.moves') },
-    { key: 'quest', label: t('bag.quest') }
+    { key: 'quest', label: t('bag.quest') },
+    { key: 'furniture', label: t('bag.furniture') }
   ];
+  // Furniture can only be placed while standing inside one's own house.
+  const { players, myplayer } = useContext(AppContext);
+  const myMapId =
+    (Object.values(players ?? {}).find((player: any) => player?.playerId === myplayer) as any)?.currentMapId ?? null;
+  const currentHouse = useHouse(myMapId);
+  const canPlaceFurniture = Boolean(currentHouse?.isOwner);
+  const handlePlace = (item: InventoryItem) => {
+    if (!canPlaceFurniture) {
+      toast({ status: 'info', title: t('bag.placeHint'), position: 'top' });
+      return;
+    }
+    window.dispatchEvent(
+      new CustomEvent(HOUSE_PLACE_EVENT, { detail: { itemId: item.id, itemName: item.name } })
+    );
+    onRequestClose?.();
+  };
 
   const requireParty = () => {
     if (party.length === 0) {
@@ -1423,6 +1441,18 @@ function BagWindow({ onOpenWorldMap }: { onOpenWorldMap: () => void }) {
                       {item.category === 'moves' ? (
                         <Button size="xs" colorScheme="purple" onClick={() => handleTeach(item)}>
                           {t('bag.teach')}
+                        </Button>
+                      ) : null}
+                      {item.category === 'furniture' ? (
+                        <Button
+                          size="xs"
+                          colorScheme="orange"
+                          title={canPlaceFurniture ? undefined : t('bag.placeHint')}
+                          opacity={canPlaceFurniture ? 1 : 0.6}
+                          onClick={() => handlePlace(item)}
+                          data-bag-place={item.id}
+                        >
+                          {t('bag.place')}
                         </Button>
                       ) : null}
                       <Button
@@ -2371,7 +2401,9 @@ function PokemonCard({
   onEquipItem,
   onOpenWorldMap,
   followerEnabled,
-  onToggleFollower
+  onToggleFollower,
+  roaming,
+  onToggleRoam
 }: {
   pokemon: PokemonSummary;
   catalogEntry: PokemonCatalogEntry | null;
@@ -2385,6 +2417,9 @@ function PokemonCard({
   onOpenWorldMap: () => void;
   followerEnabled: boolean;
   onToggleFollower: () => void;
+  /** Inside a house: whether this venomon roams free / toggle it. */
+  roaming?: boolean | null;
+  onToggleRoam?: () => void;
 }) {
   const { namePokemon, takeHeldItem } = useAuth();
   const { socket } = useContext(AppContext);
@@ -2513,6 +2548,12 @@ function PokemonCard({
                   {followerEnabled ? t('party.followerDisable') : t('party.followerEnable')}
                 </MenuItem>
               ) : null}
+              {roaming !== null && roaming !== undefined && onToggleRoam ? (
+                // Inside a house: any party member may roam the rooms.
+                <MenuItem onClick={onToggleRoam} data-party-roam={pokemon.id}>
+                  {roaming ? t('party.roamDisable') : t('party.roamEnable')}
+                </MenuItem>
+              ) : null}
               <MenuItem isDisabled={partyIndex === 0} onClick={() => onMoveInParty(partyIndex, -1)}>
                 Move Up
               </MenuItem>
@@ -2578,10 +2619,22 @@ function PokemonsWindow({
   onOpenStats: (pokemonId: string) => void;
   onOpenWorldMap: () => void;
 }) {
-  const { user, reorderPokemonParty, holdInventoryItem, setFollowerEnabled } = useAuth();
+  const { user, reorderPokemonParty, holdInventoryItem, setFollowerEnabled, setHouseRoam } = useAuth();
   const t = useT();
   const [itemPicker, setItemPicker] = useState<{ pokemonId: string; kind: 'berry' | 'equip' } | null>(null);
   const followerEnabled = user?.followerEnabled !== false;
+  // Roam toggles only show while standing inside a house instance.
+  const { players: worldPlayers, myplayer: myPlayerId } = useContext(AppContext);
+  const myMapId =
+    (Object.values(worldPlayers ?? {}).find((player: any) => player?.playerId === myPlayerId) as any)?.currentMapId ?? null;
+  const insideHouse = Boolean(useHouse(myMapId));
+  const roamIds = new Set(user?.houseRoamIds ?? []);
+  const toggleRoam = (pokemonId: string) => {
+    const next = new Set(roamIds);
+    if (next.has(pokemonId)) next.delete(pokemonId);
+    else next.add(pokemonId);
+    setHouseRoam({ pokemonIds: Array.from(next) });
+  };
 
   const handleMoveInParty = (partyIndex: number, direction: -1 | 1) => {
     const targetIndex = partyIndex + direction;
@@ -2644,6 +2697,8 @@ function PokemonsWindow({
             onOpenWorldMap={onOpenWorldMap}
             followerEnabled={followerEnabled}
             onToggleFollower={() => setFollowerEnabled({ enabled: !followerEnabled })}
+            roaming={insideHouse ? roamIds.has(pokemon.id) : null}
+            onToggleRoam={insideHouse ? () => toggleRoam(pokemon.id) : undefined}
           />
         ))}
       </Grid>
@@ -2933,7 +2988,7 @@ const AccountMenu = () => {
     }
 
     if (windowKey === 'bag') {
-      return <BagWindow onOpenWorldMap={() => openWindow('map')} />;
+      return <BagWindow onOpenWorldMap={() => openWindow('map')}  onRequestClose={() => closeWindow('bag')} />;
     }
 
     if (windowKey === 'pokemons') {

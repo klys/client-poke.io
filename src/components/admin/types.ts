@@ -16,7 +16,7 @@ export type AdminSavedLocation = {
   y: number
 }
 
-export type AdminInventoryCategory = 'usable' | 'berries' | 'moves' | 'quest'
+export type AdminInventoryCategory = 'usable' | 'berries' | 'moves' | 'quest' | 'furniture'
 
 export type AdminInventoryItem = {
   id: string

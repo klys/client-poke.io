@@ -188,6 +188,7 @@ const ITEM_TYPE_OPTIONS: DesignerItemType[] = [
   "general items",
   "berries",
   "quest item",
+  "furniture",
 ];
 const ITEM_EFFECT_KIND_OPTIONS: DesignerGameItemProfile["effectKind"][] = [
   "none",
@@ -4540,6 +4541,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       const playableMapConfig =
         isMapsSection && resolvedEditMapDimensions.width !== null && resolvedEditMapDimensions.height !== null
           ? {
+              // Fields without a control in this form (house flag, essentials
+              // provenance, music, connections...) must survive a rename.
+              ...(current.items.find((item) => item.id === editingItemId)?.playableMapConfig ?? {}),
               cellSize: Number.parseInt(editMapCellSize, 10),
               sizePreset: editMapSizePreset,
               width: resolvedEditMapDimensions.width,

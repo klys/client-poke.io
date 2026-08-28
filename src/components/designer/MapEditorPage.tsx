@@ -195,6 +195,7 @@ function normalizePlayableMapConfig(
         ? Math.max(1, Math.round(config.height))
         : 500,
     isInitialMap: config?.isInitialMap === true,
+    isHouse: config?.isHouse === true,
     initialPositionX:
       typeof config?.initialPositionX === "number" && Number.isFinite(config.initialPositionX)
         ? Math.round(config.initialPositionX)
@@ -658,6 +659,7 @@ export default function MapEditorPage() {
       mapsState.items.map((item) => ({
         id: item.id,
         name: item.name,
+        isHouse: item.playableMapConfig?.isHouse === true,
       })),
     [mapsState.items]
   );
@@ -684,6 +686,7 @@ export default function MapEditorPage() {
   const [backgroundImageMode, setBackgroundImageMode] =
     useState<DesignerPlayableMapBackgroundImageMode>(initialConfig.backgroundImageMode);
   const [isInitialMap, setIsInitialMap] = useState(initialConfig.isInitialMap);
+  const [isHouse, setIsHouse] = useState(initialConfig.isHouse === true);
   const [bgm, setBgm] = useState(initialConfig.bgm ?? "");
   const [bgs, setBgs] = useState(initialConfig.bgs ?? "");
   const [battleBack, setBattleBack] = useState(initialConfig.battleBack ?? "");
@@ -732,6 +735,7 @@ export default function MapEditorPage() {
     setBackgroundImageSrc(nextConfig.backgroundImageSrc);
     setBackgroundImageMode(nextConfig.backgroundImageMode);
     setIsInitialMap(nextConfig.isInitialMap);
+    setIsHouse(nextConfig.isHouse === true);
     setBgm(nextConfig.bgm ?? "");
     setBgs(nextConfig.bgs ?? "");
     setBattleBack(nextConfig.battleBack ?? "");
@@ -1056,6 +1060,7 @@ export default function MapEditorPage() {
       width: resolvedDimensions.width,
       height: resolvedDimensions.height,
       isInitialMap,
+      isHouse: isHouse ? true : undefined,
       initialPositionX: parseOptionalMapCoordinate(initialPositionX),
       initialPositionY: parseOptionalMapCoordinate(initialPositionY),
       regionName,
@@ -1467,6 +1472,20 @@ export default function MapEditorPage() {
                     colorScheme="green"
                     isChecked={isInitialMap}
                     onChange={(event) => setIsInitialMap(event.target.checked)}
+                  />
+                </FormControl>
+                <FormControl display="flex" alignItems="center" justifyContent="space-between">
+                  <Box>
+                    <FormLabel mb={1}>House Template</FormLabel>
+                    <Text fontSize="sm" color="editor.textSubtle">
+                      Apartments behind a House Door cell instance this map per owner. Players spawn at
+                      the Initial Position; any portal on it leads back out.
+                    </Text>
+                  </Box>
+                  <Switch
+                    colorScheme="purple"
+                    isChecked={isHouse}
+                    onChange={(event) => setIsHouse(event.target.checked)}
                   />
                 </FormControl>
                 <FormControl isRequired>

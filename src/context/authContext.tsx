@@ -70,6 +70,8 @@ export type AuthUser = {
   trainerCardColor: string
   /** Whether the party leader walks behind the player on the map. */
   followerEnabled?: boolean
+  /** Party venomon ids allowed to roam free inside houses. */
+  houseRoamIds?: string[]
   /** Remaining repellent (Baygon) steps; 0/absent = no repellent active. */
   repelSteps?: number
   inventory: InventoryItem[]
@@ -107,7 +109,7 @@ export const getDefaultAuthorizedPath = (user: AuthUser | null | undefined) => {
 export type InventoryItem = {
   id: string
   name: string
-  category: 'usable' | 'berries' | 'moves' | 'quest'
+  category: 'usable' | 'berries' | 'moves' | 'quest' | 'furniture'
   quantity: number
   description: string
   /** Boxed stacks only: the character that owns this stored asset. */
@@ -305,6 +307,8 @@ type AuthContextValue = {
   reorderPokemonParty: (payload: { order: string[] }) => void
   /** Toggles the follower venomon (party leader walking behind the player). */
   setFollowerEnabled: (payload: { enabled: boolean }) => void
+  /** Which party venomons roam free inside a house (housing). */
+  setHouseRoam: (payload: { pokemonIds: string[] }) => void
   learnPokemonMove: (payload: { pokemonId: string; moveName: string; replaceMoveName?: string }) => void
   forgetPokemonMove: (payload: { pokemonId: string; moveName: string }) => void
   depositPokemonToBox: (payload: { pokemonIds: string[]; boxId?: string }) => void
@@ -646,6 +650,7 @@ export const AuthProvider = (
     takeHeldItem: (payload) => emitAuthEvent('inventory:take-held-item', payload),
     reorderPokemonParty: (payload) => emitAuthEvent('pokemon:reorder', payload),
     setFollowerEnabled: (payload) => emitAuthEvent('follower:set-enabled', payload),
+    setHouseRoam: (payload) => emitAuthEvent('house:set-roam', payload),
     learnPokemonMove: (payload) => emitAuthEvent('pokemon:learn-move', payload),
     forgetPokemonMove: (payload) => emitAuthEvent('pokemon:forget-move', payload),
     depositPokemonToBox: (payload) => emitAuthEvent('pokemon:box-deposit', payload),

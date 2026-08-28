@@ -11,9 +11,11 @@ import NpcInteractionOverlay from "../ux/game/NpcInteractions";
 import WaterInteractionController, { WATER_MENU_EVENT } from "./WaterInteractionController";
 import { isFishableWaterCell } from "./fishing";
 import NpcSprite from "./NpcSprite";
-import { Followers, BeachBallsLayer, BerryPlantsLayer } from "./WorldCompanions";
+import { Followers, BeachBallsLayer, BerryPlantsLayer, HouseFurnitureLayer } from "./WorldCompanions";
 import BerryInteractionController from "./BerryInteractionController";
 import { BERRY_MENU_EVENT, getBerryPlotAt, isBerryPlotPlacement } from "./berryPlots";
+import { getHouseDoorAt, getHouseFurnitureAt, HOUSE_DOOR_MENU_EVENT, HOUSE_MENU_EVENT } from "./houses";
+import HouseInteractionController from "./HouseInteractionController";
 import { getNpcCell } from "./npcActors";
 import { assetUrl, resolveServerAssetUrl } from "../tilemap/serverAssets";
 import {
@@ -313,6 +315,22 @@ const Map = ({children}:{children:any}) => {
             return;
         }
 
+        // Facing (or standing on) an apartment door: open the door menu.
+        const facingDoor =
+            getHouseDoorAt(activeMapEditorData, targetX, targetY) ??
+            getHouseDoorAt(activeMapEditorData, playerCellX, playerCellY);
+        if (facingDoor) {
+            socket.emit("stopMove");
+            window.dispatchEvent(new CustomEvent(HOUSE_DOOR_MENU_EVENT, { detail: { doorId: facingDoor.id } }));
+            return;
+        }
+        // Inside a house: facing furniture opens the house menu on it.
+        const facingFurniture = activeMapId ? getHouseFurnitureAt(activeMapId, targetX, targetY) : null;
+        if (facingFurniture) {
+            window.dispatchEvent(new CustomEvent(HOUSE_MENU_EVENT, { detail: { furnitureId: facingFurniture.id } }));
+            return;
+        }
+
         const candidates = activeMapEditorData.npcs.filter((npc) => {
             if (isBerryPlotPlacement(npc)) {
                 return false;
@@ -529,6 +547,7 @@ const Map = ({children}:{children:any}) => {
                     <Followers mapId={activeMapId} cellSize={activeMapConfig.cellSize} />
                     <BeachBallsLayer mapId={activeMapId} cellSize={activeMapConfig.cellSize} />
                     <BerryPlantsLayer mapId={activeMapId} cellSize={activeMapConfig.cellSize} />
+                    <HouseFurnitureLayer mapId={activeMapId} cellSize={activeMapConfig.cellSize} />
                 </>
             ) : null}
             {(children) ? children : null}
@@ -555,6 +574,13 @@ const Map = ({children}:{children:any}) => {
             player={currentPlayer}
             mapId={activeMapId}
             cellSize={activeMapConfig?.cellSize ?? 32}
+        />
+        <HouseInteractionController
+            socket={socket}
+            player={currentPlayer}
+            mapId={activeMapId}
+            cellSize={activeMapConfig?.cellSize ?? 32}
+            editorData={activeMapEditorData}
         />
     </>)
 }

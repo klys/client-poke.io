@@ -33,6 +33,7 @@ export const CATEGORY_META: Record<AdminInventoryCategory, { label: string; colo
   usable: { label: 'Usable', color: 'blue', emoji: '🧪' },
   berries: { label: 'Berries', color: 'pink', emoji: '🍓' },
   moves: { label: 'Moves', color: 'purple', emoji: '💿' },
+  furniture: { label: 'Furniture', color: 'orange', emoji: '🪑' },
   quest: { label: 'Quest', color: 'orange', emoji: '🗝️' }
 };
 
