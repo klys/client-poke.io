@@ -19,10 +19,31 @@ export type HouseFurniture = {
   itemId: string;
   itemName: string;
   iconSrc: string;
+  /** Anchor cell (top-left), like an authored map object. */
   x: number;
   y: number;
   placedAt: number;
+  /** Linked designer map object drawn at `width`×`height` px from the anchor;
+   * absent = the item icon on one tile. */
+  objectId?: string;
+  imageSrc?: string;
+  width?: number;
+  height?: number;
+  /** Solid pieces block walking over their rect. */
+  solid: boolean;
 };
+
+/** Inclusive cell range a piece covers on a map with the given cell size. */
+export function furnitureCells(piece: HouseFurniture, cellSize: number) {
+  const width = piece.width && piece.width > 0 ? piece.width : cellSize;
+  const height = piece.height && piece.height > 0 ? piece.height : cellSize;
+  return {
+    x0: piece.x,
+    y0: piece.y,
+    x1: piece.x + Math.max(1, Math.ceil(width / cellSize - 0.01)) - 1,
+    y1: piece.y + Math.max(1, Math.ceil(height / cellSize - 0.01)) - 1
+  };
+}
 
 export type HouseInfo = {
   mapId: string;
@@ -108,7 +129,16 @@ function sanitizeFurniture(value: unknown): HouseFurniture | null {
     iconSrc: typeof raw.iconSrc === "string" ? raw.iconSrc : "",
     x: raw.x,
     y: raw.y,
-    placedAt: isFiniteNumber(raw.placedAt) ? raw.placedAt : 0
+    placedAt: isFiniteNumber(raw.placedAt) ? raw.placedAt : 0,
+    ...(typeof raw.objectId === "string" && raw.objectId && typeof raw.imageSrc === "string" && raw.imageSrc
+      ? {
+          objectId: raw.objectId,
+          imageSrc: raw.imageSrc,
+          width: isFiniteNumber(raw.width) && raw.width > 0 ? raw.width : undefined,
+          height: isFiniteNumber(raw.height) && raw.height > 0 ? raw.height : undefined
+        }
+      : {}),
+    solid: raw.solid !== false
   };
 }
 
@@ -167,8 +197,19 @@ export function getHouseFurniture(mapId: string | null | undefined): HouseFurnit
   return getHouse(mapId)?.furniture ?? [];
 }
 
-export function getHouseFurnitureAt(mapId: string | null | undefined, x: number, y: number): HouseFurniture | null {
-  return getHouseFurniture(mapId).find((item) => item.x === x && item.y === y) ?? null;
+/** The piece covering a cell (linked objects can span several cells). */
+export function getHouseFurnitureAt(
+  mapId: string | null | undefined,
+  x: number,
+  y: number,
+  cellSize = 32
+): HouseFurniture | null {
+  return (
+    getHouseFurniture(mapId).find((item) => {
+      const cells = furnitureCells(item, cellSize);
+      return x >= cells.x0 && x <= cells.x1 && y >= cells.y0 && y <= cells.y1;
+    }) ?? null
+  );
 }
 
 /** The door placement at a cell of the active map's editor data, if any. */

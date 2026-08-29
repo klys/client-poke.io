@@ -382,7 +382,12 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
       const clickX = Math.floor((event.clientX - rect.left) / cell);
       const clickY = Math.floor((event.clientY - rect.top) / cell);
 
-      if (current?.kind === "placing") {
+      if (current?.kind === "placing" && current.phase === "result") {
+        // The "placed" toast is still up: this click is not another placement,
+        // dismiss the toast and handle it like any other click (e.g. on the
+        // piece just placed).
+        cancelRef.current();
+      } else if (current?.kind === "placing") {
         if (event.type === "contextmenu") {
           event.stopImmediatePropagation();
           event.preventDefault();
@@ -408,7 +413,7 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
 
       const house = getHouse(snap.mapId);
       if (!house) return;
-      const furniture = getHouseFurnitureAt(snap.mapId, clickX, clickY);
+      const furniture = getHouseFurnitureAt(snap.mapId, clickX, clickY, cell);
       if (furniture) {
         event.stopImmediatePropagation();
         event.preventDefault();

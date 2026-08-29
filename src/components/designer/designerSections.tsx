@@ -275,6 +275,8 @@ export interface DesignerGameItemProfile {
   price?: number;
   fieldUse?: string;
   flags?: string[];
+  /** Furniture: id of the map object (objects section) drawn when placed in a house. */
+  furnitureObjectId?: string;
   pokemonDbCategory: string;
   effectText: string;
   effectKind: "none" | "heal-hp" | "stat-modifier" | "teach-move" | "catch-modifier" | "hold-effect" | "key-item";

@@ -26,6 +26,13 @@ const START = { x: 33, y: 37 };
 const MAPS_KEY = "designer:section:maps";
 const MAPS_PROBE_KEY = "designer:section:maps:probe";
 const HOUSES_KEY = "world:houses";
+const ITEMS_KEY = "designer:section:items";
+const ITEMS_PROBE_KEY = "designer:section:items:probe";
+const OBJECTS_KEY = "designer:section:objects";
+const OBJECTS_PROBE_KEY = "designer:section:objects:probe";
+// Furniture item linked to a 2-tile-wide solid map object.
+const SOFA = { id: "item-uisofa", name: "Sofá UI", description: "Un sofá de prueba" };
+const OBJ = { id: "object-uisofa", name: "Sofá objeto UI", imageSrc: "/objects/Rock.png", width: 64, height: 32, objectType: "obstacle" };
 
 const stamp = () => new Date().toISOString().slice(11, 23);
 const log = (...a) => console.log(`[${stamp()}]`, ...a);
@@ -102,7 +109,7 @@ class Cdp {
 
 const procs = [];
 let redis;
-let mapsBackup = null, probeBackup = null, housesBackup = null;
+let mapsBackup = null, probeBackup = null, housesBackup = null, itemsBackup = null, itemsProbeBackup = null, objectsBackup = null, objectsProbeBackup = null;
 let userId = 0, characterId = 0, userIdB = 0, characterIdB = 0;
 
 async function main() {
@@ -132,7 +139,39 @@ async function main() {
   await redis.set(MAPS_KEY, JSON.stringify(payload));
   await redis.del(MAPS_PROBE_KEY);
   await redis.del(HOUSES_KEY);
-  log(`seeded door on ${TEST_MAP} → template ${template.id} (${template.name})`);
+  // Catalog: the sofa (furniture, linked to OBJ) and the map object itself.
+  itemsBackup = await redis.get(ITEMS_KEY);
+  itemsProbeBackup = await redis.get(ITEMS_PROBE_KEY);
+  const itemsPayload = JSON.parse(itemsBackup);
+  const itemsState = itemsPayload.state ?? itemsPayload;
+  itemsState.items = itemsState.items.filter((item) => item.id !== SOFA.id);
+  itemsState.items.push({
+    id: SOFA.id, name: SOFA.name, category: "furniture", details: [],
+    itemProfile: {
+      essentialsId: "UISOFA", iconSrc: "/objects/Rock.png", description: SOFA.description, price: 100,
+      pokemonDbCategory: "furniture", effectText: "", effectKind: "none", useCondition: "none", type: "furniture",
+      furnitureObjectId: OBJ.id,
+      statModifiers: { hp: 0, attack: 0, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0 },
+      skillId: "", skillName: "", pokeballBonusElements: [], pokeballBonusRatio: 0
+    }
+  });
+  if (Array.isArray(itemsState.categories) && !itemsState.categories.includes("furniture")) itemsState.categories.push("furniture");
+  itemsPayload.version = (itemsPayload.version ?? 0) + 1;
+  itemsPayload.updatedAt = new Date().toISOString();
+  await redis.set(ITEMS_KEY, JSON.stringify(itemsPayload));
+  await redis.del(ITEMS_PROBE_KEY);
+  objectsBackup = await redis.get(OBJECTS_KEY);
+  objectsProbeBackup = await redis.get(OBJECTS_PROBE_KEY);
+  const objectsPayload = objectsBackup ? JSON.parse(objectsBackup) : { state: { categories: ["E2E"], items: [] } };
+  const objectsState = objectsPayload.state ?? objectsPayload;
+  objectsState.items = objectsState.items.filter((item) => item.id !== OBJ.id);
+  objectsState.items.push({ id: OBJ.id, name: OBJ.name, category: "E2E", details: [], mapObjectAsset: { imageSrc: OBJ.imageSrc, width: OBJ.width, height: OBJ.height, objectType: OBJ.objectType } });
+  if (Array.isArray(objectsState.categories) && !objectsState.categories.includes("E2E")) objectsState.categories.push("E2E");
+  objectsPayload.version = (objectsPayload.version ?? 0) + 1;
+  objectsPayload.updatedAt = new Date().toISOString();
+  await redis.set(OBJECTS_KEY, JSON.stringify(objectsPayload));
+  await redis.del(OBJECTS_PROBE_KEY);
+  log(`seeded door on ${TEST_MAP} → template ${template.id} (${template.name}); sofa item → ${OBJ.id}`);
 
   // ── SERVER + CLIENT ──
   let serverLog = "";
@@ -162,7 +201,8 @@ async function main() {
   await redis.hSet(`auth:character:${characterId}`, {
     last_map_id: TEST_MAP, last_x: String(START.x * 32), last_y: String(START.y * 32),
     event_self_switches: JSON.stringify({ "129:2:A": true }), follower_enabled: "0", money: "5000",
-    pokemon_party: JSON.stringify([mon("ui-m1"), mon("ui-m2")]), inventory: "[]"
+    pokemon_party: JSON.stringify([mon("ui-m1"), mon("ui-m2")]),
+    inventory: JSON.stringify([{ id: SOFA.id, name: SOFA.name, category: "furniture", quantity: 2, description: SOFA.description }])
   });
   await redis.hSet(`auth:user:${userId}`, { pokemon_box: JSON.stringify({ boxes: [] }) });
   sock.disconnect();
@@ -316,6 +356,42 @@ async function main() {
   await cdp.shot("09-inside-house");
   check(!(await cdp.eval(`Boolean(${windowSel})`)), "entering closes the window");
 
+  // Furniture linked to a map object: place it next to the player (the camera
+  // keeps the player at the viewport centre), it must draw the 64x32 object.
+  await cdp.eval(`window.dispatchEvent(new CustomEvent('pokecraft:house-place', { detail: { itemId: ${JSON.stringify(SOFA.id)}, itemName: ${JSON.stringify(SOFA.name)} } })); 'ok'`);
+  await waitFor("placing banner", () => cdp.eval(`Boolean(document.querySelector('[data-house-placing]'))`), { timeoutMs: 4000 });
+  const pieceSel = `document.querySelector('[data-house-furniture-object="${OBJ.id}"]')`;
+  let placedDir = null;
+  for (const dir of [{ dx: 1, dy: 0 }, { dx: -2, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }, { dx: 1, dy: 1 }, { dx: -2, dy: 1 }]) {
+    const px = 1280 / 2 + dir.dx * 32 + 8, py = 800 / 2 + dir.dy * 32 + 8;
+    await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: px, y: py, button: "left", clickCount: 1 });
+    await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: px, y: py, button: "left", clickCount: 1 });
+    await sleep(900);
+    if (await cdp.eval(`Boolean(${pieceSel})`)) { placedDir = dir; break; }
+    // A refused cell shows the reason under the banner; keep the placement armed.
+    if (!(await cdp.eval(`Boolean(document.querySelector('[data-house-placing]'))`))) {
+      await cdp.eval(`window.dispatchEvent(new CustomEvent('pokecraft:house-place', { detail: { itemId: ${JSON.stringify(SOFA.id)}, itemName: ${JSON.stringify(SOFA.name)} } })); 'ok'`);
+      await sleep(200);
+    }
+  }
+  check(placedDir !== null, `linked furniture placed (${JSON.stringify(placedDir)})`);
+  const pieceBox = await cdp.eval(`(() => { const el = ${pieceSel}; const img = el.querySelector('img'); const r = el.getBoundingClientRect(); return { w: r.width, h: r.height, imgW: img?.getAttribute('width'), src: img?.getAttribute('src') }; })()`);
+  check(pieceBox.w === 64 && pieceBox.h === 32 && pieceBox.imgW === "64" && String(pieceBox.src).includes("Rock.png"), `piece draws the map object at 64x32 px (${JSON.stringify(pieceBox)})`);
+  await cdp.shot("09b-linked-furniture");
+  // Clicking the piece's SECOND tile must still hit it (footprint lookup).
+  await waitFor("placement toast gone", () => cdp.eval(`!document.querySelector('[data-house-placing]')`), { timeoutMs: 6000 });
+  const pieceRect = await cdp.eval(`(() => { const r = ${pieceSel}.getBoundingClientRect(); return { x: r.left, y: r.top }; })()`);
+  await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: pieceRect.x + 48, y: pieceRect.y + 16, button: "left", clickCount: 1 });
+  await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: pieceRect.x + 48, y: pieceRect.y + 16, button: "left", clickCount: 1 });
+  await waitFor("furniture window", () => cdp.eval(`${windowSel}?.dataset.houseWindow === 'house'`), { timeoutMs: 4000 });
+  entries = await cdp.eval(`Array.from(document.querySelectorAll('[data-house-entry]')).map(b => b.dataset.houseEntry)`);
+  check(entries[0] === "pick", `clicking the 2nd tile of the piece offers Pick up (${entries.join(",")})`);
+  await cdp.shot("09c-furniture-menu");
+  await cdp.eval(`document.querySelector('[data-house-entry="pick"]').click(); 'ok'`);
+  await waitFor("picked", () => cdp.eval(`!${pieceSel}`), { timeoutMs: 6000 });
+  await waitFor("window closed", () => cdp.eval(`!${windowSel}`), { timeoutMs: 6000 });
+  check(true, "piece picked up (removed from the map)");
+
   // house menu via the interact event (what Space/right-click dispatch)
   await cdp.eval(`window.dispatchEvent(new CustomEvent('pokecraft:house-menu', { detail: {} })); 'ok'`);
   await waitFor("house window", () => cdp.eval(`${windowSel}?.dataset.houseWindow === 'house'`), { timeoutMs: 4000 });
@@ -360,6 +436,42 @@ async function main() {
   await sleep(200);
   check(!(await cdp.eval(`Boolean(${windowSel})`)), "Esc closes the window");
 
+  // ── DESIGNER: the type-driven item form ──
+  await redis.hSet(`auth:user:${userId}`, { role: "admin" });
+  await cdp.send("Page.navigate", { url: "http://localhost:3000/" });
+  await sleep(3000);
+  await cdp.send("Page.navigate", { url: "http://localhost:3000/#/designer/items" });
+  await cdp.eval(`location.reload(); 'ok'`);
+  const editSel = `document.querySelector('[aria-label="Edit ${SOFA.name}"]')`;
+  // The list is paginated: search the sofa by name.
+  await waitFor("designer search box", () => cdp.eval(`Boolean(document.querySelector('input[placeholder="Search items by name"]'))`), { timeoutMs: 60000, intervalMs: 500 });
+  await cdp.eval(`(() => { const i = document.querySelector('input[placeholder="Search items by name"]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, ${JSON.stringify(SOFA.name)}); i.dispatchEvent(new Event('input', { bubbles: true })); return 'ok'; })()`);
+  try {
+    await waitFor("designer items list", () => cdp.eval(`Boolean(${editSel}) && !${editSel}.disabled`), { timeoutMs: 60000, intervalMs: 500 });
+  } catch (error) {
+    await cdp.shot("debug-designer");
+    log("designer page text:", (await cdp.eval(`document.body.innerText.slice(0, 600)`)).replace(/\n+/g, " | "));
+    log("edit buttons:", await cdp.eval(`document.querySelectorAll('[aria-label^="Edit "]').length`), "url:", await cdp.eval(`location.href`));
+    throw error;
+  }
+  await sleep(500);
+  await cdp.eval(`${editSel}.scrollIntoView({ block: 'center' }); ${editSel}.click(); 'ok'`);
+  const objectSel = `document.querySelector('[data-testid="item-furniture-object"]')`;
+  await waitFor("furniture form", () => cdp.eval(`Boolean(${objectSel})`), { timeoutMs: 10000 });
+  await sleep(400);
+  const furnitureForm = await cdp.eval(`(() => { const labels = Array.from(document.querySelectorAll('[role="dialog"] label')).map(l => l.textContent.trim()); return { object: ${objectSel}.value, labels, hasImport: document.body.innerText.includes('Essentials import data') }; })()`);
+  check(furnitureForm.object === OBJ.id, `furniture item form preselects its map object (${furnitureForm.object})`);
+  check(!furnitureForm.labels.some((l) => l.startsWith("Effect Kind")) && furnitureForm.labels.some((l) => l.startsWith("Map object")), `furniture form hides effect fields, shows the map object picker (${furnitureForm.labels.join(" | ")})`);
+  check(furnitureForm.hasImport, "Essentials import data is tucked into a collapsed section");
+  await cdp.eval(`document.querySelector('[role="dialog"]').scrollTop = 0; 'ok'`);
+  await cdp.shot("14-designer-furniture-form");
+  // Switching the type re-shapes the form (no save).
+  await cdp.eval(`(() => { const sel = Array.from(document.querySelectorAll('[role="dialog"] select')).find(s => Array.from(s.options).some(o => o.value === 'medicine')); const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set; set.call(sel, 'medicine'); sel.dispatchEvent(new Event('change', { bubbles: true })); return 'ok'; })()`);
+  await sleep(400);
+  const medicineForm = await cdp.eval(`(() => { const labels = Array.from(document.querySelectorAll('[role="dialog"] label')).map(l => l.textContent.trim()); return { labels, hasObject: Boolean(${objectSel}) }; })()`);
+  check(medicineForm.labels.some((l) => l.startsWith("Effect Kind")) && medicineForm.labels.some((l) => l === "HP") && !medicineForm.hasObject, `medicine form shows effect + stat fields and drops the map object picker`);
+  await cdp.shot("15-designer-medicine-form");
+
   log(`ALL PASSED (${passed} checks)`);
 }
 
@@ -372,6 +484,10 @@ async function cleanup() {
       if (mapsBackup !== null) await redis.set(MAPS_KEY, mapsBackup);
       if (probeBackup !== null) await redis.set(MAPS_PROBE_KEY, probeBackup); else await redis.del(MAPS_PROBE_KEY);
       if (housesBackup !== null) await redis.set(HOUSES_KEY, housesBackup); else await redis.del(HOUSES_KEY);
+      if (itemsBackup !== null) await redis.set(ITEMS_KEY, itemsBackup);
+      if (itemsProbeBackup !== null) await redis.set(ITEMS_PROBE_KEY, itemsProbeBackup); else await redis.del(ITEMS_PROBE_KEY);
+      if (objectsBackup !== null) await redis.set(OBJECTS_KEY, objectsBackup); else await redis.del(OBJECTS_KEY);
+      if (objectsProbeBackup !== null) await redis.set(OBJECTS_PROBE_KEY, objectsProbeBackup); else await redis.del(OBJECTS_PROBE_KEY);
       if (userId) { await redis.del(`auth:user:${userId}`); await redis.del(`auth:character:${characterId}`); }
       if (userIdB) { await redis.del(`auth:user:${userIdB}`); await redis.del(`auth:character:${characterIdB}`); }
       await redis.quit();

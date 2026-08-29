@@ -325,7 +325,7 @@ const Map = ({children}:{children:any}) => {
             return;
         }
         // Inside a house: facing furniture opens the house menu on it.
-        const facingFurniture = activeMapId ? getHouseFurnitureAt(activeMapId, targetX, targetY) : null;
+        const facingFurniture = activeMapId ? getHouseFurnitureAt(activeMapId, targetX, targetY, cellSize) : null;
         if (facingFurniture) {
             window.dispatchEvent(new CustomEvent(HOUSE_MENU_EVENT, { detail: { furnitureId: facingFurniture.id } }));
             return;

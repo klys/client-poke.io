@@ -1,11 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Accordion,
+  AccordionButton,
+  AccordionIcon,
+  AccordionItem,
+  AccordionPanel,
   Badge,
   Box,
   Button,
   Checkbox,
   Flex,
   FormControl,
+  FormHelperText,
   FormLabel,
   Heading,
   Icon,
@@ -527,6 +533,91 @@ interface SkillGfxFormState {
   linkedMoveIds: string;
 }
 
+/**
+ * What each item type means for the game, and which form sections apply.
+ * The item editor shows only the sections an item of that type can use.
+ */
+const ITEM_TYPE_GUIDE: Record<
+  DesignerItemType,
+  {
+    title: string;
+    subtitle: string | null;
+    hint: string;
+    effect: boolean;
+    stats: boolean;
+    skill: boolean;
+    pokeball: boolean;
+    furniture: boolean;
+  }
+> = {
+  usable: {
+    title: "Effect when used",
+    subtitle: "Used from the bag on a Venomon or in the field",
+    hint: "Bag item with an effect (potions, repels, evolution stones). Scripted effects are resolved from the Essentials ID.",
+    effect: true, stats: true, skill: false, pokeball: false, furniture: false,
+  },
+  medicine: {
+    title: "Healing effect",
+    subtitle: "Restores HP, PP or status",
+    hint: "Medicine used on a Venomon; set what it heals below.",
+    effect: true, stats: true, skill: false, pokeball: false, furniture: false,
+  },
+  "battle items": {
+    title: "Battle effect",
+    subtitle: "Only usable during a battle",
+    hint: "X Attack, Guard Spec and friends: temporary stat boosts in battle.",
+    effect: true, stats: true, skill: false, pokeball: false, furniture: false,
+  },
+  pokeball: {
+    title: "Venoball",
+    subtitle: "Catch bonus",
+    hint: "Thrown at a wild Venomon; the bonus below stacks on the base catch rate.",
+    effect: false, stats: false, skill: false, pokeball: true, furniture: false,
+  },
+  "hold items": {
+    title: "Held effect",
+    subtitle: "Applies while a Venomon holds it",
+    hint: "Held item (Life Orb, choice items, orbs). The runtime maps the effect from the Essentials ID; the fields below are informative.",
+    effect: true, stats: false, skill: false, pokeball: false, furniture: false,
+  },
+  "skill item": {
+    title: "Move taught",
+    subtitle: "Single-use (MT)",
+    hint: "Teaches one move to a compatible Venomon and is consumed.",
+    effect: false, stats: false, skill: true, pokeball: false, furniture: false,
+  },
+  machines: {
+    title: "Move taught",
+    subtitle: "MO/MT machine",
+    hint: "Move machine: reusable MO (HM##) or single-use MT (TM##), decided by the Essentials ID.",
+    effect: false, stats: false, skill: true, pokeball: false, furniture: false,
+  },
+  "general items": {
+    title: "General item",
+    subtitle: null,
+    hint: "Plain item with no effect: sold, traded or collected.",
+    effect: false, stats: false, skill: false, pokeball: false, furniture: false,
+  },
+  berries: {
+    title: "Berry effect",
+    subtitle: "Held or eaten",
+    hint: "Berry: eaten from the bag or held (pinch berries). Set what it does below; plantable berries come from the Berries section.",
+    effect: true, stats: true, skill: false, pokeball: false, furniture: false,
+  },
+  "quest item": {
+    title: "Key item",
+    subtitle: null,
+    hint: "Key item: cannot be sold or dropped; events check for it by Essentials ID.",
+    effect: false, stats: false, skill: false, pokeball: false, furniture: false,
+  },
+  furniture: {
+    title: "Furniture",
+    subtitle: "Placed inside player houses",
+    hint: "Only usable inside the owner's house (bag → Place). Pick the map object it draws on the floor.",
+    effect: false, stats: false, skill: false, pokeball: false, furniture: true,
+  },
+};
+
 interface ItemFormState {
   iconSrc: string;
   description: string;
@@ -545,6 +636,8 @@ interface ItemFormState {
   skillId: string;
   pokeballBonusElements: string[];
   pokeballBonusRatio: string;
+  /** Furniture: the map object (objects section) drawn when placed in a house. */
+  furnitureObjectId: string;
 }
 
 interface NpcTrainerPokemonFormEntry {
@@ -765,6 +858,7 @@ function createDefaultItemFormState(): ItemFormState {
     skillId: "",
     pokeballBonusElements: [],
     pokeballBonusRatio: "0",
+    furnitureObjectId: "",
   };
 }
 
@@ -1419,10 +1513,29 @@ function sanitizeGameItemProfile(value: unknown): DesignerGameItemProfile | unde
     ? candidate.pokeballBonusElements
     : [];
   const pokeballBonusElements = Array.from(new Set(rawElements.filter(isPokemonElement)));
+  const parsedPrice =
+    typeof candidate.price === "number" && Number.isFinite(candidate.price) && candidate.price >= 0
+      ? Math.round(candidate.price)
+      : undefined;
+  const optionalText = (value: unknown) =>
+    typeof value === "string" && value.trim().length > 0 ? value : undefined;
 
   return {
     iconSrc: typeof candidate.iconSrc === "string" ? candidate.iconSrc : "",
     description: typeof candidate.description === "string" ? candidate.description : "",
+    // Essentials import identity/metadata: the runtime (field items, machines,
+    // held effects) keys on essentialsId and price, so they must survive edits.
+    essentialsId: optionalText(candidate.essentialsId),
+    namePlural: optionalText(candidate.namePlural),
+    pocket: optionalText(candidate.pocket),
+    price: parsedPrice,
+    fieldUse: optionalText(candidate.fieldUse),
+    flags: Array.isArray(candidate.flags)
+      ? candidate.flags.filter((flag): flag is string => typeof flag === "string" && flag.length > 0)
+      : undefined,
+    furnitureObjectId: optionalText(candidate.furnitureObjectId),
+    source:
+      candidate.source && typeof candidate.source === "object" ? candidate.source : undefined,
     pokemonDbCategory:
       typeof candidate.pokemonDbCategory === "string" ? candidate.pokemonDbCategory : "",
     effectText: typeof candidate.effectText === "string" ? candidate.effectText : "",
@@ -2179,6 +2292,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
   const [characterSkinCatalogState, setCharacterSkinCatalogState] = useState<DesignerSectionState>(() =>
     loadStoredState("players")
   );
+  // Items section: furniture items pick the map object they draw from here.
+  const [mapObjectCatalogState, setMapObjectCatalogState] = useState<DesignerSectionState>(() =>
+    loadStoredState("objects")
+  );
   const [sectionCacheVersion, setSectionCacheVersion] = useState<number | null>(
     () => readStoredPayload(sectionKey).version
   );
@@ -2522,6 +2639,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
 
       const catalogSectionKeys: DesignerSectionKey[] = [
         ...(isPokemonSection || isItemsSection ? (["skills"] as DesignerSectionKey[]) : []),
+        ...(isItemsSection ? (["objects"] as DesignerSectionKey[]) : []),
         ...(isSkillsSection ? (["skillsGfx", "passiveStates"] as DesignerSectionKey[]) : []),
         ...(isNpcsSection ? (["items", "pokemons", "players"] as DesignerSectionKey[]) : []),
       ];
@@ -2546,6 +2664,19 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         setSkillCatalogState(nextSkillsState);
         persistStoredPayload("skills", {
           state: nextSkillsState,
+          version: payload.version,
+          updatedAt: payload.updatedAt,
+          updatedByUsername: payload.updatedByUsername,
+        });
+        return;
+      }
+
+      if (isItemsSection && payload.sectionKey === "objects") {
+        const nextObjectsState = sanitizeSectionState("objects", payload.state);
+
+        setMapObjectCatalogState(nextObjectsState);
+        persistStoredPayload("objects", {
+          state: nextObjectsState,
           version: payload.version,
           updatedAt: payload.updatedAt,
           updatedByUsername: payload.updatedByUsername,
@@ -2755,6 +2886,9 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       socket.emit("designer:section:leave", { sectionKey });
       if (isPokemonSection || isItemsSection) {
         socket.emit("designer:section:leave", { sectionKey: "skills" });
+      }
+      if (isItemsSection) {
+        socket.emit("designer:section:leave", { sectionKey: "objects" });
       }
       if (isSkillsSection) {
         socket.emit("designer:section:leave", { sectionKey: "skillsGfx" });
@@ -3230,6 +3364,20 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         .sort((left, right) => left.category.localeCompare(right.category) || left.name.localeCompare(right.name)),
     [skillCatalogState.items]
   );
+  const mapObjectCatalog = useMemo(
+    () =>
+      mapObjectCatalogState.items
+        .filter((item) => item.id.trim() && item.name.trim())
+        .map((item) => ({
+          id: item.id,
+          name: item.name,
+          category: item.category,
+          asset: sanitizeMapObjectAsset(item.mapObjectAsset),
+        }))
+        .filter((item) => item.asset?.imageSrc)
+        .sort((left, right) => left.category.localeCompare(right.category) || left.name.localeCompare(right.name)),
+    [mapObjectCatalogState.items]
+  );
   const skillGfxCatalog = useMemo(
     () =>
       skillGfxCatalogState.items
@@ -3455,6 +3603,7 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
             skillId: itemProfile.skillId,
             pokeballBonusElements: itemProfile.pokeballBonusElements,
             pokeballBonusRatio: String(itemProfile.pokeballBonusRatio),
+            furnitureObjectId: itemProfile.furnitureObjectId ?? "",
           }
         : createDefaultItemFormState()
     );
@@ -4292,6 +4441,10 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
       pokeballBonusElements:
         formState.type === "pokeball" ? formState.pokeballBonusElements : [],
       pokeballBonusRatio: formState.type === "pokeball" ? pokeballBonusRatio : 0,
+      furnitureObjectId:
+        formState.type === "furniture" && formState.furnitureObjectId
+          ? formState.furnitureObjectId
+          : undefined,
     };
   };
 
@@ -6672,140 +6825,42 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
         };
       });
     };
-    const showStatModifiers =
-      formState.type === "usable" ||
-      formState.type === "medicine" ||
-      formState.type === "battle items" ||
-      formState.type === "berries";
+    const guide = ITEM_TYPE_GUIDE[formState.type] ?? ITEM_TYPE_GUIDE["general items"];
+    const linkedObject = mapObjectCatalog.find((object) => object.id === formState.furnitureObjectId) ?? null;
+    const mapObjectCategories = Array.from(new Set(mapObjectCatalog.map((object) => object.category)));
+    const importSummary = [
+      formState.essentialsId ? `ID ${formState.essentialsId}` : null,
+      formState.pocket ? `pocket ${formState.pocket}` : null,
+      formState.flags.length > 0 ? `${formState.flags.length} flag${formState.flags.length === 1 ? "" : "s"}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
 
-    return (
+    const card = (title: string, subtitle: string | null, children: React.ReactNode) => (
+      <Box
+        border="1px solid"
+        borderColor="editor.borderAccentMuted"
+        bg="editor.card"
+        borderRadius="16px"
+        p={4}
+      >
+        <Flex align="baseline" justify="space-between" gap={3} wrap="wrap" mb={3}>
+          <Heading size="sm" color="editor.heading">
+            {title}
+          </Heading>
+          {subtitle ? (
+            <Text fontSize="xs" color="editor.textMuted">
+              {subtitle}
+            </Text>
+          ) : null}
+        </Flex>
+        <Stack spacing={4}>{children}</Stack>
+      </Box>
+    );
+
+    const effectFields = guide.effect ? (
       <>
-        <FormControl isRequired>
-          <FormLabel>Icon</FormLabel>
-          <Input
-            type="file"
-            accept="image/*"
-            p={1.5}
-            onChange={(event) =>
-              handleItemIconChange(event, (value) => updateField("iconSrc", value))
-            }
-          />
-          <Flex
-            mt={3}
-            h="96px"
-            align="center"
-            justify="center"
-            borderRadius="16px"
-            border="1px dashed" borderColor="editor.borderAccent"
-            bg="editor.card"
-          >
-            {formState.iconSrc ? (
-              <Box
-                as="img"
-                src={resolveServerAssetUrl(formState.iconSrc)}
-                alt="Item icon preview"
-                maxW="72px"
-                maxH="72px"
-                objectFit="contain"
-                style={{ imageRendering: "pixelated" }}
-              />
-            ) : (
-              <Text fontSize="sm" color="editor.textMuted">
-                Required
-              </Text>
-            )}
-          </Flex>
-        </FormControl>
-
         <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-          <FormControl>
-            <FormLabel>Essentials ID</FormLabel>
-            <Input
-              value={formState.essentialsId}
-              onChange={(event) => updateField("essentialsId", event.target.value)}
-              placeholder="POTION"
-            />
-          </FormControl>
-          <FormControl>
-            <FormLabel>Plural name</FormLabel>
-            <Input
-              value={formState.namePlural}
-              onChange={(event) => updateField("namePlural", event.target.value)}
-            />
-          </FormControl>
-          <FormControl>
-            <FormLabel>Price</FormLabel>
-            <Input
-              type="number"
-              value={formState.price}
-              onChange={(event) => updateField("price", event.target.value)}
-              placeholder="0"
-            />
-          </FormControl>
-          <FormControl>
-            <FormLabel>Bag pocket</FormLabel>
-            <Input
-              value={formState.pocket}
-              onChange={(event) => updateField("pocket", event.target.value)}
-              placeholder="1"
-            />
-          </FormControl>
-          <FormControl>
-            <FormLabel>Field use</FormLabel>
-            <Input
-              value={formState.fieldUse}
-              onChange={(event) => updateField("fieldUse", event.target.value)}
-              placeholder="Direct, OnPokemon..."
-            />
-          </FormControl>
-          <FormControl>
-            <FormLabel>Flags</FormLabel>
-            <Input
-              value={formState.flags.join(", ")}
-              onChange={(event) =>
-                updateField(
-                  "flags",
-                  event.target.value
-                    .split(",")
-                    .map((flag) => flag.trim())
-                    .filter((flag) => flag.length > 0)
-                )
-              }
-              placeholder="Comma-separated flags"
-            />
-          </FormControl>
-          <FormControl isRequired>
-            <FormLabel>Type</FormLabel>
-            <Select
-              value={formState.type}
-              onChange={(event) =>
-                updateField("type", event.target.value as DesignerItemType)
-              }
-            >
-              {ITEM_TYPE_OPTIONS.map((itemType) => (
-                <option key={itemType} value={itemType}>
-                  {itemType}
-                </option>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl>
-            <FormLabel>Description</FormLabel>
-            <Textarea
-              value={formState.description}
-              onChange={(event) => updateField("description", event.target.value)}
-              placeholder="Describe what this item does"
-              minH="96px"
-            />
-          </FormControl>
-          <FormControl>
-            <FormLabel>PokemonDB Category</FormLabel>
-            <Input
-              value={formState.pokemonDbCategory}
-              onChange={(event) => updateField("pokemonDbCategory", event.target.value)}
-              placeholder="Medicine, Berries, Machines..."
-            />
-          </FormControl>
           <FormControl>
             <FormLabel>Effect Kind</FormLabel>
             <Select
@@ -6836,92 +6891,354 @@ export default function Section({ sectionKey }: DesignerSectionProps) {
               ))}
             </Select>
           </FormControl>
-          <FormControl>
-            <FormLabel>Effect Text</FormLabel>
-            <Textarea
-              value={formState.effectText}
-              onChange={(event) => updateField("effectText", event.target.value)}
-              placeholder="Paste or summarize the PokemonDB effect text"
-              minH="96px"
-            />
-          </FormControl>
         </SimpleGrid>
+        <FormControl>
+          <FormLabel>Effect Text</FormLabel>
+          <Textarea
+            value={formState.effectText}
+            onChange={(event) => updateField("effectText", event.target.value)}
+            placeholder="Paste or summarize the PokemonDB effect text"
+            minH="80px"
+          />
+        </FormControl>
+      </>
+    ) : null;
 
-        {showStatModifiers ? (
-          <Box>
-            <FormLabel>Pokemon Stat Effect</FormLabel>
-            <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
-              {POKEMON_STAT_FIELDS.map((field) => (
-                <FormControl
-                  key={field.key}
-                  isInvalid={
-                    formState.statModifiers[field.key] !== "" &&
-                    parseItemStatModifier(formState.statModifiers[field.key]) === null
-                  }
-                >
-                  <FormLabel>{field.label}</FormLabel>
-                  <Input
-                    type="number"
-                    step={1}
-                    value={formState.statModifiers[field.key]}
-                    onChange={(event) => updateStatModifier(field.key, event.target.value)}
-                  />
-                </FormControl>
-              ))}
-            </SimpleGrid>
-          </Box>
-        ) : null}
-
-        {formState.type === "skill item" || formState.type === "machines" ? (
-          <FormControl isRequired>
-            <FormLabel>Pokemon Skill</FormLabel>
-            <Select
-              value={formState.skillId}
-              onChange={(event) => updateField("skillId", event.target.value)}
-            >
-              <option value="">Select a skill</option>
-              {pokemonSkillCatalog.map((skill) => (
-                <option key={skill.id} value={skill.id}>
-                  {skill.name} ({skill.category})
-                </option>
-              ))}
-            </Select>
-          </FormControl>
-        ) : null}
-
-        {formState.type === "pokeball" ? (
-          <Box>
-            <FormLabel>Element Catch Bonus</FormLabel>
-            <SimpleGrid columns={{ base: 2, md: 3 }} spacing={2}>
-              {POKEMON_ELEMENTS.map((element) => (
-                <Checkbox
-                  key={element}
-                  colorScheme="green"
-                  isChecked={formState.pokeballBonusElements.includes(element)}
-                  onChange={(event) => togglePokeballElement(element, event.target.checked)}
-                >
-                  {element}
-                </Checkbox>
-              ))}
-            </SimpleGrid>
+    const statFields = guide.stats ? (
+      <Box>
+        <FormLabel>Venomon stat effect</FormLabel>
+        <SimpleGrid columns={{ base: 2, md: 3 }} spacing={4}>
+          {POKEMON_STAT_FIELDS.map((field) => (
             <FormControl
-              mt={4}
+              key={field.key}
               isInvalid={
-                formState.pokeballBonusRatio !== "" &&
-                parseItemBonusRatio(formState.pokeballBonusRatio) === null
+                formState.statModifiers[field.key] !== "" &&
+                parseItemStatModifier(formState.statModifiers[field.key]) === null
               }
             >
-              <FormLabel>Bonus Catch Ratio (%)</FormLabel>
+              <FormLabel fontSize="sm">{field.label}</FormLabel>
               <Input
                 type="number"
-                min={0}
                 step={1}
-                value={formState.pokeballBonusRatio}
-                onChange={(event) => updateField("pokeballBonusRatio", event.target.value)}
+                value={formState.statModifiers[field.key]}
+                onChange={(event) => updateStatModifier(field.key, event.target.value)}
               />
             </FormControl>
-          </Box>
-        ) : null}
+          ))}
+        </SimpleGrid>
+      </Box>
+    ) : null;
+
+    const skillFields = guide.skill ? (
+      <FormControl isRequired>
+        <FormLabel>Move taught</FormLabel>
+        <Select
+          value={formState.skillId}
+          onChange={(event) => updateField("skillId", event.target.value)}
+        >
+          <option value="">Select a move</option>
+          {pokemonSkillCatalog.map((skill) => (
+            <option key={skill.id} value={skill.id}>
+              {skill.name} ({skill.category})
+            </option>
+          ))}
+        </Select>
+        <FormHelperText>
+          {formState.type === "machines"
+            ? "Machines are reusable (MO) when the Essentials ID starts with HM, single-use (MT) when it starts with TM."
+            : "Consumed after teaching the move once."}
+        </FormHelperText>
+      </FormControl>
+    ) : null;
+
+    const pokeballFields = guide.pokeball ? (
+      <>
+        <Box>
+          <FormLabel>Element catch bonus</FormLabel>
+          <SimpleGrid columns={{ base: 2, md: 3 }} spacing={2}>
+            {POKEMON_ELEMENTS.map((element) => (
+              <Checkbox
+                key={element}
+                colorScheme="green"
+                isChecked={formState.pokeballBonusElements.includes(element)}
+                onChange={(event) => togglePokeballElement(element, event.target.checked)}
+              >
+                {element}
+              </Checkbox>
+            ))}
+          </SimpleGrid>
+        </Box>
+        <FormControl
+          isInvalid={
+            formState.pokeballBonusRatio !== "" &&
+            parseItemBonusRatio(formState.pokeballBonusRatio) === null
+          }
+        >
+          <FormLabel>Bonus catch ratio (%)</FormLabel>
+          <Input
+            type="number"
+            min={0}
+            step={1}
+            value={formState.pokeballBonusRatio}
+            onChange={(event) => updateField("pokeballBonusRatio", event.target.value)}
+          />
+        </FormControl>
+      </>
+    ) : null;
+
+    const furnitureFields = guide.furniture ? (
+      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+        <FormControl>
+          <FormLabel>Map object</FormLabel>
+          <Select
+            value={formState.furnitureObjectId}
+            onChange={(event) => updateField("furnitureObjectId", event.target.value)}
+            data-testid="item-furniture-object"
+          >
+            <option value="">Item icon on one tile (no map object)</option>
+            {mapObjectCategories.map((category) => (
+              <optgroup key={category} label={category}>
+                {mapObjectCatalog
+                  .filter((object) => object.category === category)
+                  .map((object) => (
+                    <option key={object.id} value={object.id}>
+                      {object.name} · {object.asset?.width}×{object.asset?.height} px · {object.asset?.objectType}
+                    </option>
+                  ))}
+              </optgroup>
+            ))}
+          </Select>
+          <FormHelperText>
+            {mapObjectCatalog.length === 0
+              ? "No map objects yet — create them under Designer → Map Objects, then pick one here."
+              : "Placed in a house, the piece draws this object from its top-left tile. \"obstacle\" objects block walking; \"floor\" ones can be walked over."}
+          </FormHelperText>
+        </FormControl>
+        <Flex
+          direction="column"
+          align="center"
+          justify="center"
+          gap={2}
+          minH="140px"
+          borderRadius="16px"
+          border="1px dashed"
+          borderColor="editor.borderAccent"
+          bg="editor.raised"
+          p={3}
+        >
+          {linkedObject?.asset ? (
+            <>
+              <Box
+                as="img"
+                src={resolveServerAssetUrl(linkedObject.asset.imageSrc)}
+                alt={linkedObject.name}
+                maxW="100%"
+                maxH="120px"
+                objectFit="contain"
+                style={{ imageRendering: "pixelated" }}
+              />
+              <Text fontSize="xs" color="editor.textMuted" textAlign="center">
+                {linkedObject.name} · {linkedObject.asset.width}×{linkedObject.asset.height} px ·{" "}
+                {Math.max(1, Math.ceil(linkedObject.asset.width / 32))}×
+                {Math.max(1, Math.ceil(linkedObject.asset.height / 32))} tiles ·{" "}
+                {linkedObject.asset.objectType === "obstacle" ? "solid" : "walkable"}
+              </Text>
+            </>
+          ) : formState.iconSrc ? (
+            <>
+              <Box
+                as="img"
+                src={resolveServerAssetUrl(formState.iconSrc)}
+                alt="Item icon"
+                maxW="64px"
+                maxH="64px"
+                objectFit="contain"
+                style={{ imageRendering: "pixelated" }}
+              />
+              <Text fontSize="xs" color="editor.textMuted" textAlign="center">
+                Icon on one tile · solid
+              </Text>
+            </>
+          ) : (
+            <Text fontSize="sm" color="editor.textMuted">
+              Pick a map object to preview it
+            </Text>
+          )}
+        </Flex>
+      </SimpleGrid>
+    ) : null;
+
+    const typeCardContent = [furnitureFields, skillFields, pokeballFields, effectFields, statFields].filter(Boolean);
+
+    return (
+      <>
+        {card(
+          "Basics",
+          null,
+          <>
+            <FormControl isRequired>
+              <FormLabel>Type</FormLabel>
+              <Select
+                value={formState.type}
+                onChange={(event) =>
+                  updateField("type", event.target.value as DesignerItemType)
+                }
+              >
+                {ITEM_TYPE_OPTIONS.map((itemType) => (
+                  <option key={itemType} value={itemType}>
+                    {itemType}
+                  </option>
+                ))}
+              </Select>
+              <FormHelperText>{guide.hint}</FormHelperText>
+            </FormControl>
+            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+              <FormControl isRequired>
+                <FormLabel>Icon</FormLabel>
+                <Input
+                  type="file"
+                  accept="image/*"
+                  p={1.5}
+                  onChange={(event) =>
+                    handleItemIconChange(event, (value) => updateField("iconSrc", value))
+                  }
+                />
+                <Flex
+                  mt={3}
+                  h="96px"
+                  align="center"
+                  justify="center"
+                  borderRadius="16px"
+                  border="1px dashed"
+                  borderColor="editor.borderAccent"
+                  bg="editor.raised"
+                >
+                  {formState.iconSrc ? (
+                    <Box
+                      as="img"
+                      src={resolveServerAssetUrl(formState.iconSrc)}
+                      alt="Item icon preview"
+                      maxW="72px"
+                      maxH="72px"
+                      objectFit="contain"
+                      style={{ imageRendering: "pixelated" }}
+                    />
+                  ) : (
+                    <Text fontSize="sm" color="editor.textMuted">
+                      Required — shown in the bag and shops
+                    </Text>
+                  )}
+                </Flex>
+              </FormControl>
+              <Stack spacing={4}>
+                <FormControl>
+                  <FormLabel>Description</FormLabel>
+                  <Textarea
+                    value={formState.description}
+                    onChange={(event) => updateField("description", event.target.value)}
+                    placeholder="What the player reads in the bag"
+                    minH="96px"
+                  />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Price</FormLabel>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={formState.price}
+                    onChange={(event) => updateField("price", event.target.value)}
+                    placeholder="0 = not sold in stores"
+                  />
+                </FormControl>
+              </Stack>
+            </SimpleGrid>
+          </>
+        )}
+
+        {typeCardContent.length > 0
+          ? card(
+              guide.title,
+              guide.subtitle,
+              typeCardContent.map((content, index) => (
+                <React.Fragment key={index}>{content}</React.Fragment>
+              ))
+            )
+          : null}
+
+        <Accordion allowToggle borderColor="editor.borderAccentMuted">
+          <AccordionItem border="1px solid" borderColor="editor.borderAccentMuted" borderRadius="16px" overflow="hidden">
+            <AccordionButton bg="editor.card" _expanded={{ bg: "editor.raised" }} py={3}>
+              <Box flex="1" textAlign="left">
+                <Text fontWeight="700" fontSize="sm" color="editor.heading">
+                  Essentials import data
+                </Text>
+                <Text fontSize="xs" color="editor.textMuted">
+                  {importSummary || "Optional — links the item to its PBS definition (needed for scripted effects)"}
+                </Text>
+              </Box>
+              <AccordionIcon />
+            </AccordionButton>
+            <AccordionPanel bg="editor.card" pt={4}>
+              <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+                <FormControl>
+                  <FormLabel>Essentials ID</FormLabel>
+                  <Input
+                    value={formState.essentialsId}
+                    onChange={(event) => updateField("essentialsId", event.target.value)}
+                    placeholder="POTION"
+                  />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Plural name</FormLabel>
+                  <Input
+                    value={formState.namePlural}
+                    onChange={(event) => updateField("namePlural", event.target.value)}
+                  />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>PokemonDB category</FormLabel>
+                  <Input
+                    value={formState.pokemonDbCategory}
+                    onChange={(event) => updateField("pokemonDbCategory", event.target.value)}
+                    placeholder="Medicine, Berries, Machines..."
+                  />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Bag pocket</FormLabel>
+                  <Input
+                    value={formState.pocket}
+                    onChange={(event) => updateField("pocket", event.target.value)}
+                    placeholder="1"
+                  />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Field use</FormLabel>
+                  <Input
+                    value={formState.fieldUse}
+                    onChange={(event) => updateField("fieldUse", event.target.value)}
+                    placeholder="Direct, OnPokemon..."
+                  />
+                </FormControl>
+                <FormControl>
+                  <FormLabel>Flags</FormLabel>
+                  <Input
+                    value={formState.flags.join(", ")}
+                    onChange={(event) =>
+                      updateField(
+                        "flags",
+                        event.target.value
+                          .split(",")
+                          .map((flag) => flag.trim())
+                          .filter((flag) => flag.length > 0)
+                      )
+                    }
+                    placeholder="Comma-separated flags"
+                  />
+                </FormControl>
+              </SimpleGrid>
+            </AccordionPanel>
+          </AccordionItem>
+        </Accordion>
       </>
     );
   };

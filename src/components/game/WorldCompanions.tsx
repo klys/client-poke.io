@@ -58,13 +58,14 @@ export function HouseFurnitureLayer({ mapId, cellSize }: { mapId: string; cellSi
         <div
           key={piece.id}
           data-house-furniture={piece.id}
+          data-house-furniture-object={piece.objectId}
           title={piece.itemName}
           style={{
             position: "absolute",
             left: `${piece.x * cellSize}px`,
             top: `${piece.y * cellSize}px`,
-            width: `${cellSize}px`,
-            height: `${cellSize}px`,
+            width: `${piece.imageSrc ? piece.width ?? cellSize : cellSize}px`,
+            height: `${piece.imageSrc ? piece.height ?? cellSize : cellSize}px`,
             zIndex: 998,
             display: "flex",
             alignItems: "flex-end",
@@ -72,7 +73,18 @@ export function HouseFurnitureLayer({ mapId, cellSize }: { mapId: string; cellSi
             cursor: "pointer"
           }}
         >
-          {piece.iconSrc ? (
+          {piece.imageSrc ? (
+            // Linked map object: drawn exactly like an authored one (GameObject),
+            // top-left anchored at its px size.
+            <img
+              src={assetUrl(piece.imageSrc)}
+              alt={piece.itemName}
+              width={piece.width ?? cellSize}
+              height={piece.height ?? cellSize}
+              style={{ imageRendering: "pixelated", objectPosition: "center" }}
+              draggable={false}
+            />
+          ) : piece.iconSrc ? (
             <img
               src={assetUrl(piece.iconSrc)}
               alt={piece.itemName}
