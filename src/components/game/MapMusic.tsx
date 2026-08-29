@@ -2,6 +2,7 @@ import { useContext, useEffect } from "react";
 import { AppContext } from "../../context/appContext";
 import { getInitialPlayableMap, getPlayableMapById } from "./playableMapRuntime";
 import { gameAudio } from "../ux/game/gameAudio";
+import { useHouse } from "./houses";
 
 /**
  * Plays each map's background music (the RMXP map BGM imported from Venova).
@@ -16,9 +17,13 @@ const MapMusic = () => {
   const activeMap =
     getPlayableMapById(currentPlayer?.currentMapId, playableMapsState) ??
     getInitialPlayableMap(playableMapsState);
-  const bgmName =
-    ((activeMap?.item as { playableMapConfig?: { bgm?: string } } | undefined)?.playableMapConfig
-      ?.bgm ?? "").trim();
+  // Inside a house the owner's chosen track overrides the template's BGM.
+  const house = useHouse(activeMap?.item.id ?? null);
+  const bgmName = (
+    house?.bgm ??
+    (activeMap?.item as { playableMapConfig?: { bgm?: string } } | undefined)?.playableMapConfig?.bgm ??
+    ""
+  ).trim();
   const inBattle = Boolean(battle && battle.status === "active");
 
   useEffect(() => {

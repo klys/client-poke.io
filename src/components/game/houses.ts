@@ -36,6 +36,9 @@ export type HouseInfo = {
   keyCodeSet: boolean;
   salePrice: number | null;
   furniture: HouseFurniture[];
+  /** Owner-chosen BGM name; null = the template map's music. */
+  bgm: string | null;
+  customName: boolean;
 };
 
 export type HouseApartmentSummary = {
@@ -126,7 +129,9 @@ function sanitizeHouse(value: unknown): HouseInfo | null {
     salePrice: isFiniteNumber(raw.salePrice) ? raw.salePrice : null,
     furniture: Array.isArray(raw.furniture)
       ? raw.furniture.map(sanitizeFurniture).filter((item): item is HouseFurniture => Boolean(item))
-      : []
+      : [],
+    bgm: typeof raw.bgm === "string" && raw.bgm ? raw.bgm : null,
+    customName: raw.customName === true
   };
 }
 

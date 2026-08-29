@@ -1,6 +1,7 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { AppContext } from "../../context/appContext";
 import { getInitialPlayableMap, getPlayableMapById } from "./playableMapRuntime";
+import { useHouse } from "./houses";
 
 const BANNER_VISIBLE_MS = 15000;
 
@@ -21,14 +22,19 @@ const MapNameBanner = () => {
     getPlayableMapById(currentPlayer?.currentMapId, playableMapsState) ??
     getInitialPlayableMap(playableMapsState);
   const activeMapId = activeMap?.item.id ?? null;
-  const activeMapName = activeMap?.item.name ?? null;
+  // A house instance announces its own name (owner-chosen or "Apartamento N")
+  // rather than the template map's; the name arrives with house:sync right
+  // after the transfer, so the banner re-keys on it.
+  const house = useHouse(activeMapId);
+  const activeMapName = house?.name || activeMap?.item.name || null;
+  const bannerKey = activeMapId ? `${activeMapId}|${house?.name ?? ""}` : null;
 
   useEffect(() => {
-    if (!activeMapId || !activeMapName || activeMapId === lastMapIdRef.current) {
+    if (!bannerKey || !activeMapName || bannerKey === lastMapIdRef.current) {
       return;
     }
 
-    lastMapIdRef.current = activeMapId;
+    lastMapIdRef.current = bannerKey;
     setVisibleName(activeMapName);
 
     if (hideTimerRef.current !== null) {
@@ -39,7 +45,7 @@ const MapNameBanner = () => {
       setVisibleName(null);
       hideTimerRef.current = null;
     }, BANNER_VISIBLE_MS);
-  }, [activeMapId, activeMapName]);
+  }, [bannerKey, activeMapName]);
 
   useEffect(
     () => () => {

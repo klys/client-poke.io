@@ -15,7 +15,7 @@
  */
 import { CSSProperties, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Box, Button, HStack, SimpleGrid, Text, VStack } from "@chakra-ui/react";
+import { Box, Button, HStack, Input, SimpleGrid, Text, VStack } from "@chakra-ui/react";
 import type { Socket } from "socket.io-client";
 import { AppContext } from "../../context/appContext";
 import { MenuChoiceButton, RetroPanel } from "../ux/game/NpcInteractions";
@@ -35,7 +35,7 @@ import {
 const INFO_TIMEOUT_MS = 2500;
 const RESULT_LINGER_MS = 2200;
 
-type Phase = "loading" | "apartments" | "apartment" | "keypad" | "price" | "house" | "placing" | "result";
+type Phase = "loading" | "apartments" | "apartment" | "keypad" | "price" | "house" | "name" | "music" | "placing" | "result";
 
 interface Session {
   kind: "door" | "house" | "placing";
@@ -51,6 +51,10 @@ interface Session {
   furnitureId?: string | null;
   placeItemId?: string;
   placeItemName?: string;
+  /** Rename phase: the text being typed. */
+  nameDraft?: string;
+  /** Music phase: the tracks the server offers. */
+  bgms?: string[];
   message?: string;
   ok?: boolean;
 }
@@ -345,11 +349,23 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
       }
       showResult(data.ok, message);
     };
+    const onMusicList = (data: { bgms?: string[] }) => {
+      const bgms = Array.isArray(data?.bgms) ? data.bgms.filter((name): name is string => typeof name === "string") : [];
+      setSession((prev) => {
+        if (!prev || prev.kind !== "house" || prev.phase !== "loading") return prev;
+        clearTimers();
+        const current = getHouse(stateRef.current.mapId)?.bgm ?? null;
+        const index = current ? bgms.indexOf(current) + 1 : 0;
+        return { ...prev, phase: "music", bgms, selected: Math.max(0, index) };
+      });
+    };
     socket.on("house:door-info", onDoorInfo);
     socket.on("house:result", onResult);
+    socket.on("house:music-list", onMusicList);
     return () => {
       socket.off("house:door-info", onDoorInfo);
       socket.off("house:result", onResult);
+      socket.off("house:music-list", onMusicList);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, t]);
@@ -381,6 +397,28 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
           key: "pick",
           label: t("house.action.pick", { name: piece?.itemName ?? "" }),
           run: () => submit("house:furniture-pick", { furnitureId: current.furnitureId })
+        });
+      }
+      if (house?.isOwner && !current.furnitureId) {
+        entries.push({
+          key: "rename",
+          label: t("house.action.rename"),
+          run: () =>
+            setSession((prev) =>
+              prev ? { ...prev, phase: "name", nameDraft: house.customName ? house.name : "", selected: 0 } : prev
+            )
+        });
+        entries.push({
+          key: "music",
+          label: t("house.action.music"),
+          run: () => {
+            setSession((prev) => (prev ? { ...prev, phase: "loading" } : prev));
+            socket.emit("house:music-list");
+            const timeoutId = window.setTimeout(() => {
+              setSession((prev) => (prev && prev.phase === "loading" && prev.kind === "house" ? { ...prev, phase: "house" } : prev));
+            }, INFO_TIMEOUT_MS);
+            timersRef.current.push(timeoutId);
+          }
         });
       }
       entries.push({ key: "leave", label: t("house.action.leave"), run: () => submit("house:leave", {}) });
@@ -459,6 +497,34 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
     return [{ key: "cancel", label: t("house.action.cancel"), run: () => cancelRef.current() }];
   };
 
+  const musicEntriesFor = (current: Session): Entry[] => {
+    const house = getHouse(stateRef.current.mapId);
+    const apartmentId = house?.apartmentId;
+    return [
+      {
+        key: "__default",
+        label: t("house.music.default"),
+        run: () => submit("house:set-music", { apartmentId, bgm: null })
+      },
+      ...(current.bgms ?? []).map<Entry>((bgm) => ({
+        key: bgm,
+        label: `${house?.bgm === bgm ? "▶ " : ""}${bgm}`,
+        run: () => submit("house:set-music", { apartmentId, bgm })
+      })),
+      { key: "back", label: t("house.action.back"), run: () => setSession((prev) => (prev ? { ...prev, phase: "house", selected: 0 } : prev)) }
+    ];
+  };
+
+  const submitName = () => {
+    const current = sessionRef.current;
+    const house = getHouse(stateRef.current.mapId);
+    if (!current || !house) return;
+    const name = (current.nameDraft ?? "").trim();
+    submit("house:set-name", { apartmentId: house.apartmentId, name: name || null });
+  };
+  const submitNameRef = useRef(submitName);
+  submitNameRef.current = submitName;
+
   const confirmDigits = () => {
     const current = sessionRef.current;
     if (!current || !current.apartmentId) return;
@@ -492,7 +558,7 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
   const backFromDigits = () =>
     setSession((prev) => (prev ? { ...prev, phase: "apartment", digits: "", selected: 0 } : prev));
 
-  const entries = session ? entriesFor(session) : [];
+  const entries = session ? (session.phase === "music" ? musicEntriesFor(session) : entriesFor(session)) : [];
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
 
@@ -509,10 +575,19 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
       if (key === "Escape") {
         swallow();
         if (isDigits) backFromDigits();
-        else cancelRef.current();
+        else if (session.phase === "name" || session.phase === "music") {
+          setSession((prev) => (prev ? { ...prev, phase: "house", selected: 0 } : prev));
+        } else cancelRef.current();
         return;
       }
       if (session.kind === "placing") return;
+      if (session.phase === "name") {
+        if (key === "Enter") {
+          swallow();
+          submitNameRef.current();
+        }
+        return; // the input owns every other key
+      }
       if (isDigits) {
         if (/^[0-9]$/.test(key)) {
           swallow();
@@ -558,7 +633,9 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
           ? apt?.name ?? session.door?.name ?? t("house.doorTitle")
           : session.door?.name ?? t("house.doorTitle");
   const isDigits = session.phase === "keypad" || session.phase === "price";
-  const menuOpen = session.phase === "apartments" || session.phase === "apartment" || session.phase === "house";
+  const menuOpen =
+    session.phase === "apartments" || session.phase === "apartment" || session.phase === "house" || session.phase === "music";
+  const isNaming = session.phase === "name";
 
   const overlay = (
     <Box position="fixed" inset={0} zIndex={4300} pointerEvents="none" data-game-ux="true" data-house-menu={session.phase}>
@@ -581,7 +658,7 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
         </Box>
       ) : null}
 
-      {menuOpen || isDigits ? (
+      {menuOpen || isDigits || isNaming ? (
         <Box
           position="fixed"
           left={`${session.menuX}px`}
@@ -610,7 +687,47 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
                     : t("house.status.owned", { name: house.ownerName ?? "—" })}
                 </Text>
               ) : null}
-              {isDigits ? (
+              {isNaming ? (
+                <>
+                  <Text fontFamily="mono" fontSize="xs" color="#4a6a4a" textAlign="center" whiteSpace="normal">
+                    {t("house.name.title")}
+                  </Text>
+                  <Input
+                    autoFocus
+                    size="sm"
+                    maxLength={30}
+                    fontFamily="mono"
+                    bg="#101010"
+                    color="#9cff8a"
+                    borderColor="#5d5a7b"
+                    value={session.nameDraft ?? ""}
+                    placeholder={house?.name ?? ""}
+                    data-house-name-input="1"
+                    onChange={(event) => {
+                      const nameDraft = event.target.value;
+                      setSession((prev) => (prev ? { ...prev, nameDraft } : prev));
+                    }}
+                  />
+                  <MenuChoiceButton active={false} onClick={submitName}>
+                    {t("house.name.save")}
+                  </MenuChoiceButton>
+                  <MenuChoiceButton
+                    active={false}
+                    onClick={() => {
+                      const current = getHouse(stateRef.current.mapId);
+                      if (current) submit("house:set-name", { apartmentId: current.apartmentId, name: null });
+                    }}
+                  >
+                    {t("house.name.reset")}
+                  </MenuChoiceButton>
+                  <MenuChoiceButton
+                    active={false}
+                    onClick={() => setSession((prev) => (prev ? { ...prev, phase: "house", selected: 0 } : prev))}
+                  >
+                    {t("house.action.back")}
+                  </MenuChoiceButton>
+                </>
+              ) : isDigits ? (
                 <>
                   <Text fontFamily="mono" fontSize="xs" color="#4a6a4a" textAlign="center" whiteSpace="normal">
                     {session.phase === "price"
@@ -662,17 +779,30 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
                   </MenuChoiceButton>
                 </>
               ) : (
-                entries.map((entry, index) => (
-                  <MenuChoiceButton
-                    key={entry.key}
-                    active={session.selected === index}
-                    isDisabled={entry.disabled}
-                    onClick={() => !entry.disabled && entry.run()}
-                    onMouseEnter={() => setSession((prev) => (prev ? { ...prev, selected: index } : prev))}
-                  >
-                    {entry.label}
-                  </MenuChoiceButton>
-                ))
+                <Box
+                  maxH={session.phase === "music" ? "260px" : undefined}
+                  overflowY={session.phase === "music" ? "auto" : undefined}
+                  data-house-music-list={session.phase === "music" ? "1" : undefined}
+                >
+                  {session.phase === "music" ? (
+                    <Text fontFamily="mono" fontSize="xs" color="#4a6a4a" textAlign="center" whiteSpace="normal" mb={1}>
+                      {t("house.music.title")}
+                    </Text>
+                  ) : null}
+                  <VStack align="stretch" spacing={2}>
+                    {entries.map((entry, index) => (
+                      <MenuChoiceButton
+                        key={entry.key}
+                        active={session.selected === index}
+                        isDisabled={entry.disabled}
+                        onClick={() => !entry.disabled && entry.run()}
+                        onMouseEnter={() => setSession((prev) => (prev ? { ...prev, selected: index } : prev))}
+                      >
+                        {entry.label}
+                      </MenuChoiceButton>
+                    ))}
+                  </VStack>
+                </Box>
               )}
             </VStack>
           </RetroPanel>
