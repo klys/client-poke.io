@@ -310,6 +310,8 @@ export function SocialProvider({ children }: { children: ReactNode }) {
   const { socket, players, myplayer } = useContext(AppContext);
   const { user } = useAuth();
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
+  const stateRef = useRef(state);
+  stateRef.current = state;
   const myUserId: number | null = typeof user?.id === 'number' ? user.id : null;
 
   // The local player's current map (same-map gating for friend actions).
@@ -509,6 +511,35 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'private-closed', chatId: data.chatId });
     };
 
+    // House pets: alerts persisted on the character (pet:notifications on
+    // join) and live ones; both live in the bell until dismissed.
+    const petNotification = (raw: any): SocialNotification | null => {
+      if (!raw || typeof raw.id !== 'string' || typeof raw.text !== 'string') return null;
+      return {
+        id: `pet-${raw.id}`,
+        kind: 'pet',
+        fromUsername: typeof raw.petName === 'string' ? raw.petName : '',
+        text: translate('social.petAlert', getActiveLanguage(), { text: raw.text }),
+        petNotificationId: raw.id,
+        mapId: typeof raw.mapId === 'string' ? raw.mapId : undefined,
+        at: typeof raw.at === 'number' ? raw.at : Date.now()
+      };
+    };
+    const handlePetNotification = (data: any) => {
+      const notification = petNotification(data?.notification);
+      if (!notification) return;
+      dispatch({ type: 'notification-add', payload: notification });
+      nativeNotify('social.native.pet', { text: data.notification.text });
+    };
+    const handlePetNotifications = (data: any) => {
+      const list = Array.isArray(data?.notifications) ? data.notifications : [];
+      for (const raw of list) {
+        const notification = petNotification(raw);
+        if (notification) dispatch({ type: 'notification-add', payload: notification });
+      }
+    };
+    socket.on('pet:notification', handlePetNotification);
+    socket.on('pet:notifications', handlePetNotifications);
     socket.on('friends:state', handleFriendsState);
     socket.on('friends:presence', handlePresence);
     socket.on('friends:request-received', handleFriendRequestReceived);
@@ -527,6 +558,8 @@ export function SocialProvider({ children }: { children: ReactNode }) {
 
     return () => {
       socket.off('friends:state', handleFriendsState);
+      socket.off('pet:notification', handlePetNotification);
+      socket.off('pet:notifications', handlePetNotifications);
       socket.off('friends:presence', handlePresence);
       socket.off('friends:request-received', handleFriendRequestReceived);
       socket.off('friends:request-accepted', handleFriendRequestAccepted);
@@ -601,7 +634,13 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     leavePrivateChat: (chatId) => emit('chat:private-leave', { chatId }),
     markChatRead: (chatId) => dispatch({ type: 'chat-read', chatId }),
     requestOpenChat: (chatId) => dispatch({ type: 'focus-chat', chatId }),
-    dismissNotification: (id) => dispatch({ type: 'notification-remove', id }),
+    dismissNotification: (id) => {
+      const entry = stateRef.current.notifications.find((candidate) => candidate.id === id);
+      if (entry?.kind === 'pet' && entry.petNotificationId) {
+        emit('pet:notification-dismiss', { id: entry.petNotificationId });
+      }
+      dispatch({ type: 'notification-remove', id });
+    },
     respondToNotification
   };
 

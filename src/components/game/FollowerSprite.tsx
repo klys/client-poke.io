@@ -125,6 +125,34 @@ export default function FollowerSprite({
         pointerEvents: "none"
       }}
     >
+      {follower.emote ? (
+        <div
+          data-follower-emote={follower.emote.emoji}
+          style={{
+            position: "absolute",
+            left: "50%",
+            bottom: `${frameHeight + 2}px`,
+            transform: "translateX(-50%)",
+            minWidth: "26px",
+            height: "26px",
+            padding: "0 5px",
+            borderRadius: "13px 13px 13px 3px",
+            background: "rgba(255,255,255,0.96)",
+            border: "1px solid rgba(17,24,39,0.35)",
+            boxShadow: "0 3px 8px rgba(0,0,0,0.3)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "16px",
+            lineHeight: 1,
+            pointerEvents: "none",
+            zIndex: 2,
+            animation: "pokecraft-emote-pop 240ms ease-out"
+          }}
+        >
+          {follower.emote.emoji}
+        </div>
+      ) : null}
       <div
         ref={spriteRef}
         aria-label="follower"

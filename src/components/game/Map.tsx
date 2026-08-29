@@ -11,11 +11,12 @@ import NpcInteractionOverlay from "../ux/game/NpcInteractions";
 import WaterInteractionController, { WATER_MENU_EVENT } from "./WaterInteractionController";
 import { isFishableWaterCell } from "./fishing";
 import NpcSprite from "./NpcSprite";
-import { Followers, BeachBallsLayer, BerryPlantsLayer, HouseFurnitureLayer } from "./WorldCompanions";
+import { Followers, BeachBallsLayer, BerryPlantsLayer, HouseFurnitureLayer, PetGroundLayer } from "./WorldCompanions";
 import BerryInteractionController from "./BerryInteractionController";
 import { BERRY_MENU_EVENT, getBerryPlotAt, isBerryPlotPlacement } from "./berryPlots";
 import { getHouseDoorAt, getHouseFurnitureAt, HOUSE_DOOR_MENU_EVENT, HOUSE_MENU_EVENT } from "./houses";
 import HouseInteractionController from "./HouseInteractionController";
+import PetInteractionController from "./PetInteractionController";
 import { getNpcCell } from "./npcActors";
 import { assetUrl, resolveServerAssetUrl } from "../tilemap/serverAssets";
 import {
@@ -548,6 +549,7 @@ const Map = ({children}:{children:any}) => {
                     <BeachBallsLayer mapId={activeMapId} cellSize={activeMapConfig.cellSize} />
                     <BerryPlantsLayer mapId={activeMapId} cellSize={activeMapConfig.cellSize} />
                     <HouseFurnitureLayer mapId={activeMapId} cellSize={activeMapConfig.cellSize} />
+                    <PetGroundLayer mapId={activeMapId} cellSize={activeMapConfig.cellSize} />
                 </>
             ) : null}
             {(children) ? children : null}
@@ -582,6 +584,7 @@ const Map = ({children}:{children:any}) => {
             cellSize={activeMapConfig?.cellSize ?? 32}
             editorData={activeMapEditorData}
         />
+        <PetInteractionController socket={socket} mapId={activeMapId} />
     </>)
 }
 

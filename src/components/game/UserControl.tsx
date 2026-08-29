@@ -33,7 +33,8 @@ const isEventDialogActive = () =>
         // capture-phase handler navigates the entries).
         document.body.dataset.waterMenuActive === "1" ||
         document.body.dataset.berryMenuActive === "1" ||
-        document.body.dataset.houseMenuActive === "1");
+        document.body.dataset.houseMenuActive === "1" ||
+        document.body.dataset.petMenuActive === "1");
 
 const isUxEventTarget = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false;

@@ -31,3 +31,10 @@ div:hover > .game-object-label {
 html[data-compact-ux] {
   font-size: 13px;
 }
+
+/* Emotion bubble pop over house pets / followers (FollowerSprite). */
+@keyframes pokecraft-emote-pop {
+  0% { transform: translateX(-50%) scale(0.4); opacity: 0; }
+  70% { transform: translateX(-50%) scale(1.12); opacity: 1; }
+  100% { transform: translateX(-50%) scale(1); opacity: 1; }
+}

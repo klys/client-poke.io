@@ -56,7 +56,9 @@ import {
 import type { DesignerItemSeed, DesignerPokemonProfile } from '../../designer/designerSections';
 import { getPokemonDisplayName, validatePokemonNickname } from '../game/pokemonName';
 import { classifyInventoryItem, type ItemUsage } from '../game/itemUsage';
-import { HOUSE_PLACE_EVENT, useHouse } from '../../game/houses';
+import { HOUSE_MENU_EVENT, HOUSE_PLACE_EVENT, useHouse } from '../../game/houses';
+import { PET_MENU_EVENT, useHousePets } from '../../game/housePets';
+import { GenderMark } from '../game/GenderMark';
 import { fieldMovesForPokemon, type FieldMoveAction } from '../game/fieldMoves';
 import { AppContext } from '../../../context/appContext';
 import { getBackendBaseUrl } from '../../game/backendConfig';
@@ -1139,7 +1141,10 @@ function ItemTargetCard({
         </Box>
         <Box flex={1} minW={0} textAlign="left">
           <HStack justify="space-between">
-            <Text fontWeight="700" noOfLines={1}>{getPokemonDisplayName(pokemon)}</Text>
+            <HStack spacing={0} minW={0}>
+              <Text fontWeight="700" noOfLines={1}>{getPokemonDisplayName(pokemon)}</Text>
+              <GenderMark gender={pokemon.gender} />
+            </HStack>
             <Badge>Lv {pokemon.level}</Badge>
           </HStack>
           <HStack mt={1} spacing={2}>
@@ -2268,6 +2273,7 @@ function PokemonStatsWindow({
           <Box minW={0} flex="1">
             <HStack spacing={2} flexWrap="wrap">
               <Badge colorScheme="teal">Lv {pokemon.level}</Badge>
+              <GenderMark gender={pokemon.gender} size="md" />
               {pokemon.types.map((type) => <Badge key={type}>{type}</Badge>)}
             </HStack>
             <Text mt={3} fontSize="sm">HP {pokemon.hp}/{pokemon.maxHp}</Text>
@@ -2404,8 +2410,7 @@ function PokemonCard({
   onOpenWorldMap,
   followerEnabled,
   onToggleFollower,
-  roaming,
-  onToggleRoam
+  onLeaveHere
 }: {
   pokemon: PokemonSummary;
   catalogEntry: PokemonCatalogEntry | null;
@@ -2419,9 +2424,8 @@ function PokemonCard({
   onOpenWorldMap: () => void;
   followerEnabled: boolean;
   onToggleFollower: () => void;
-  /** Inside a house: whether this venomon roams free / toggle it. */
-  roaming?: boolean | null;
-  onToggleRoam?: () => void;
+  /** Inside a house: leave this venomon living there (it leaves the party). */
+  onLeaveHere?: () => void;
 }) {
   const { namePokemon, takeHeldItem } = useAuth();
   const { socket } = useContext(AppContext);
@@ -2511,7 +2515,10 @@ function PokemonCard({
             flexShrink={0}
           />
           <Box minW={0}>
-            <Text fontWeight="800" noOfLines={1}>{getPokemonDisplayName(pokemon)}</Text>
+            <HStack spacing={0} align="center">
+              <Text fontWeight="800" noOfLines={1}>{getPokemonDisplayName(pokemon)}</Text>
+              <GenderMark gender={pokemon.gender} />
+            </HStack>
             {pokemon.nickname ? <Text color="gray.400" fontSize="xs">Real name: {pokemon.name}</Text> : null}
           </Box>
         </HStack>
@@ -2550,10 +2557,10 @@ function PokemonCard({
                   {followerEnabled ? t('party.followerDisable') : t('party.followerEnable')}
                 </MenuItem>
               ) : null}
-              {roaming !== null && roaming !== undefined && onToggleRoam ? (
-                // Inside a house: any party member may roam the rooms.
-                <MenuItem onClick={onToggleRoam} data-party-roam={pokemon.id}>
-                  {roaming ? t('party.roamDisable') : t('party.roamEnable')}
+              {onLeaveHere ? (
+                // Inside a house: the venomon moves out of the party and lives there.
+                <MenuItem onClick={onLeaveHere} data-party-leave-here={pokemon.id} title={t('party.leaveHereHint')}>
+                  🐾 {t('party.leaveHere')}
                 </MenuItem>
               ) : null}
               <MenuItem isDisabled={partyIndex === 0} onClick={() => onMoveInParty(partyIndex, -1)}>
@@ -2621,22 +2628,16 @@ function PokemonsWindow({
   onOpenStats: (pokemonId: string) => void;
   onOpenWorldMap: () => void;
 }) {
-  const { user, reorderPokemonParty, holdInventoryItem, setFollowerEnabled, setHouseRoam } = useAuth();
+  const { user, reorderPokemonParty, holdInventoryItem, setFollowerEnabled, leavePetInHouse } = useAuth();
   const t = useT();
   const [itemPicker, setItemPicker] = useState<{ pokemonId: string; kind: 'berry' | 'equip' } | null>(null);
   const followerEnabled = user?.followerEnabled !== false;
-  // Roam toggles only show while standing inside a house instance.
+  // "Leave it living here" only shows while standing inside a house instance
+  // (any house: pets may live in other players' homes).
   const { players: worldPlayers, myplayer: myPlayerId } = useContext(AppContext);
   const myMapId =
     (Object.values(worldPlayers ?? {}).find((player: any) => player?.playerId === myPlayerId) as any)?.currentMapId ?? null;
   const insideHouse = Boolean(useHouse(myMapId));
-  const roamIds = new Set(user?.houseRoamIds ?? []);
-  const toggleRoam = (pokemonId: string) => {
-    const next = new Set(roamIds);
-    if (next.has(pokemonId)) next.delete(pokemonId);
-    else next.add(pokemonId);
-    setHouseRoam({ pokemonIds: Array.from(next) });
-  };
 
   const handleMoveInParty = (partyIndex: number, direction: -1 | 1) => {
     const targetIndex = partyIndex + direction;
@@ -2699,8 +2700,7 @@ function PokemonsWindow({
             onOpenWorldMap={onOpenWorldMap}
             followerEnabled={followerEnabled}
             onToggleFollower={() => setFollowerEnabled({ enabled: !followerEnabled })}
-            roaming={insideHouse ? roamIds.has(pokemon.id) : null}
-            onToggleRoam={insideHouse ? () => toggleRoam(pokemon.id) : undefined}
+            onLeaveHere={insideHouse ? () => leavePetInHouse({ pokemonId: pokemon.id }) : undefined}
           />
         ))}
       </Grid>
@@ -2741,6 +2741,55 @@ function PokemonStatsFallback({ pokemonId }: { pokemonId: string }) {
         You can close this window or reopen the Venomons list to inspect a different party member.
       </Text>
     </VStack>
+  );
+}
+
+/**
+ * 🏠 (house settings) and 🐾 (venomons at home) buttons beside the
+ * notification bell. The house button only appears inside one's own house;
+ * the pets button inside one's own house or in another's house where one of
+ * the player's venomons lives.
+ */
+function HouseHeaderButtons() {
+  const t = useT();
+  const { user } = useAuth();
+  const { players, myplayer } = useContext(AppContext);
+  const myMapId =
+    (Object.values(players ?? {}).find((player: any) => player?.playerId === myplayer) as any)?.currentMapId ?? null;
+  const house = useHouse(myMapId);
+  const { pets } = useHousePets(myMapId);
+  if (!house) return null;
+  const myCharacterId = user?.characterId ?? null;
+  const showHouse = house.isOwner;
+  const showPets = house.isOwner || pets.some((pet) => myCharacterId !== null && pet.ownerCharacterId === myCharacterId);
+  if (!showHouse && !showPets) return null;
+  return (
+    <>
+      {showHouse ? (
+        <IconButton
+          aria-label={t('house.action.settings')}
+          title={t('house.action.settings')}
+          icon={<Text as="span" fontSize="18px" lineHeight={1}>🏠</Text>}
+          colorScheme="teal"
+          variant="solid"
+          boxShadow="lg"
+          data-house-settings-button="1"
+          onClick={() => window.dispatchEvent(new CustomEvent(HOUSE_MENU_EVENT, { detail: {} }))}
+        />
+      ) : null}
+      {showPets ? (
+        <IconButton
+          aria-label={t('house.action.pets')}
+          title={t('house.action.pets')}
+          icon={<Text as="span" fontSize="18px" lineHeight={1}>🐾</Text>}
+          colorScheme="pink"
+          variant="solid"
+          boxShadow="lg"
+          data-house-pets-button="1"
+          onClick={() => window.dispatchEvent(new CustomEvent(PET_MENU_EVENT, { detail: {} }))}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -3082,6 +3131,7 @@ const AccountMenu = () => {
     >
       <HStack spacing={2} align="flex-start">
       <NotificationsBell />
+      <HouseHeaderButtons />
       {compact ? (
         <Button
           colorScheme="teal"

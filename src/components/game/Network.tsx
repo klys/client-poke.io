@@ -16,9 +16,11 @@ import {
     applyFollowerSteps,
     applyFollowerSync,
     applyFollowerUpdate,
-    applyFollowerRemove
+    applyFollowerRemove,
+    applyFollowerEmote
 } from "./followerActors";
 import { applyHouseFurnitureUpdate, applyHouseSync } from "./houses";
+import { applyPetSync, applyPetUpdate } from "./housePets";
 import {
     applyBallSync,
     applyBallSpawn,
@@ -447,6 +449,23 @@ const Network = () => {
             }
         };
 
+        // House pets: identity/moods + floor things (eggs, messes) and emotes.
+        const handlePetSync = (data:any) => {
+            if (typeof data?.mapId === "string") {
+                applyPetSync(data.mapId, data.pets ?? [], data.ground ?? []);
+            }
+        };
+        const handlePetUpdate = (data:any) => {
+            if (typeof data?.mapId === "string") {
+                applyPetUpdate(data.mapId, data);
+            }
+        };
+        const handlePetEmote = (data:any) => {
+            if (typeof data?.mapId === "string" && typeof data?.ownerId === "string") {
+                applyFollowerEmote(data.mapId, data.ownerId, data.emoji, data.ms);
+            }
+        };
+
         const handleBallSync = (data:any) => {
             if (typeof data?.mapId === "string") {
                 applyBallSync(data.mapId, data.balls ?? []);
@@ -557,6 +576,9 @@ const Network = () => {
         socket.on("berry:update", handleBerryUpdate)
         socket.on("house:sync", handleHouseSync)
         socket.on("house:furniture-update", handleHouseFurnitureUpdate)
+        socket.on("pet:sync", handlePetSync)
+        socket.on("pet:update", handlePetUpdate)
+        socket.on("pet:emote", handlePetEmote)
 
         return () => {
             socket.off("connect", joinGame)
@@ -595,6 +617,11 @@ const Network = () => {
             socket.off("ball:spawn", handleBallSpawn)
             socket.off("ball:step", handleBallStep)
             socket.off("ball:deflate", handleBallDeflate)
+            socket.off("house:sync", handleHouseSync)
+            socket.off("house:furniture-update", handleHouseFurnitureUpdate)
+            socket.off("pet:sync", handlePetSync)
+            socket.off("pet:update", handlePetUpdate)
+            socket.off("pet:emote", handlePetEmote)
             socket.off("berry:sync", handleBerrySync)
             socket.off("berry:update", handleBerryUpdate)
             if (battleClearTimerRef.current !== null) {

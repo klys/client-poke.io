@@ -32,6 +32,8 @@ export type BattlePublicPokemon = {
   id: string;
   name: string;
   nickname?: string;
+  /** ♂ / ♀ shown in the databox; absent = genderless. */
+  gender?: "male" | "female" | "genderless";
   level: number;
   types: string[];
   hp: number;

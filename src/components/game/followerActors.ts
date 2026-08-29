@@ -13,6 +13,8 @@ export type FollowerInfo = {
   /** Overworld sheet basename under /migration_exports/characters/ (e.g. "025"). */
   charset: string;
   hidden: boolean;
+  /** Emotion bubble (house pets: ❤️ 🤢 🍖 …) until `expiresAt` (performance.now()). */
+  emote?: { emoji: string; expiresAt: number } | null;
 };
 
 type LiveFollower = {
@@ -208,6 +210,28 @@ export function applyFollowerSteps(mapId: string, steps: FollowerStepPacket[]) {
       startsAt: now + INTERP_DELAY_MS
     };
   }
+}
+
+/** `pet:emote` — an emotion bubble over a follower-channel actor for `ms`. */
+export function applyFollowerEmote(mapId: string, ownerId: string, emoji: string, ms: number) {
+  if (!mapId || typeof ownerId !== "string" || typeof emoji !== "string" || !emoji) {
+    return;
+  }
+  const follower = followersByMap.get(mapId)?.get(ownerId);
+  if (!follower) {
+    return;
+  }
+  const duration = isFiniteNumber(ms) && ms > 0 ? ms : 2000;
+  const expiresAt = performance.now() + duration;
+  follower.info = { ...follower.info, emote: { emoji, expiresAt } };
+  notify();
+  window.setTimeout(() => {
+    const current = followersByMap.get(mapId)?.get(ownerId);
+    if (current && current.info.emote && current.info.emote.expiresAt <= performance.now()) {
+      current.info = { ...current.info, emote: null };
+      notify();
+    }
+  }, duration + 20);
 }
 
 /** Visible followers of a map, for the React layer. */

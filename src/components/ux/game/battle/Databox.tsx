@@ -3,6 +3,7 @@ import type { BattlePublicPokemon } from "../battleTypes";
 import { STATUS_BADGES, type BattleStatusId } from "./battleEvents";
 import type { BattleInterfaceConfig } from "./battleInterfaceConfig";
 import { getPokemonDisplayName } from "../pokemonName";
+import { GenderMark } from "../GenderMark";
 
 function hpBarColor(percent: number) {
   if (percent <= 25) return "#e84b3c";
@@ -63,6 +64,7 @@ export default function Databox({
           <Text fontSize={{ base: "sm", md: "lg" }} fontWeight="900" noOfLines={1}>
             {getPokemonDisplayName(pokemon)}
           </Text>
+          <GenderMark gender={pokemon.gender} size="md" />
           {status ? (
             <Badge
               bg={STATUS_BADGES[status].color}

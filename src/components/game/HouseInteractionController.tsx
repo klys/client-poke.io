@@ -105,7 +105,8 @@ const otherMenuActive = () =>
   typeof document !== "undefined" &&
   (document.body.dataset.eventActive === "1" ||
     document.body.dataset.waterMenuActive === "1" ||
-    document.body.dataset.berryMenuActive === "1");
+    document.body.dataset.berryMenuActive === "1" ||
+    document.body.dataset.petMenuActive === "1");
 
 const KEYPAD_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "OK"];
 
@@ -488,7 +489,6 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
     const onResult = (data: { action: string; ok: boolean; messageKey: string; params?: Record<string, string> }) => {
       const message = t(data.messageKey, formatParams(data.params));
       const current = sessionRef.current;
-      if (data.action === "roam") return; // party window feedback goes through auth:info
       if (!current) return;
       if (data.ok && (data.action === "enter" || data.action === "leave")) {
         cancelRef.current();

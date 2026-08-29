@@ -120,6 +120,7 @@ export type SocialNotificationKind =
   | 'friend-accepted'
   | 'teleport-request'
   | 'chat-invite'
+  | 'pet'
   | 'info';
 
 /**
@@ -137,7 +138,10 @@ export interface SocialNotification {
   /** chat-invite approval token + target chat. */
   inviteId?: string;
   chatId?: string;
-  /** Pre-rendered text for `info` entries (already translated). */
+  /** Pre-rendered text for `info` / `pet` entries (already translated). */
   text?: string;
+  /** pet: the persisted alert id (dismiss = pet:notification-dismiss) + where it happened. */
+  petNotificationId?: string;
+  mapId?: string;
   at: number;
 }

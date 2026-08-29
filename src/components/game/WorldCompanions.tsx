@@ -11,7 +11,10 @@ import BeachBallSprite from "./BeachBallSprite";
 import { getBerryPlots, subscribeBerryPlots } from "./berryPlots";
 import BerryPlantSprite from "./BerryPlantSprite";
 import { getHouseFurniture, subscribeHouses } from "./houses";
+import { getPetGround, PET_MENU_EVENT, subscribeHousePets } from "./housePets";
 import { assetUrl } from "../tilemap/serverAssets";
+
+const EGG_ICON_SRC = "/migration_exports/pictures/summaryEgg.PNG";
 
 export function Followers({ mapId, cellSize }: { mapId: string; cellSize: number }) {
   const [, setVersion] = useState(0);
@@ -93,6 +96,62 @@ export function HouseFurnitureLayer({ mapId, cellSize }: { mapId: string; cellSi
             />
           ) : (
             <span style={{ fontSize: `${Math.round(cellSize * 0.7)}px`, lineHeight: 1 }}>🪑</span>
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** Things house pets left on the floor: eggs to collect, messes to clean (housePets.ts). */
+export function PetGroundLayer({ mapId, cellSize }: { mapId: string; cellSize: number }) {
+  const [, setVersion] = useState(0);
+
+  useEffect(() => subscribeHousePets(() => setVersion((value) => value + 1)), []);
+
+  return (
+    <>
+      {getPetGround(mapId).map((thing) => (
+        <div
+          key={thing.id}
+          data-pet-ground={thing.kind}
+          data-pet-ground-id={thing.id}
+          title={thing.kind === "egg" ? `Huevo de ${thing.byPetName}` : `${thing.byPetName} vomitó aquí`}
+          onClick={(event) => {
+            event.stopPropagation();
+            window.dispatchEvent(new CustomEvent(PET_MENU_EVENT, { detail: { groundId: thing.id } }));
+          }}
+          style={{
+            position: "absolute",
+            left: `${thing.x * cellSize}px`,
+            top: `${thing.y * cellSize}px`,
+            width: `${cellSize}px`,
+            height: `${cellSize}px`,
+            zIndex: 997,
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "center",
+            cursor: "pointer"
+          }}
+        >
+          {thing.kind === "egg" ? (
+            <img
+              src={assetUrl(EGG_ICON_SRC)}
+              alt="Huevo"
+              style={{ maxWidth: `${cellSize * 0.8}px`, maxHeight: `${cellSize * 0.9}px`, imageRendering: "pixelated" }}
+              draggable={false}
+            />
+          ) : (
+            <span
+              style={{
+                fontSize: `${Math.round(cellSize * 0.55)}px`,
+                lineHeight: 1,
+                filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.5))",
+                marginBottom: "2px"
+              }}
+            >
+              🤮
+            </span>
           )}
         </div>
       ))}
