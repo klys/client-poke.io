@@ -1,6 +1,7 @@
 import { getBackendBaseUrl } from "../game/backendConfig";
 import { type DesignerSectionKey, designerSectionsByKey } from "./designerSections";
 import {
+  hydrateDesignerSectionFromIndexedDb,
   persistStoredDesignerSectionPayload,
   readStoredDesignerSectionPayload,
   type DesignerSectionState,
@@ -286,11 +287,20 @@ export function fetchDesignerSectionOverHttp(
 // Fetch only when the cache holds nothing yet — used by pages that need the
 // section on mount but should not re-download it on every visit (version
 // stubs from the socket trigger refreshes when the data actually changes).
-export function ensureDesignerSectionOverHttp(
+export async function ensureDesignerSectionOverHttp(
   sectionKey: DesignerSectionKey
 ): Promise<boolean> {
   if (readStoredDesignerSectionPayload(sectionKey).version !== null) {
-    return Promise.resolve(true);
+    return true;
+  }
+
+  // A previous session may have left the section in IndexedDB (heavy
+  // sections are only restored on demand) — that beats a multi-MB download.
+  // The socket version stub still triggers a refetch if it went stale.
+  await hydrateDesignerSectionFromIndexedDb(sectionKey);
+
+  if (readStoredDesignerSectionPayload(sectionKey).version !== null) {
+    return true;
   }
 
   return fetchDesignerSectionOverHttp(sectionKey);

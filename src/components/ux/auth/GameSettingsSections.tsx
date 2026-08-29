@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import {
+  Box,
   Button,
   FormControl,
   FormHelperText,
@@ -9,6 +10,13 @@ import {
   Text,
   VStack,
 } from '@chakra-ui/react';
+import {
+  formatBytes,
+  getStorageStatus,
+  refreshStorageStatus,
+  retryPersistentStorageRequest,
+  subscribeStorageStatus,
+} from '../../../storage/clientStorage';
 import {
   CHAT_BUBBLE_DURATION_MAX,
   CHAT_BUBBLE_DURATION_MIN,
@@ -146,6 +154,63 @@ export const DisplaySettingsSection = () => {
         />
       </FormControl>
     </VStack>
+  );
+};
+
+/**
+ * Browser storage status for the IndexedDB-backed caches (maps, tilesets,
+ * catalogs): usage vs quota and whether the origin holds persistent storage,
+ * with a button to (re-)request it. Shown inside the Display tab.
+ */
+export const StorageSettingsSection = () => {
+  const t = useT();
+  const status = useSyncExternalStore(subscribeStorageStatus, getStorageStatus);
+  const [requesting, setRequesting] = useState(false);
+  const supportsPersist =
+    typeof navigator !== 'undefined' && typeof navigator.storage?.persist === 'function';
+
+  useEffect(() => {
+    void refreshStorageStatus();
+  }, []);
+
+  const handleRequest = async () => {
+    setRequesting(true);
+    try {
+      await retryPersistentStorageRequest();
+      await refreshStorageStatus();
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  return (
+    <Box borderTopWidth="1px" borderColor="whiteAlpha.300" pt={4}>
+      <Text fontWeight="600" mb={1}>{t('settings.storage.title')}</Text>
+      <Text fontSize="sm" opacity={0.8} mb={2}>{t('settings.storage.description')}</Text>
+      <Text fontSize="sm">
+        {t('settings.storage.usage', {
+          usage: formatBytes(status.usageBytes),
+          quota: formatBytes(status.quotaBytes),
+        })}
+      </Text>
+      <Text fontSize="sm" mb={2}>
+        {!supportsPersist
+          ? t('settings.storage.unsupported')
+          : status.persisted
+            ? t('settings.storage.persistent')
+            : t('settings.storage.notPersistent')}
+      </Text>
+      {supportsPersist && !status.persisted ? (
+        <VStack align="stretch" spacing={2}>
+          <Button size="sm" colorScheme="teal" onClick={handleRequest} isLoading={requesting}>
+            {t('settings.storage.request')}
+          </Button>
+          {status.lastRequestGranted === false ? (
+            <Text fontSize="xs" opacity={0.8}>{t('settings.storage.denied')}</Text>
+          ) : null}
+        </VStack>
+      ) : null}
+    </Box>
   );
 };
 

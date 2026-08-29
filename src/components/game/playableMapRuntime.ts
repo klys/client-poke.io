@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { persistStoredDesignerSectionPayload } from "../designer/designerCache";
+import { idbGet, idbSet } from "../../storage/clientStorage";
 import { resolveServerAssetUrl } from "../tilemap/serverAssets";
 import {
   designerSectionsByKey,
@@ -370,6 +371,34 @@ export function sanitizePlayableMapsSyncPayload(value: unknown): PlayableMapsSyn
 // version to negotiate with, so the server never streams the multi-MB state
 // to native clients. Browsers don't have the file — the fetch 404s once and
 // the normal HTTP/socket sync takes over.
+let hydrateMapsPromise: Promise<void> | null = null;
+
+/**
+ * Restores the last synced payload from IndexedDB into the memory cache (and
+ * the derived localStorage copies) so a fresh document negotiates versions
+ * with the server instead of re-downloading tens of MB. Runs once.
+ */
+export function hydratePlayableMapsCacheFromIndexedDb(): Promise<void> {
+  if (!hydrateMapsPromise) {
+    hydrateMapsPromise = (async () => {
+      if (memoryPlayableMapsPayload) {
+        return; // this session already synced
+      }
+
+      const stored = await idbGet<PlayableMapsSyncPayload>(PLAYABLE_MAPS_CACHE_KEY);
+      const payload = stored ? sanitizePlayableMapsSyncPayload(stored) : null;
+
+      if (payload && !memoryPlayableMapsPayload) {
+        persistPlayableMapsSyncPayload(payload, { writeIndexedDb: false });
+      }
+    })().catch(() => {
+      /* IndexedDB unavailable — the HTTP sync path still works */
+    });
+  }
+
+  return hydrateMapsPromise;
+}
+
 let bundledMapsSeedPromise: Promise<void> | null = null;
 
 export function ensureBundledPlayableMapsSeeded(): Promise<void> {
@@ -481,7 +510,10 @@ function pruneStaleMapEditorStorage(validMapIds: Set<string>) {
   staleKeys.forEach(tryStorageRemove);
 }
 
-export function persistPlayableMapsSyncPayload(payload: PlayableMapsSyncPayload) {
+export function persistPlayableMapsSyncPayload(
+  payload: PlayableMapsSyncPayload,
+  options: { writeIndexedDb?: boolean } = {}
+) {
   const sanitizedPayload = sanitizePlayableMapsSyncPayload(payload);
 
   if (!sanitizedPayload) {
@@ -494,6 +526,12 @@ export function persistPlayableMapsSyncPayload(payload: PlayableMapsSyncPayload)
     return;
   }
 
+  // The full payload (tens of MB) persists in IndexedDB; the localStorage
+  // writes below are best-effort warm-start copies that usually don't fit.
+  if (options.writeIndexedDb !== false) {
+    void idbSet(PLAYABLE_MAPS_CACHE_KEY, sanitizedPayload);
+  }
+
   // The maps list goes through the shared designer cache so it lands in the
   // memory copy the designer pages read (MapEditorPage.loadMapsState and
   // Section's mapsEditor state come from readStoredDesignerSectionPayload).
@@ -501,15 +539,21 @@ export function persistPlayableMapsSyncPayload(payload: PlayableMapsSyncPayload)
   // those readers with the demo fallback while getPlayableMapsCacheVersion()
   // already reported the synced version — the map editor then joined with a
   // matching version, got only a stub back, and sat on "Loading map data...".
-  persistStoredDesignerSectionPayload("mapsEditor", {
-    state: {
-      categories: sanitizedPayload.state.categories,
-      items: sanitizedPayload.state.items,
+  persistStoredDesignerSectionPayload(
+    "mapsEditor",
+    {
+      state: {
+        categories: sanitizedPayload.state.categories,
+        items: sanitizedPayload.state.items,
+      },
+      version: sanitizedPayload.version,
+      updatedAt: sanitizedPayload.updatedAt,
+      updatedByUsername: sanitizedPayload.updatedByUsername,
     },
-    version: sanitizedPayload.version,
-    updatedAt: sanitizedPayload.updatedAt,
-    updatedByUsername: sanitizedPayload.updatedByUsername,
-  });
+    // The maps list is derivable from the payload stored above; skip the
+    // second IndexedDB copy.
+    { writeIndexedDb: false }
+  );
 
   try {
     pruneStaleMapEditorStorage(new Set(sanitizedPayload.state.items.map((item) => item.id)));

@@ -153,6 +153,8 @@ const Network = () => {
 
             // Native app builds ship the maps payload inside the app; seed it
             // before negotiating versions so nothing has to be downloaded.
+            // (The IndexedDB copy from a previous session was restored by
+            // App.tsx before this component mounted.)
             await ensureBundledPlayableMapsSeeded();
 
             if (getPlayableMapsCacheVersion() === null) {

@@ -4,6 +4,8 @@ import DesignerDataBootstrap from './components/designer/DesignerDataBootstrap';
 import { createAppRouter, type RuntimeConfig } from './endpoint';
 import { AuthProvider } from './context/authContext';
 import { setAssetStorageBaseUrl } from './components/tilemap/serverAssets';
+import { bootstrapClientStorage } from './storage/bootstrapClientStorage';
+import StoragePersistencePrompt from './storage/StoragePersistencePrompt';
 import { setBackendBaseUrl } from './components/game/backendConfig';
 import { installCompactUxAttribute } from './components/ux/useCompactUx';
 
@@ -98,6 +100,8 @@ function App() {
         }
 
         const nextConfig = await response.json() as RuntimeConfig;
+        // Warm the IndexedDB-backed caches before anything reads them.
+        await bootstrapClientStorage();
         if (mounted) {
           setConfig({
             backendUrl: nextConfig.backendUrl || DEFAULT_CONFIG.backendUrl,
@@ -106,6 +110,7 @@ function App() {
         }
       } catch (error) {
         console.error(error);
+        await bootstrapClientStorage().catch(() => undefined);
         if (mounted) {
           setConfig(DEFAULT_CONFIG);
         }
@@ -126,6 +131,7 @@ function App() {
   return (
     <AuthProvider socketUrl={config.backendUrl}>
       <DesignerDataBootstrap />
+      <StoragePersistencePrompt />
       <RouterProvider router={router} />
     </AuthProvider>
   );

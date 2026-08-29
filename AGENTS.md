@@ -84,3 +84,16 @@ npm test
 - Prefer editing source files under `src/` and static assets/templates under `public/`.
 - Avoid broad refactors unless the task calls for them. Several areas appear mid-transition.
 - When a change depends on backend behavior, document the assumption clearly in the final handoff.
+
+## Browser storage
+
+- localStorage is hard-capped (~5-10MB/origin) and holds only small things
+  (auth token, settings). Large caches — the playable-maps payload,
+  designer sections — live in memory first and persist to IndexedDB via
+  `src/storage/clientStorage.ts`; localStorage copies are best-effort and
+  routinely fail under quota, so never make a reader localStorage-only.
+- `bootstrapClientStorage()` (awaited in `App.tsx` before the first render)
+  restores those caches from IndexedDB and requests persistent storage
+  (`navigator.storage.persist()`); heavy designer sections hydrate lazily in
+  `ensureDesignerSectionOverHttp`. Settings → Display shows the storage status
+  and a re-request button; `StoragePersistencePrompt` asks once in-game.

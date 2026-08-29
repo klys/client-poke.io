@@ -75,6 +75,7 @@ import {
   AudioSettingsSection,
   ControlsSettingsSection,
   DisplaySettingsSection,
+  StorageSettingsSection,
   LanguageSettingsSection
 } from './GameSettingsSections';
 import { useGameSettings } from '../../../settings/gameSettings';
@@ -1048,6 +1049,7 @@ function SettingsWindow({
       content: (
         <VStack align="stretch" spacing={4}>
           <DisplaySettingsSection />
+          <StorageSettingsSection />
           <Button
             colorScheme={dragEnabled ? 'teal' : 'gray'}
             onClick={() => setDragEnabled(!dragEnabled)}

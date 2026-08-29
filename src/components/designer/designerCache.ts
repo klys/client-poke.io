@@ -1,3 +1,4 @@
+import { idbEntriesWithPrefix, idbGet, idbSet } from "../../storage/clientStorage";
 import {
   designerSectionsByKey,
   type DesignerItemSeed,
@@ -273,12 +274,19 @@ function writeSectionToStorage(sectionKey: DesignerSectionKey, serialized: strin
 
 export function persistStoredDesignerSectionPayload(
   sectionKey: DesignerSectionKey,
-  payload: StoredDesignerSectionPayload
+  payload: StoredDesignerSectionPayload,
+  options: { writeIndexedDb?: boolean } = {}
 ) {
   memorySectionCache.set(sectionKey, payload);
 
   if (typeof window === "undefined") {
     return;
+  }
+
+  // IndexedDB holds every section regardless of size (see storage/clientStorage);
+  // localStorage below stays a small warm-start copy for the sections that fit.
+  if (options.writeIndexedDb !== false) {
+    void idbSet(getDesignerSectionStorageKey(sectionKey), payload);
   }
 
   removeStorageKey(getLegacyDesignerSectionStorageKey(sectionKey));
@@ -334,4 +342,90 @@ export function cleanupStaleDesignerStorage() {
   } catch {
     /* best effort */
   }
+}
+
+const hydratedSections = new Set<DesignerSectionKey>();
+
+function adoptStoredSectionPayload(sectionKey: DesignerSectionKey, value: unknown) {
+  if (!value || typeof value !== "object") {
+    return;
+  }
+
+  const candidate = value as Partial<StoredDesignerSectionPayload>;
+  const current = memorySectionCache.get(sectionKey);
+  const version = typeof candidate.version === "number" ? candidate.version : null;
+
+  if (current && current.version !== null && (version === null || version <= current.version)) {
+    return; // this session already holds the same or a newer payload
+  }
+
+  memorySectionCache.set(sectionKey, {
+    state: sanitizeStoredSectionState(sectionKey, candidate.state),
+    version,
+    updatedAt: typeof candidate.updatedAt === "string" ? candidate.updatedAt : null,
+    updatedByUsername:
+      typeof candidate.updatedByUsername === "string" ? candidate.updatedByUsername : null,
+  });
+  dispatchDesignerCacheUpdated(sectionKey);
+}
+
+const sectionHydrations = new Map<DesignerSectionKey, Promise<void>>();
+
+/**
+ * Restores one section from IndexedDB into the memory cache (no-op once
+ * done). Heavy media sections (tilesets, assets, battle backgrounds) are only
+ * hydrated this way, on first use, so their tens of MB never slow game boot.
+ */
+export function hydrateDesignerSectionFromIndexedDb(sectionKey: DesignerSectionKey): Promise<void> {
+  let pending = sectionHydrations.get(sectionKey);
+
+  if (!pending) {
+    pending = (async () => {
+      if (hydratedSections.has(sectionKey)) {
+        return;
+      }
+
+      const value = await idbGet(getDesignerSectionStorageKey(sectionKey));
+
+      hydratedSections.add(sectionKey);
+      adoptStoredSectionPayload(sectionKey, value);
+    })().catch(() => {
+      /* IndexedDB unavailable — the HTTP/socket sync path still works */
+    });
+    sectionHydrations.set(sectionKey, pending);
+  }
+
+  return pending;
+}
+
+let hydratePromise: Promise<void> | null = null;
+
+/**
+ * Warms the memory cache from IndexedDB for every section except `skip`
+ * (the heavy media catalogs, hydrated lazily). Runs once; App.tsx awaits it
+ * before mounting so synchronous readers (useState initializers) see warm
+ * data, and later writers get the cache-updated event.
+ */
+export function hydrateDesignerCacheFromIndexedDb(skip: DesignerSectionKey[] = []): Promise<void> {
+  if (!hydratePromise) {
+    hydratePromise = (async () => {
+      const skipped = new Set(skip);
+      const entries = await idbEntriesWithPrefix("designer:section:");
+
+      entries.forEach(({ key, value }) => {
+        const sectionKey = key.slice("designer:section:".length) as DesignerSectionKey;
+
+        if (!(sectionKey in designerSectionsByKey) || skipped.has(sectionKey)) {
+          return;
+        }
+
+        hydratedSections.add(sectionKey);
+        adoptStoredSectionPayload(sectionKey, value);
+      });
+    })().catch(() => {
+      /* IndexedDB unavailable — the HTTP/socket sync path still works */
+    });
+  }
+
+  return hydratePromise;
 }

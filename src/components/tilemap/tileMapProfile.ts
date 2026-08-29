@@ -1,5 +1,5 @@
 import { BakedTileMapImages } from "./bake";
-import { deriveCollisionGrid, deriveTerrainTagGrid } from "./collision";
+import { applyCollisionOverrides, deriveCollisionGrid, deriveTerrainTagGrid } from "./collision";
 import {
   decodeRleBytes,
   decodeTileLayer,
@@ -83,6 +83,10 @@ export function sanitizeTileMapProfile(value: unknown): PlayableMapTileMapProfil
     terrainTags: typeof candidate.terrainTags === "string" ? candidate.terrainTags : undefined,
     passageTerrainTags:
       typeof candidate.passageTerrainTags === "string" ? candidate.passageTerrainTags : undefined,
+    collisionOverrides:
+      typeof candidate.collisionOverrides === "string" && candidate.collisionOverrides.length > 0
+        ? candidate.collisionOverrides
+        : undefined,
     baked:
       candidate.baked && typeof candidate.baked === "object"
         ? {
@@ -169,6 +173,38 @@ export function decodeTerrainTagCells(profile: PlayableMapTileMapProfile): Uint8
  * Per-cell terrain tag of the collision-deciding tile (see the field doc on
  * PlayableMapTileMapProfile). Null when the grid hasn't been derived.
  */
+/** Editor passability overrides, or null when the map has none. */
+export function decodeCollisionOverrideCells(
+  profile: PlayableMapTileMapProfile
+): Uint8Array | null {
+  if (!profile.collisionOverrides) {
+    return null;
+  }
+
+  const cells = decodeRleBytes(profile.collisionOverrides);
+
+  return cells && cells.length === profile.width * profile.height ? cells : null;
+}
+
+/** Nearest-cell crop/pad of a per-cell byte grid to new map dimensions. */
+export function resizeByteGrid(
+  grid: Uint8Array,
+  fromWidth: number,
+  fromHeight: number,
+  toWidth: number,
+  toHeight: number
+): Uint8Array {
+  const next = new Uint8Array(toWidth * toHeight);
+  const copyWidth = Math.min(fromWidth, toWidth);
+  const copyHeight = Math.min(fromHeight, toHeight);
+
+  for (let y = 0; y < copyHeight; y += 1) {
+    next.set(grid.subarray(y * fromWidth, y * fromWidth + copyWidth), y * toWidth);
+  }
+
+  return next;
+}
+
 export function decodePassageTerrainTagCells(
   profile: PlayableMapTileMapProfile
 ): Uint8Array | null {
@@ -224,9 +260,18 @@ export function buildTileMapProfile(options: {
     foregroundSrcs: string[];
   };
   essentials?: PlayableMapTileMapProfile["essentials"];
+  /** Per-cell passability overrides (0 inherit / 1 passable / 2 solid). */
+  collisionOverrides?: Uint8Array | null;
 }): PlayableMapTileMapProfile {
   const { tilesetItemId, width, height, layers, tilesetProfile, baked, essentials } = options;
-  const collision = deriveCollisionGrid(layers, width, height, tilesetProfile);
+  const overrides =
+    options.collisionOverrides && options.collisionOverrides.some((value) => value !== 0)
+      ? options.collisionOverrides
+      : null;
+  const collision = applyCollisionOverrides(
+    deriveCollisionGrid(layers, width, height, tilesetProfile),
+    overrides
+  );
   const terrainTags = deriveTerrainTagGrid(layers, width, height, tilesetProfile);
 
   return {
@@ -240,6 +285,7 @@ export function buildTileMapProfile(options: {
     collisionEncoding: TILE_MAP_GRID_ENCODING,
     collision: encodeRleBytes(collision),
     terrainTags: encodeRleBytes(terrainTags),
+    collisionOverrides: overrides ? encodeRleBytes(overrides) : undefined,
     baked: baked
       ? {
           chunkCells: baked.chunkCells,

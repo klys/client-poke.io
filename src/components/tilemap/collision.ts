@@ -1,4 +1,6 @@
 import {
+  COLLISION_OVERRIDE_PASSABLE,
+  COLLISION_OVERRIDE_SOLID,
   DesignerTilesetProfile,
   PASSAGE_BUSH,
   PASSAGE_COUNTER,
@@ -107,4 +109,32 @@ export function deriveTerrainTagGrid(
 
 export function isSolidCollisionCell(cellByte: number) {
   return (cellByte & PASSAGE_SOLID_MASK) === PASSAGE_SOLID_MASK;
+}
+
+/**
+ * Folds the editor's per-cell passability overrides into a derived collision
+ * grid: "solid" sets all four direction bits, "passable" clears them; bush and
+ * counter flags are kept either way. Returns a new grid.
+ */
+export function applyCollisionOverrides(
+  collision: Uint8Array,
+  overrides: Uint8Array | null | undefined
+): Uint8Array {
+  if (!overrides || overrides.length !== collision.length) {
+    return collision;
+  }
+
+  const cells = new Uint8Array(collision);
+
+  for (let index = 0; index < cells.length; index += 1) {
+    const override = overrides[index];
+
+    if (override === COLLISION_OVERRIDE_SOLID) {
+      cells[index] |= PASSAGE_SOLID_MASK;
+    } else if (override === COLLISION_OVERRIDE_PASSABLE) {
+      cells[index] &= ~PASSAGE_SOLID_MASK;
+    }
+  }
+
+  return cells;
 }

@@ -22,6 +22,12 @@ export const PASSAGE_BUSH = 0x40;
 export const PASSAGE_COUNTER = 0x80;
 export const PASSAGE_SOLID_MASK = 0x0f;
 
+// Per-cell passability overrides authored in the map editor, applied on top
+// of the tileset-derived collision byte (see applyCollisionOverrides).
+export const COLLISION_OVERRIDE_NONE = 0;
+export const COLLISION_OVERRIDE_PASSABLE = 1;
+export const COLLISION_OVERRIDE_SOLID = 2;
+
 export interface PlayableMapBakedChunk {
   col: number;
   row: number;
@@ -53,6 +59,11 @@ export interface PlayableMapTileMapProfile {
    * from obstacles drawn over water (rocks), which plain `terrainTags`
    * cannot — those keep the water tag from the layer underneath. */
   passageTerrainTags?: string;
+  /** u8rle-base64, optional: editor-authored per-cell passability overrides
+   * (0 inherit, 1 force passable, 2 force solid). Already folded into
+   * `collision`, which stays the single grid runtimes consume; kept so the
+   * editor can show and re-apply them when the tiles change. */
+  collisionOverrides?: string;
   baked?: PlayableMapTileMapBaked;
   essentials?: {
     mapId?: string;

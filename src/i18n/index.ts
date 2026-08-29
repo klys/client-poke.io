@@ -102,6 +102,34 @@ const STRINGS: Record<string, Entry> = {
     es: 'Mostrar pasos restantes del repelente',
   },
   'hud.repelSteps': { en: 'Repellent: {steps} steps', es: 'Repelente: {steps} pasos' },
+  'settings.storage.title': { en: 'Game data storage', es: 'Almacenamiento de datos del juego' },
+  'settings.storage.description': {
+    en: 'Maps, tilesets and catalogs are cached in the browser so they are not downloaded every time. Persistent storage keeps the browser from deleting that cache when disk space runs low.',
+    es: 'Los mapas, tilesets y catálogos se guardan en el navegador para no descargarlos cada vez. El almacenamiento persistente evita que el navegador borre esa caché cuando falta espacio.',
+  },
+  'settings.storage.usage': { en: 'In use: {usage} of {quota}', es: 'En uso: {usage} de {quota}' },
+  'settings.storage.persistent': { en: 'Persistent storage: enabled', es: 'Almacenamiento persistente: activado' },
+  'settings.storage.notPersistent': {
+    en: 'Persistent storage: not granted',
+    es: 'Almacenamiento persistente: no concedido',
+  },
+  'settings.storage.unsupported': {
+    en: 'This browser does not support persistent storage.',
+    es: 'Este navegador no admite almacenamiento persistente.',
+  },
+  'settings.storage.request': { en: 'Request persistent storage', es: 'Solicitar almacenamiento persistente' },
+  'settings.storage.denied': {
+    en: 'The browser declined. Installing the game as an app, bookmarking it or allowing notifications usually makes the browser grant it.',
+    es: 'El navegador lo rechazó. Instalar el juego como aplicación, añadirlo a marcadores o permitir notificaciones suele hacer que lo conceda.',
+  },
+  'storage.prompt.title': { en: 'Keep game data on this device?', es: '¿Guardar los datos del juego en este dispositivo?' },
+  'storage.prompt.body': {
+    en: 'The game needs extra browser storage for maps and graphics ({usage} in use). Allow persistent storage so it is not deleted.',
+    es: 'El juego necesita almacenamiento extra del navegador para mapas y gráficos ({usage} en uso). Permite el almacenamiento persistente para que no se borre.',
+  },
+  'storage.prompt.allow': { en: 'Allow', es: 'Permitir' },
+  'storage.prompt.later': { en: 'Not now', es: 'Ahora no' },
+  'storage.prompt.granted': { en: 'Persistent storage enabled.', es: 'Almacenamiento persistente activado.' },
   'settings.display.showPlayerNames': {
     en: 'Show player names over their heads',
     es: 'Mostrar nombres de jugadores sobre sus cabezas',

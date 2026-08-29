@@ -19,17 +19,26 @@ import {
 import type { DesignerItemSeed } from "./designerSections";
 import type { PlayableMapEditorData } from "./PlayableMapEditorCanvas";
 import { reshapeAutotileRegion } from "../tilemap/autotile";
-import { deriveCollisionGrid, isSolidCollisionCell } from "../tilemap/collision";
+import {
+  applyCollisionOverrides,
+  deriveCollisionGrid,
+  isSolidCollisionCell,
+} from "../tilemap/collision";
 import {
   buildTileMapProfile,
   createEmptyTileLayers,
+  decodeCollisionOverrideCells,
   decodeTileMapLayers,
+  resizeByteGrid,
   resizeTileLayers,
 } from "../tilemap/tileMapProfile";
 import { TilesetRenderer, loadImageElement } from "../tilemap/tilesetRenderer";
 import {
   AUTOTILE_ID_UNIT,
   AUTOTILE_SLOTS,
+  COLLISION_OVERRIDE_NONE,
+  COLLISION_OVERRIDE_PASSABLE,
+  COLLISION_OVERRIDE_SOLID,
   FIRST_TILESET_TILE_ID,
   TILESET_COLUMNS,
   TILE_MAP_LAYERS,
@@ -38,7 +47,23 @@ import {
   type DesignerTilesetProfile,
 } from "../tilemap/tileMapTypes";
 
-type TileTool = "pencil" | "rectangle" | "fill" | "eraser";
+type TileTool = "pencil" | "rectangle" | "fill" | "eraser" | "passability";
+
+type PassabilityBrush = "solid" | "passable" | "reset";
+
+const PASSABILITY_BRUSH_VALUE: Record<PassabilityBrush, number> = {
+  solid: COLLISION_OVERRIDE_SOLID,
+  passable: COLLISION_OVERRIDE_PASSABLE,
+  reset: COLLISION_OVERRIDE_NONE,
+};
+
+// Undo entries for the passability override grid use this pseudo-layer.
+const COLLISION_UNDO_LAYER = -1;
+
+// Change-detection key for externally supplied tile maps: tiles + overrides.
+function tileMapContentKey(profile: { layers: string[]; collisionOverrides?: string }) {
+  return `${profile.layers.join("|")}#${profile.collisionOverrides ?? ""}`;
+}
 
 type PaletteSelection =
   | { kind: "eraser" }
@@ -121,6 +146,7 @@ export default function TileMapEditor({
   const [showGrid, setShowGrid] = useState(true);
   const [dimOtherLayers, setDimOtherLayers] = useState(true);
   const [showPassability, setShowPassability] = useState(false);
+  const [passabilityBrush, setPassabilityBrush] = useState<PassabilityBrush>("solid");
   const [paletteSelection, setPaletteSelection] = useState<PaletteSelection>({
     kind: "tiles",
     left: 0,
@@ -138,10 +164,13 @@ export default function TileMapEditor({
   const paletteCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const layersRef = useRef<Uint16Array[] | null>(null);
+  // Per-cell passability overrides (0 inherit / 1 passable / 2 solid).
+  const overridesRef = useRef<Uint8Array | null>(null);
   const layersKeyRef = useRef<string>("");
   const undoStackRef = useRef<UndoEntry[]>([]);
   const redoStackRef = useRef<UndoEntry[]>([]);
   const strokeRef = useRef<Map<number, number> | null>(null);
+  const strokeKindRef = useRef<"tiles" | "passability">("tiles");
   const strokeAnchorRef = useRef<{ x: number; y: number } | null>(null);
   const rectDraftRef = useRef<{ start: { x: number; y: number }; current: { x: number; y: number } } | null>(null);
   const paletteDragRef = useRef<{ start: { col: number; row: number } } | null>(null);
@@ -151,11 +180,14 @@ export default function TileMapEditor({
   // edit revision keeps the passability overlay from re-deriving the whole
   // map on every scroll/zoom/hover redraw.
   const layersRevisionRef = useRef(0);
+  const overridesRevisionRef = useRef(0);
   const collisionCacheRef = useRef<{
     revision: number;
+    overridesRevision: number;
     width: number;
     height: number;
     profile: DesignerTilesetProfile;
+    derived: Uint8Array;
     grid: Uint8Array;
   } | null>(null);
 
@@ -211,19 +243,23 @@ export default function TileMapEditor({
   useEffect(() => {
     if (!tileMap) {
       layersRef.current = null;
+      overridesRef.current = null;
       layersKeyRef.current = "";
       return;
     }
 
-    const externalKey = tileMap.layers.join("|");
+    const externalKey = tileMapContentKey(tileMap);
 
     if (externalKey === layersKeyRef.current && layersRef.current) {
       return;
     }
 
     layersRef.current = decodeTileMapLayers(tileMap);
+    overridesRef.current =
+      decodeCollisionOverrideCells(tileMap) ?? new Uint8Array(tileMap.width * tileMap.height);
     layersKeyRef.current = externalKey;
     layersRevisionRef.current += 1;
+    overridesRevisionRef.current += 1;
     undoStackRef.current = [];
     redoStackRef.current = [];
     setUndoDepth(0);
@@ -248,10 +284,11 @@ export default function TileMapEditor({
       layers,
       tilesetProfile,
       essentials: tileMap.essentials,
+      collisionOverrides: overridesRef.current,
     });
 
     // Keep the previous baked surfaces until the next save re-bakes them.
-    layersKeyRef.current = nextProfile.layers.join("|");
+    layersKeyRef.current = tileMapContentKey(nextProfile);
     onChange({
       ...value,
       tileMap: { ...nextProfile, baked: tileMap.baked },
@@ -281,12 +318,22 @@ export default function TileMapEditor({
         return;
       }
 
-      const layer = layers[entry.layer];
+      const target =
+        entry.layer === COLLISION_UNDO_LAYER ? overridesRef.current : layers[entry.layer];
+
+      if (!target) {
+        return;
+      }
 
       entry.cells.forEach((cell) => {
-        layer[cell.index] = direction === "undo" ? cell.previous : cell.next;
+        target[cell.index] = direction === "undo" ? cell.previous : cell.next;
       });
-      layersRevisionRef.current += 1;
+
+      if (entry.layer === COLLISION_UNDO_LAYER) {
+        overridesRevisionRef.current += 1;
+      } else {
+        layersRevisionRef.current += 1;
+      }
 
       targetStack.push(entry);
       setUndoDepth(undoStackRef.current.length);
@@ -393,6 +440,48 @@ export default function TileMapEditor({
       }
     },
     [paletteSelection, stampCell]
+  );
+
+  const paintOverride = useCallback(
+    (x: number, y: number, value: number, changes: Map<number, number>) => {
+      const overrides = overridesRef.current;
+
+      if (!overrides || x < 0 || y < 0 || x >= tileMapWidth || y >= tileMapHeight) {
+        return;
+      }
+
+      const index = y * tileMapWidth + x;
+
+      if (!changes.has(index)) {
+        changes.set(index, overrides[index]);
+      }
+
+      overrides[index] = value;
+      overridesRevisionRef.current += 1;
+    },
+    [tileMapHeight, tileMapWidth]
+  );
+
+  const finishOverrideStroke = useCallback(
+    (changes: Map<number, number>) => {
+      const overrides = overridesRef.current;
+
+      if (!overrides || changes.size === 0) {
+        return;
+      }
+
+      const cells = Array.from(changes.entries())
+        .map(([index, previous]) => ({ index, previous, next: overrides[index] }))
+        .filter((cell) => cell.previous !== cell.next);
+
+      if (cells.length === 0) {
+        return;
+      }
+
+      pushUndoEntry({ layer: COLLISION_UNDO_LAYER, cells });
+      emitChange();
+    },
+    [emitChange, pushUndoEntry]
   );
 
   const finishStroke = useCallback(
@@ -640,35 +729,75 @@ export default function TileMapEditor({
 
     context.globalAlpha = 1;
 
-    if (showPassability) {
+    if (showPassability || tool === "passability") {
       const cache = collisionCacheRef.current;
+      const overrides = overridesRef.current;
       let collision: Uint8Array;
 
       if (
         cache &&
         cache.revision === layersRevisionRef.current &&
+        cache.overridesRevision === overridesRevisionRef.current &&
         cache.width === tileMapWidth &&
         cache.height === tileMapHeight &&
         cache.profile === tilesetProfile
       ) {
         collision = cache.grid;
       } else {
-        collision = deriveCollisionGrid(layers, tileMapWidth, tileMapHeight, tilesetProfile);
+        // Re-deriving from the tiles is the expensive part; reuse it when
+        // only the overrides changed (a passability stroke).
+        const derived =
+          cache &&
+          cache.revision === layersRevisionRef.current &&
+          cache.width === tileMapWidth &&
+          cache.height === tileMapHeight &&
+          cache.profile === tilesetProfile
+            ? cache.derived
+            : deriveCollisionGrid(layers, tileMapWidth, tileMapHeight, tilesetProfile);
+
+        collision = applyCollisionOverrides(derived, overrides);
         collisionCacheRef.current = {
           revision: layersRevisionRef.current,
+          overridesRevision: overridesRevisionRef.current,
           width: tileMapWidth,
           height: tileMapHeight,
           profile: tilesetProfile,
+          derived,
           grid: collision,
         };
       }
 
-      context.fillStyle = "rgba(220, 40, 40, 0.35)";
+      const inset = 3;
 
       for (let y = firstRow; y <= lastRow; y += 1) {
         for (let x = firstColumn; x <= lastColumn; x += 1) {
-          if (isSolidCollisionCell(collision[y * tileMapWidth + x])) {
+          const index = y * tileMapWidth + x;
+          const override = overrides ? overrides[index] : COLLISION_OVERRIDE_NONE;
+          const solid = isSolidCollisionCell(collision[index]);
+
+          if (solid) {
+            context.fillStyle =
+              override === COLLISION_OVERRIDE_SOLID
+                ? "rgba(220, 40, 40, 0.55)"
+                : "rgba(220, 40, 40, 0.35)";
             context.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+          } else if (override === COLLISION_OVERRIDE_PASSABLE) {
+            context.fillStyle = "rgba(40, 180, 90, 0.45)";
+            context.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+          }
+
+          // Overridden cells get an inner outline so they stand out from the
+          // tileset-derived passability around them.
+          if (override !== COLLISION_OVERRIDE_NONE) {
+            context.strokeStyle =
+              override === COLLISION_OVERRIDE_SOLID ? "rgba(255, 235, 235, 0.9)" : "rgba(225, 255, 235, 0.9)";
+            context.lineWidth = 2 / zoom;
+            context.strokeRect(
+              x * TILE_SIZE + inset,
+              y * TILE_SIZE + inset,
+              TILE_SIZE - inset * 2,
+              TILE_SIZE - inset * 2
+            );
           }
         }
       }
@@ -718,6 +847,18 @@ export default function TileMapEditor({
         (right - left + 1) * TILE_SIZE,
         (bottom - top + 1) * TILE_SIZE
       );
+    } else if (hoverCell && tool === "passability") {
+      context.fillStyle =
+        passabilityBrush === "solid"
+          ? "rgba(220, 40, 40, 0.5)"
+          : passabilityBrush === "passable"
+            ? "rgba(40, 180, 90, 0.5)"
+            : "rgba(120, 120, 120, 0.35)";
+      context.fillRect(hoverCell.x * TILE_SIZE, hoverCell.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+      context.globalAlpha = 1;
+      context.strokeStyle = canvasTheme.hoverStroke;
+      context.lineWidth = 2 / zoom;
+      context.strokeRect(hoverCell.x * TILE_SIZE, hoverCell.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
     } else if (hoverCell && !strokeRef.current) {
       const previewWidth = paletteSelection.kind === "tiles" ? paletteSelection.width : 1;
       const previewHeight = paletteSelection.kind === "tiles" ? paletteSelection.height : 1;
@@ -747,12 +888,14 @@ export default function TileMapEditor({
     dimOtherLayers,
     drawStampPreview,
     paletteSelection,
+    passabilityBrush,
     renderer,
     showGrid,
     showPassability,
     tileMapHeight,
     tileMapWidth,
     tilesetProfile,
+    tool,
     zoom,
   ]);
 
@@ -815,6 +958,33 @@ export default function TileMapEditor({
       return;
     }
 
+    // Passability tool: left paints the brush, right resets the cell.
+    if (tool === "passability") {
+      if (event.button === 2) {
+        const changes = new Map<number, number>();
+
+        paintOverride(cell.x, cell.y, COLLISION_OVERRIDE_NONE, changes);
+        finishOverrideStroke(changes);
+        scheduleRedraw();
+        return;
+      }
+
+      if (event.button !== 0) {
+        return;
+      }
+
+      (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
+
+      const changes = new Map<number, number>();
+
+      strokeRef.current = changes;
+      strokeKindRef.current = "passability";
+      strokeAnchorRef.current = cell;
+      paintOverride(cell.x, cell.y, PASSABILITY_BRUSH_VALUE[passabilityBrush], changes);
+      scheduleRedraw();
+      return;
+    }
+
     // Right-click: eyedropper from the active layer.
     if (event.button === 2) {
       const tileId = layersRef.current[activeLayer][cell.y * tileMapWidth + cell.x];
@@ -861,6 +1031,7 @@ export default function TileMapEditor({
     const changes = new Map<number, number>();
 
     strokeRef.current = changes;
+    strokeKindRef.current = "tiles";
     strokeAnchorRef.current = cell;
 
     const layer = layersRef.current[activeLayer];
@@ -890,7 +1061,9 @@ export default function TileMapEditor({
     if (changes && anchor && layers && cell) {
       const layer = layers[activeLayer];
 
-      if (tool === "eraser") {
+      if (strokeKindRef.current === "passability") {
+        paintOverride(cell.x, cell.y, PASSABILITY_BRUSH_VALUE[passabilityBrush], changes);
+      } else if (tool === "eraser") {
         setCell(layer, cell.x, cell.y, 0, changes);
       } else {
         stampBlock(layer, cell.x, cell.y, anchor, changes);
@@ -932,6 +1105,14 @@ export default function TileMapEditor({
     }
 
     const changes = strokeRef.current;
+
+    if (changes && strokeKindRef.current === "passability") {
+      strokeRef.current = null;
+      strokeAnchorRef.current = null;
+      finishOverrideStroke(changes);
+      scheduleRedraw();
+      return;
+    }
 
     if (changes && layers) {
       const boundsCells = Array.from(changes.keys()).map((index) => ({
@@ -1131,13 +1312,16 @@ export default function TileMapEditor({
     });
 
     layersRef.current = layers;
-    layersKeyRef.current = profile.layers.join("|");
+    overridesRef.current = new Uint8Array(mapWidth * mapHeight);
+    layersKeyRef.current = tileMapContentKey(profile);
     layersRevisionRef.current += 1;
+    overridesRevisionRef.current += 1;
     onChange({ ...value, tileMap: profile });
   };
 
   const handleRemoveTileMap = () => {
     layersRef.current = null;
+    overridesRef.current = null;
     layersKeyRef.current = "";
     layersRevisionRef.current += 1;
     onChange({ ...value, tileMap: undefined });
@@ -1151,6 +1335,9 @@ export default function TileMapEditor({
     }
 
     const resized = resizeTileLayers(layers, tileMapWidth, tileMapHeight, mapWidth, mapHeight);
+    const resizedOverrides = overridesRef.current
+      ? resizeByteGrid(overridesRef.current, tileMapWidth, tileMapHeight, mapWidth, mapHeight)
+      : new Uint8Array(mapWidth * mapHeight);
     const profile = buildTileMapProfile({
       tilesetItemId: tileMap.tilesetItemId,
       width: mapWidth,
@@ -1158,11 +1345,14 @@ export default function TileMapEditor({
       layers: resized,
       tilesetProfile,
       essentials: tileMap.essentials,
+      collisionOverrides: resizedOverrides,
     });
 
     layersRef.current = resized;
-    layersKeyRef.current = profile.layers.join("|");
+    overridesRef.current = resizedOverrides;
+    layersKeyRef.current = tileMapContentKey(profile);
     layersRevisionRef.current += 1;
+    overridesRevisionRef.current += 1;
     undoStackRef.current = [];
     redoStackRef.current = [];
     setUndoDepth(0);
@@ -1275,7 +1465,7 @@ export default function TileMapEditor({
             </Button>
           ))}
           <Box w="1px" h="24px" bg="editor.border" />
-          {(["pencil", "rectangle", "fill", "eraser"] as TileTool[]).map((toolOption) => (
+          {(["pencil", "rectangle", "fill", "eraser", "passability"] as TileTool[]).map((toolOption) => (
             <Button
               key={toolOption}
               size="sm"
@@ -1287,6 +1477,25 @@ export default function TileMapEditor({
               {toolOption}
             </Button>
           ))}
+          {tool === "passability" ? (
+            <>
+              {(["solid", "passable", "reset"] as PassabilityBrush[]).map((brush) => (
+                <Button
+                  key={brush}
+                  size="xs"
+                  variant={passabilityBrush === brush ? "solid" : "outline"}
+                  colorScheme={brush === "solid" ? "red" : brush === "passable" ? "green" : "gray"}
+                  onClick={() => setPassabilityBrush(brush)}
+                  textTransform="capitalize"
+                >
+                  {brush}
+                </Button>
+              ))}
+              <Text fontSize="xs" color="editor.textFaint">
+                Overrides the tileset passability per cell. Right-click resets a cell.
+              </Text>
+            </>
+          ) : null}
           <Box w="1px" h="24px" bg="editor.border" />
           <Button size="sm" variant="outline" onClick={() => applyUndoRedo("undo")} isDisabled={undoDepth === 0}>
             Undo
