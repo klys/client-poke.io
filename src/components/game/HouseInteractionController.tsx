@@ -1,24 +1,29 @@
 /**
  * Housing UX — the single client entry point for apartments and houses
- * (server: components/Housing.ts). Mirrors BerryInteractionController: every
- * input method funnels into one contextual menu, every choice is validated
- * server-side and answered with `house:result`.
+ * (server: components/Housing.ts). Every input method funnels into one
+ * centered window; every choice is validated server-side and answered with
+ * `house:result`.
  *
- *  DOOR   click / tap / right-click / face an apartment door cell (an editor
- *         `houseDoors` placement) → apartments list (house:door-info) →
- *         Enter · Buy · Set key code · Put up for sale · … A locked
- *         apartment asks for its code on a keypad before entering.
+ *  DOOR   step onto / click / tap / right-click / face an apartment door cell
+ *         (an editor `houseDoors` placement) → apartments window
+ *         (house:door-info) → Enter · Buy · Set key code · Put up for sale · …
+ *         A locked apartment asks for its code on a keypad before entering.
  *  HOUSE  inside an instance: right-click the floor, or click / face a
- *         piece of furniture → Pick up (owner) · Leave the house.
+ *         piece of furniture → Pick up · Rename · Music (owner) · Leave.
  *  PLACE  the bag's "Place" on a furniture item (HOUSE_PLACE_EVENT) arms a
  *         placement: the next click on a floor tile places it there.
+ *
+ * The door window opens on its own when the player walks onto the door cell
+ * (a "portal" feel) and does not re-open until the player steps off and back
+ * on; landing on the door after leaving the house never re-opens it.
  */
-import { CSSProperties, useContext, useEffect, useRef, useState } from "react";
+import { CSSProperties, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Box, Button, HStack, Input, SimpleGrid, Text, VStack } from "@chakra-ui/react";
+import { Box, Button, Flex, Input, SimpleGrid, Text, VStack } from "@chakra-ui/react";
 import type { Socket } from "socket.io-client";
 import { AppContext } from "../../context/appContext";
-import { MenuChoiceButton, RetroPanel } from "../ux/game/NpcInteractions";
+import { useCompactUx } from "../ux/useCompactUx";
+import { UX_LAYER } from "../ux/layers";
 import { useT } from "../../i18n";
 import {
   getHouse,
@@ -37,11 +42,16 @@ const RESULT_LINGER_MS = 2200;
 
 type Phase = "loading" | "apartments" | "apartment" | "keypad" | "price" | "house" | "name" | "music" | "placing" | "result";
 
+interface Notice {
+  ok: boolean;
+  message: string;
+}
+
 interface Session {
   kind: "door" | "house" | "placing";
   phase: Phase;
-  menuX: number;
-  menuY: number;
+  /** Where a failed request returns to (the phase that issued it). */
+  returnPhase?: Phase;
   selected: number;
   doorId?: string;
   door?: HouseDoorSummary;
@@ -55,6 +65,9 @@ interface Session {
   nameDraft?: string;
   /** Music phase: the tracks the server offers. */
   bgms?: string[];
+  /** Inline feedback shown inside the window (errors keep the window open). */
+  notice?: Notice;
+  /** Result phase: the closing message. */
   message?: string;
   ok?: boolean;
 }
@@ -67,7 +80,14 @@ interface Props {
   editorData: { houseDoors?: HouseDoorPlacement[] } | null;
 }
 
-type Entry = { key: string; label: string; disabled?: boolean; run: () => void };
+type Entry = {
+  key: string;
+  label: ReactNode;
+  disabled?: boolean;
+  /** Secondary entries (back/cancel) render muted at the end of the list. */
+  secondary?: boolean;
+  run: () => void;
+};
 
 const isUxTarget = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) return false;
@@ -94,8 +114,98 @@ const money = (value: number | string) => `$${Number(value).toLocaleString("es-V
 const formatParams = (params?: Record<string, string>) =>
   params && typeof params.price === "string" ? { ...params, price: money(params.price) } : params;
 
+const PANEL_BORDER = "#5d5a7b";
+const INK = "#404040";
+const MUTED = "#4a6a4a";
+
+/** A wrapping, full-width choice row — labels never overflow the window. */
+function WindowButton({
+  active,
+  disabled,
+  secondary,
+  onClick,
+  onMouseEnter,
+  children,
+  testId
+}: {
+  active?: boolean;
+  disabled?: boolean;
+  secondary?: boolean;
+  onClick?: () => void;
+  onMouseEnter?: () => void;
+  children: ReactNode;
+  testId?: string;
+}) {
+  const compact = useCompactUx();
+  return (
+    <Button
+      variant="unstyled"
+      width="100%"
+      height="auto"
+      minH={compact ? "40px" : "44px"}
+      px={3}
+      py={2}
+      display="flex"
+      justifyContent="flex-start"
+      textAlign="left"
+      whiteSpace="normal"
+      border="3px solid"
+      borderColor={active ? "#ff7b73" : secondary ? "#b9b8cc" : "#8a89a8"}
+      bg={active ? "#fff3cf" : secondary ? "#f1efe6" : "#ffffff"}
+      color={secondary ? "#6b6b7b" : INK}
+      fontFamily="mono"
+      fontSize={compact ? "sm" : "md"}
+      fontWeight="800"
+      lineHeight="1.2"
+      opacity={disabled ? 0.45 : 1}
+      cursor={disabled ? "not-allowed" : "pointer"}
+      onClick={disabled ? undefined : onClick}
+      onMouseEnter={onMouseEnter}
+      data-house-entry={testId}
+      data-house-entry-active={active ? "1" : undefined}
+    >
+      {children}
+    </Button>
+  );
+}
+
+function Chip({ tone, children }: { tone: "free" | "yours" | "owned" | "forSale" | "unavailable"; children: ReactNode }) {
+  const palette: Record<typeof tone, { bg: string; color: string }> = {
+    free: { bg: "#2f9e44", color: "#ffffff" },
+    yours: { bg: "#f59f00", color: "#1f1f1f" },
+    owned: { bg: "#868e96", color: "#ffffff" },
+    forSale: { bg: "#1c7ed6", color: "#ffffff" },
+    unavailable: { bg: "#c92a2a", color: "#ffffff" }
+  };
+  return (
+    <Box
+      flexShrink={0}
+      px={2}
+      py="2px"
+      borderRadius="4px"
+      fontFamily="mono"
+      fontSize="10px"
+      fontWeight="800"
+      textTransform="uppercase"
+      letterSpacing="0.04em"
+      bg={palette[tone].bg}
+      color={palette[tone].color}
+      data-house-chip={tone}
+    >
+      {children}
+    </Box>
+  );
+}
+
+const Hint = ({ children }: { children: ReactNode }) => (
+  <Text fontFamily="mono" fontSize="xs" color={MUTED} textAlign="center" whiteSpace="normal" fontWeight="600">
+    {children}
+  </Text>
+);
+
 const HouseInteractionController = ({ socket, player, mapId, cellSize, editorData }: Props) => {
   const t = useT();
+  const compact = useCompactUx();
   const { waiting, activeNpcInteraction } = useContext(AppContext);
   const [session, setSession] = useState<Session | null>(null);
 
@@ -105,6 +215,7 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
   sessionRef.current = session;
   const timersRef = useRef<number[]>([]);
   const submitLockRef = useRef(false);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
 
   const clearTimers = () => {
     timersRef.current.forEach((id) => window.clearTimeout(id));
@@ -112,9 +223,9 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
   };
   useEffect(() => () => clearTimers(), []);
 
-  // Freeze walk/interact input while a menu is up (placement keeps walking).
+  // Freeze walk/interact input while a window is up (placement keeps walking).
   useEffect(() => {
-    const menuOpen = session !== null && session.phase !== "result" && session.kind !== "placing";
+    const menuOpen = session !== null && session.kind !== "placing";
     if (menuOpen) {
       document.body.dataset.houseMenuActive = "1";
     } else {
@@ -133,44 +244,27 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
     }
   }, [mapId]);
 
-  const anchorForCell = (x: number, y: number) => {
-    const map = document.getElementById("map");
-    const size = stateRef.current.cellSize || 32;
-    if (!map) return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-    const rect = map.getBoundingClientRect();
-    return { x: rect.left + x * size + size / 2, y: rect.top + y * size };
-  };
-
-  const openDoor = (doorId: string, anchor: { x: number; y: number }) => {
+  const openDoor = (doorId: string) => {
     clearTimers();
     submitLockRef.current = false;
-    setSession({ kind: "door", phase: "loading", menuX: anchor.x, menuY: anchor.y, selected: 0, doorId, digits: "" });
+    setSession({ kind: "door", phase: "loading", selected: 0, doorId, digits: "" });
     socket.emit("house:door-info", { doorId });
     const timeoutId = window.setTimeout(() => {
-      setSession((prev) => (prev && prev.phase === "loading" && prev.kind === "door" ? null : prev));
+      setSession((prev) => (prev && prev.phase === "loading" && prev.kind === "door" && !prev.door ? null : prev));
     }, INFO_TIMEOUT_MS);
     timersRef.current.push(timeoutId);
   };
 
-  const openHouseMenu = (furnitureId: string | null, anchor: { x: number; y: number }) => {
+  const openHouseMenu = (furnitureId: string | null) => {
     clearTimers();
     submitLockRef.current = false;
-    setSession({ kind: "house", phase: "house", menuX: anchor.x, menuY: anchor.y, selected: 0, furnitureId, digits: "" });
+    setSession({ kind: "house", phase: "house", selected: 0, furnitureId, digits: "" });
   };
 
   const startPlacing = (itemId: string, itemName: string) => {
     clearTimers();
     submitLockRef.current = false;
-    setSession({
-      kind: "placing",
-      phase: "placing",
-      menuX: window.innerWidth / 2,
-      menuY: 72,
-      selected: 0,
-      placeItemId: itemId,
-      placeItemName: itemName,
-      digits: ""
-    });
+    setSession({ kind: "placing", phase: "placing", selected: 0, placeItemId: itemId, placeItemName: itemName, digits: "" });
   };
 
   const cancel = () => {
@@ -199,12 +293,65 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
   const isNearRef = useRef(isNear);
   isNearRef.current = isNear;
 
-  const showResult = (ok: boolean, message: string, closeAfter = true) => {
+  const canOpen = () => {
+    const snap = stateRef.current;
+    return Boolean(snap.mapId && snap.player) && !snap.waiting && !snap.activeNpcInteraction && !otherMenuActive();
+  };
+
+  // ── Step-on trigger ───────────────────────────────────────────────────
+  // Walking onto a door cell opens the window like a portal would. Only the
+  // transition onto the cell counts: dismissing the window while standing on
+  // the door, or landing on it after leaving the house, must not re-open it.
+  const size = cellSize || 32;
+  const cellX = player && typeof player.x === "number" ? Math.round(player.x / size) : null;
+  const cellY = player && typeof player.y === "number" ? Math.round(player.y / size) : null;
+  const lastCellRef = useRef<string | null>(null);
+  useEffect(() => {
+    lastCellRef.current = null;
+  }, [mapId]);
+  useEffect(() => {
+    if (cellX === null || cellY === null || !mapId) return;
+    const key = `${mapId}:${cellX},${cellY}`;
+    if (lastCellRef.current === key) return;
+    const previous = lastCellRef.current;
+    lastCellRef.current = key;
+    // First fix on a map = spawn / teleport landing, never a step.
+    if (previous === null) return;
+    if (sessionRef.current || !canOpen()) return;
+    const door = getHouseDoorAt(stateRef.current.editorData, cellX, cellY);
+    if (!door) return;
+    socket.emit("stopMove");
+    openDoorRef.current(door.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cellX, cellY, mapId, socket]);
+
+  // ── Result plumbing ───────────────────────────────────────────────────
+
+  /** Closing message: shown inside the window (or as a toast), then closes. */
+  const showResult = (ok: boolean, message: string) => {
     clearTimers();
     submitLockRef.current = false;
-    setSession((prev) => (prev ? { ...prev, phase: "result", ok, message } : prev));
-    if (closeAfter) {
-      const id = window.setTimeout(() => setSession(null), RESULT_LINGER_MS);
+    setSession((prev) => (prev ? { ...prev, phase: "result", ok, message, notice: undefined } : prev));
+    const id = window.setTimeout(() => setSession(null), RESULT_LINGER_MS);
+    timersRef.current.push(id);
+  };
+
+  /** Failure: back to the phase that asked, with the reason inline. */
+  const showFailure = (message: string) => {
+    clearTimers();
+    submitLockRef.current = false;
+    setSession((prev) => {
+      if (!prev) return prev;
+      const phase = prev.returnPhase ?? (prev.kind === "door" ? (prev.door ? "apartment" : "apartments") : prev.kind === "house" ? "house" : "placing");
+      return {
+        ...prev,
+        phase,
+        digits: phase === "keypad" ? "" : prev.digits,
+        notice: { ok: false, message }
+      };
+    });
+    if (sessionRef.current?.kind === "placing") {
+      const id = window.setTimeout(() => setSession((prev) => (prev ? { ...prev, notice: undefined } : prev)), RESULT_LINGER_MS);
       timersRef.current.push(id);
     }
   };
@@ -220,20 +367,20 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
       const overMap = Boolean(map && target && map.contains(target));
 
       if (current && current.kind !== "placing") {
-        if (current.phase === "result") return;
-        // A click outside the panel dismisses the menu.
+        // The window has its own backdrop; anything that reaches here is
+        // outside it, so just swallow the click (never walk under a window).
         event.stopImmediatePropagation();
         event.preventDefault();
-        cancelRef.current();
+        if (current.phase === "result") cancelRef.current();
         return;
       }
       if (!overMap || !map || !snap.player || !snap.mapId) return;
       if (snap.waiting || snap.activeNpcInteraction || otherMenuActive()) return;
 
       const rect = map.getBoundingClientRect();
-      const size = snap.cellSize || 32;
-      const cellX = Math.floor((event.clientX - rect.left) / size);
-      const cellY = Math.floor((event.clientY - rect.top) / size);
+      const cell = snap.cellSize || 32;
+      const clickX = Math.floor((event.clientX - rect.left) / cell);
+      const clickY = Math.floor((event.clientY - rect.top) / cell);
 
       if (current?.kind === "placing") {
         if (event.type === "contextmenu") {
@@ -246,32 +393,32 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
         event.stopImmediatePropagation();
         event.preventDefault();
         submitLockRef.current = true;
-        socket.emit("house:furniture-place", { itemId: current.placeItemId, x: cellX, y: cellY });
-        setSession((prev) => (prev ? { ...prev, phase: "loading" } : prev));
+        socket.emit("house:furniture-place", { itemId: current.placeItemId, x: clickX, y: clickY });
+        setSession((prev) => (prev ? { ...prev, phase: "loading", returnPhase: "placing", notice: undefined } : prev));
         return;
       }
 
-      const door = getHouseDoorAt(snap.editorData, cellX, cellY);
+      const door = getHouseDoorAt(snap.editorData, clickX, clickY);
       if (door && isNearRef.current(door)) {
         event.stopImmediatePropagation();
         event.preventDefault();
-        openDoorRef.current(door.id, { x: event.clientX, y: event.clientY });
+        openDoorRef.current(door.id);
         return;
       }
 
       const house = getHouse(snap.mapId);
       if (!house) return;
-      const furniture = getHouseFurnitureAt(snap.mapId, cellX, cellY);
+      const furniture = getHouseFurnitureAt(snap.mapId, clickX, clickY);
       if (furniture) {
         event.stopImmediatePropagation();
         event.preventDefault();
-        openHouseMenuRef.current(furniture.id, { x: event.clientX, y: event.clientY });
+        openHouseMenuRef.current(furniture.id);
         return;
       }
       if (event.type === "contextmenu") {
         event.stopImmediatePropagation();
         event.preventDefault();
-        openHouseMenuRef.current(null, { x: event.clientX, y: event.clientY });
+        openHouseMenuRef.current(null);
       }
     };
     window.addEventListener("click", onPointer, true);
@@ -286,20 +433,17 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
   useEffect(() => {
     const onDoorMenu = (event: Event) => {
       const snap = stateRef.current;
-      if (sessionRef.current || !snap.mapId) return;
-      if (snap.waiting || snap.activeNpcInteraction || otherMenuActive()) return;
+      if (sessionRef.current || !canOpen()) return;
       const doorId = (event as CustomEvent<{ doorId?: string }>).detail?.doorId;
       const door = (snap.editorData?.houseDoors ?? []).find((candidate) => candidate.id === doorId);
       if (!door) return;
-      openDoorRef.current(door.id, anchorForCell(door.x, door.y));
+      openDoorRef.current(door.id);
     };
     const onHouseMenu = (event: Event) => {
       const snap = stateRef.current;
-      if (sessionRef.current || !snap.mapId || !getHouse(snap.mapId)) return;
-      if (snap.waiting || snap.activeNpcInteraction || otherMenuActive()) return;
+      if (sessionRef.current || !snap.mapId || !getHouse(snap.mapId) || !canOpen()) return;
       const furnitureId = (event as CustomEvent<{ furnitureId?: string }>).detail?.furnitureId ?? null;
-      const me = playerCell();
-      openHouseMenuRef.current(furnitureId, anchorForCell(me.x, me.y));
+      openHouseMenuRef.current(furnitureId);
     };
     const onPlace = (event: Event) => {
       const snap = stateRef.current;
@@ -315,6 +459,7 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
       window.removeEventListener(HOUSE_MENU_EVENT, onHouseMenu);
       window.removeEventListener(HOUSE_PLACE_EVENT, onPlace);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Server answers.
@@ -330,7 +475,8 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
           door: data.door,
           phase: single ? "apartment" : "apartments",
           apartmentId: single ? data.door!.apartments[0].id : undefined,
-          selected: 0
+          selected: 0,
+          notice: undefined
         };
       });
     };
@@ -343,11 +489,11 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
         cancelRef.current();
         return;
       }
-      if (data.action === "door-info") {
-        showResult(false, message);
+      if (data.action === "door-info" || data.ok) {
+        showResult(data.ok, message);
         return;
       }
-      showResult(data.ok, message);
+      showFailure(message);
     };
     const onMusicList = (data: { bgms?: string[] }) => {
       const bgms = Array.isArray(data?.bgms) ? data.bgms.filter((name): name is string => typeof name === "string") : [];
@@ -356,7 +502,7 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
         clearTimers();
         const current = getHouse(stateRef.current.mapId)?.bgm ?? null;
         const index = current ? bgms.indexOf(current) + 1 : 0;
-        return { ...prev, phase: "music", bgms, selected: Math.max(0, index) };
+        return { ...prev, phase: "music", bgms, selected: Math.max(0, index), notice: undefined };
       });
     };
     socket.on("house:door-info", onDoorInfo);
@@ -380,12 +526,25 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
     return t("house.status.free", { price: money(apt.price) });
   };
 
+  const apartmentChip = (apt: HouseApartmentSummary) => {
+    if (!apt.available) return <Chip tone="unavailable">{t("house.chip.unavailable")}</Chip>;
+    if (apt.isOwner) return <Chip tone="yours">{t("house.chip.yours")}</Chip>;
+    if (apt.forSale) return <Chip tone="forSale">{t("house.chip.forSale")}</Chip>;
+    if (apt.owned) return <Chip tone="owned">{t("house.chip.owned")}</Chip>;
+    return <Chip tone="free">{t("house.chip.free")}</Chip>;
+  };
+
   const submit = (event: string, payload: Record<string, unknown>) => {
     if (submitLockRef.current) return;
     submitLockRef.current = true;
     socket.emit(event, payload);
-    setSession((prev) => (prev ? { ...prev, phase: "loading" } : prev));
+    setSession((prev) => (prev ? { ...prev, phase: "loading", returnPhase: prev.phase, notice: undefined } : prev));
   };
+
+  const goTo = (phase: Phase, patch: Partial<Session> = {}) =>
+    setSession((prev) => (prev ? { ...prev, phase, selected: 0, notice: undefined, ...patch } : prev));
+
+  const cancelEntry = (): Entry => ({ key: "cancel", label: t("house.action.cancel"), secondary: true, run: () => cancelRef.current() });
 
   const entriesFor = (current: Session): Entry[] => {
     const house = getHouse(stateRef.current.mapId);
@@ -403,16 +562,13 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
         entries.push({
           key: "rename",
           label: t("house.action.rename"),
-          run: () =>
-            setSession((prev) =>
-              prev ? { ...prev, phase: "name", nameDraft: house.customName ? house.name : "", selected: 0 } : prev
-            )
+          run: () => goTo("name", { nameDraft: house.customName ? house.name : "" })
         });
         entries.push({
           key: "music",
           label: t("house.action.music"),
           run: () => {
-            setSession((prev) => (prev ? { ...prev, phase: "loading" } : prev));
+            setSession((prev) => (prev ? { ...prev, phase: "loading", returnPhase: "house", notice: undefined } : prev));
             socket.emit("house:music-list");
             const timeoutId = window.setTimeout(() => {
               setSession((prev) => (prev && prev.phase === "loading" && prev.kind === "house" ? { ...prev, phase: "house" } : prev));
@@ -422,7 +578,7 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
         });
       }
       entries.push({ key: "leave", label: t("house.action.leave"), run: () => submit("house:leave", {}) });
-      entries.push({ key: "cancel", label: t("house.action.cancel"), run: () => cancelRef.current() });
+      entries.push(cancelEntry());
       return entries;
     }
     if (current.kind === "door" && current.door) {
@@ -430,71 +586,80 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
         return [
           ...current.door.apartments.map<Entry>((apt) => ({
             key: apt.id,
-            label: `${apt.name} — ${apartmentStatus(apt)}`,
+            label: (
+              <Flex w="100%" align="center" gap={2}>
+                <Box flex="1" minW={0}>
+                  <Text textTransform="uppercase" whiteSpace="normal">
+                    {apt.name}
+                  </Text>
+                  <Text fontSize="xs" color={MUTED} fontWeight="600" whiteSpace="normal" mt="2px">
+                    {apartmentStatus(apt)}
+                  </Text>
+                </Box>
+                {apartmentChip(apt)}
+              </Flex>
+            ),
             disabled: !apt.available,
-            run: () => setSession((prev) => (prev ? { ...prev, phase: "apartment", apartmentId: apt.id, selected: 0 } : prev))
+            run: () => goTo("apartment", { apartmentId: apt.id })
           })),
-          { key: "cancel", label: t("house.action.cancel"), run: () => cancelRef.current() }
+          cancelEntry()
         ];
       }
       const apt = current.door.apartments.find((candidate) => candidate.id === current.apartmentId);
-      if (!apt) return [{ key: "cancel", label: t("house.action.cancel"), run: () => cancelRef.current() }];
+      if (!apt) return [cancelEntry()];
       const entries: Entry[] = [];
       if (apt.available) {
         entries.push({
           key: "enter",
-          label: t("house.action.enter"),
+          label: `🚪 ${t("house.action.enter")}`,
           run: () =>
-            apt.locked
-              ? setSession((prev) => (prev ? { ...prev, phase: "keypad", keypadPurpose: "enter", digits: "", selected: 0 } : prev))
-              : submit("house:enter", { apartmentId: apt.id })
+            apt.locked ? goTo("keypad", { keypadPurpose: "enter", digits: "" }) : submit("house:enter", { apartmentId: apt.id })
         });
         if (!apt.owned || (apt.forSale && !apt.isOwner)) {
           entries.push({
             key: "buy",
-            label: t("house.action.buy", { price: money(apt.price) }),
+            label: `💰 ${t("house.action.buy", { price: money(apt.price) })}`,
             run: () => submit("house:buy", { apartmentId: apt.id })
           });
         }
         if (apt.isOwner) {
           entries.push({
             key: "setKey",
-            label: t("house.action.setKey"),
-            run: () => setSession((prev) => (prev ? { ...prev, phase: "keypad", keypadPurpose: "setKey", digits: "", selected: 0 } : prev))
+            label: `🔑 ${t("house.action.setKey")}`,
+            run: () => goTo("keypad", { keypadPurpose: "setKey", digits: "" })
           });
           if (apt.keyCodeSet) {
             entries.push({
               key: "clearKey",
-              label: t("house.action.clearKey"),
+              label: `🔓 ${t("house.action.clearKey")}`,
               run: () => submit("house:set-key", { apartmentId: apt.id, keyCode: null })
             });
           }
           if (apt.forSale) {
             entries.push({
               key: "cancelSale",
-              label: t("house.action.cancelSale"),
+              label: `🏷️ ${t("house.action.cancelSale")}`,
               run: () => submit("house:set-sale", { apartmentId: apt.id, price: null })
             });
           } else {
             entries.push({
               key: "sell",
-              label: t("house.action.sell"),
-              run: () => setSession((prev) => (prev ? { ...prev, phase: "price", digits: "", selected: 0 } : prev))
+              label: `🏷️ ${t("house.action.sell")}`,
+              run: () => goTo("price", { digits: "" })
             });
           }
         }
       }
+      const multiple = current.door.apartments.length > 1;
       entries.push({
         key: "back",
-        label: current.door.apartments.length > 1 ? t("house.action.back") : t("house.action.cancel"),
-        run: () =>
-          current.door!.apartments.length > 1
-            ? setSession((prev) => (prev ? { ...prev, phase: "apartments", selected: 0 } : prev))
-            : cancelRef.current()
+        label: multiple ? t("house.action.back") : t("house.action.cancel"),
+        secondary: true,
+        run: () => (multiple ? goTo("apartments") : cancelRef.current())
       });
       return entries;
     }
-    return [{ key: "cancel", label: t("house.action.cancel"), run: () => cancelRef.current() }];
+    return [cancelEntry()];
   };
 
   const musicEntriesFor = (current: Session): Entry[] => {
@@ -508,10 +673,10 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
       },
       ...(current.bgms ?? []).map<Entry>((bgm) => ({
         key: bgm,
-        label: `${house?.bgm === bgm ? "▶ " : ""}${bgm}`,
+        label: `${house?.bgm === bgm ? "▶ " : "♪ "}${bgm}`,
         run: () => submit("house:set-music", { apartmentId, bgm })
       })),
-      { key: "back", label: t("house.action.back"), run: () => setSession((prev) => (prev ? { ...prev, phase: "house", selected: 0 } : prev)) }
+      { key: "back", label: t("house.action.back"), secondary: true, run: () => goTo("house") }
     ];
   };
 
@@ -551,20 +716,25 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
       if (!prev) return prev;
       const max = prev.phase === "keypad" ? 8 : 9;
       if (prev.digits.length >= max) return prev;
-      return { ...prev, digits: prev.digits + digit };
+      return { ...prev, digits: prev.digits + digit, notice: undefined };
     });
   };
   const popDigit = () => setSession((prev) => (prev ? { ...prev, digits: prev.digits.slice(0, -1) } : prev));
-  const backFromDigits = () =>
-    setSession((prev) => (prev ? { ...prev, phase: "apartment", digits: "", selected: 0 } : prev));
+  const backFromDigits = () => goTo("apartment", { digits: "" });
 
   const entries = session ? (session.phase === "music" ? musicEntriesFor(session) : entriesFor(session)) : [];
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
 
-  // Keyboard navigation while a menu / keypad is open.
+  // Keep the keyboard-selected row visible in long lists (music).
   useEffect(() => {
-    if (!session || session.phase === "loading" || session.phase === "result") return undefined;
+    const active = bodyRef.current?.querySelector<HTMLElement>('[data-house-entry-active="1"]');
+    active?.scrollIntoView({ block: "nearest" });
+  }, [session?.selected, session?.phase]);
+
+  // Keyboard navigation while a window / keypad is open.
+  useEffect(() => {
+    if (!session || session.phase === "loading") return undefined;
     const isDigits = session.phase === "keypad" || session.phase === "price";
     const onKeyDown = (event: KeyboardEvent) => {
       const key = event.key;
@@ -572,12 +742,22 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
         event.preventDefault();
         event.stopImmediatePropagation();
       };
+      if (session.phase === "result") {
+        if (key === "Escape" || key === "Enter" || key === " ") {
+          swallow();
+          cancelRef.current();
+        }
+        return;
+      }
       if (key === "Escape") {
         swallow();
         if (isDigits) backFromDigits();
-        else if (session.phase === "name" || session.phase === "music") {
-          setSession((prev) => (prev ? { ...prev, phase: "house", selected: 0 } : prev));
-        } else cancelRef.current();
+        else if (session.phase === "name" || session.phase === "music") goTo("house");
+        else {
+          const back = entriesRef.current.find((entry) => entry.key === "back");
+          if (back) back.run();
+          else cancelRef.current();
+        }
         return;
       }
       if (session.kind === "placing") return;
@@ -618,6 +798,7 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
   if (!session || typeof document === "undefined") return null;
@@ -633,205 +814,314 @@ const HouseInteractionController = ({ socket, player, mapId, cellSize, editorDat
           ? apt?.name ?? session.door?.name ?? t("house.doorTitle")
           : session.door?.name ?? t("house.doorTitle");
   const isDigits = session.phase === "keypad" || session.phase === "price";
-  const menuOpen =
-    session.phase === "apartments" || session.phase === "apartment" || session.phase === "house" || session.phase === "music";
-  const isNaming = session.phase === "name";
+  const windowOpen = session.kind !== "placing";
+  const subtitle =
+    session.phase === "apartments"
+      ? t("house.window.pickApartment")
+      : session.phase === "apartment" && apt
+        ? apartmentStatus(apt)
+        : session.kind === "house" && house && session.phase === "house"
+          ? house.isOwner
+            ? t("house.status.yours")
+            : t("house.status.owned", { name: house.ownerName ?? "—" })
+          : session.phase === "name"
+            ? t("house.name.title")
+            : session.phase === "music"
+              ? t("house.music.title")
+              : session.phase === "price"
+                ? t("house.price.title")
+                : session.phase === "keypad"
+                  ? session.keypadPurpose === "setKey"
+                    ? t("house.keypad.set")
+                    : t("house.keypad.enter")
+                  : null;
 
-  const overlay = (
-    <Box position="fixed" inset={0} zIndex={4300} pointerEvents="none" data-game-ux="true" data-house-menu={session.phase}>
-      {session.kind === "placing" && session.phase !== "result" ? (
-        <Box position="fixed" left="50%" top="64px" style={{ transform: "translateX(-50%)" } as CSSProperties}>
-          <Box
-            bg="#1f1f1f"
-            color="#ffef69"
-            border="3px solid #5d5a7b"
-            px={3}
-            py={2}
+  const noticeBox = session.notice ? (
+    <Box
+      bg={session.notice.ok ? "#e6f7e3" : "#ffe3e0"}
+      border="2px solid"
+      borderColor={session.notice.ok ? "#2f9e44" : "#c92a2a"}
+      color={session.notice.ok ? "#1b5e20" : "#8a1c1c"}
+      px={2}
+      py={1}
+      fontFamily="mono"
+      fontSize="xs"
+      fontWeight="800"
+      textAlign="center"
+      whiteSpace="normal"
+      data-house-notice={session.notice.ok ? "ok" : "error"}
+    >
+      {session.notice.message}
+    </Box>
+  ) : null;
+
+  const renderBody = () => {
+    if (session.phase === "loading") {
+      return <Hint>{t("house.window.loading")}</Hint>;
+    }
+    if (session.phase === "result") {
+      return (
+        <Box
+          bg="#1f1f1f"
+          color={session.ok ? "#9cff8a" : "#ffef69"}
+          border={`3px solid ${PANEL_BORDER}`}
+          px={3}
+          py={3}
+          fontFamily="mono"
+          fontWeight="800"
+          fontSize="sm"
+          textAlign="center"
+          whiteSpace="normal"
+          data-house-result={session.ok ? "ok" : "error"}
+        >
+          {session.message}
+        </Box>
+      );
+    }
+    if (session.phase === "name") {
+      return (
+        <VStack align="stretch" spacing={2}>
+          {noticeBox}
+          <Input
+            autoFocus
+            size="md"
+            maxLength={30}
             fontFamily="mono"
-            fontWeight="800"
-            fontSize="sm"
-            textAlign="center"
-            data-house-placing="1"
+            fontWeight="700"
+            bg="#101010"
+            color="#9cff8a"
+            borderColor={PANEL_BORDER}
+            borderWidth="3px"
+            borderRadius="0"
+            _focus={{ borderColor: "#ff7b73", boxShadow: "none" }}
+            value={session.nameDraft ?? ""}
+            placeholder={house?.name ?? ""}
+            data-house-name-input="1"
+            onChange={(event) => {
+              const nameDraft = event.target.value;
+              setSession((prev) => (prev ? { ...prev, nameDraft, notice: undefined } : prev));
+            }}
+          />
+          <WindowButton onClick={submitName} testId="saveName">
+            💾 {t("house.name.save")}
+          </WindowButton>
+          <WindowButton
+            testId="resetName"
+            onClick={() => {
+              const current = getHouse(stateRef.current.mapId);
+              if (current) submit("house:set-name", { apartmentId: current.apartmentId, name: null });
+            }}
           >
-            {header}
+            {t("house.name.reset")}
+          </WindowButton>
+          <WindowButton secondary onClick={() => goTo("house")} testId="back">
+            {t("house.action.back")}
+          </WindowButton>
+        </VStack>
+      );
+    }
+    if (isDigits) {
+      return (
+        <VStack align="stretch" spacing={2}>
+          {noticeBox}
+          <Box
+            bg="#101010"
+            color="#9cff8a"
+            fontFamily="mono"
+            fontSize="2xl"
+            fontWeight="800"
+            textAlign="center"
+            px={2}
+            py={2}
+            minH="48px"
+            letterSpacing="0.25em"
+            border={`3px solid ${PANEL_BORDER}`}
+            data-house-keypad-value={session.digits}
+          >
+            {session.phase === "price" ? (session.digits ? `$${session.digits}` : "$") : "•".repeat(session.digits.length) || " "}
           </Box>
+          <SimpleGrid columns={3} spacing={2}>
+            {KEYPAD_KEYS.map((key) => (
+              <Button
+                key={key}
+                variant="unstyled"
+                height={compact ? "44px" : "52px"}
+                fontFamily="mono"
+                fontWeight="800"
+                fontSize={key === "OK" ? "md" : "xl"}
+                border="3px solid"
+                borderColor={key === "OK" ? "#2f9e44" : key === "⌫" ? "#c92a2a" : "#8a89a8"}
+                bg={key === "OK" ? "#e6f7e3" : key === "⌫" ? "#ffe3e0" : "#ffffff"}
+                color={INK}
+                _active={{ bg: "#fff3cf" }}
+                data-house-keypad-key={key}
+                onClick={() => {
+                  if (key === "OK") confirmDigits();
+                  else if (key === "⌫") popDigit();
+                  else pushDigit(key);
+                }}
+              >
+                {key === "OK" ? t("house.keypad.ok") : key}
+              </Button>
+            ))}
+          </SimpleGrid>
+          <WindowButton secondary onClick={backFromDigits} testId="back">
+            {t("house.action.back")}
+          </WindowButton>
+        </VStack>
+      );
+    }
+    return (
+      <VStack align="stretch" spacing={2}>
+        {noticeBox}
+        {entries.map((entry, index) => (
+          <WindowButton
+            key={entry.key}
+            active={session.selected === index}
+            disabled={entry.disabled}
+            secondary={entry.secondary}
+            onClick={() => !entry.disabled && entry.run()}
+            onMouseEnter={() => setSession((prev) => (prev ? { ...prev, selected: index } : prev))}
+            testId={entry.key}
+          >
+            {entry.label}
+          </WindowButton>
+        ))}
+      </VStack>
+    );
+  };
+
+  // Two roots on purpose: the placement banner lives with the other action
+  // menus (NPC_DIALOG_TOP), while the window is a real window and sits at
+  // SYSTEM_UX — above the touch pad, which would otherwise cover its rows.
+  const overlay = (
+    <Box position="fixed" inset={0} zIndex={windowOpen ? UX_LAYER.SYSTEM_UX : UX_LAYER.NPC_DIALOG_TOP} pointerEvents="none" data-game-ux="true" data-house-menu={session.phase}>
+      {session.kind === "placing" ? (
+        <Box position="fixed" left="50%" top="64px" style={{ transform: "translateX(-50%)" } as CSSProperties} maxW="92vw">
+          <VStack spacing={1} align="stretch">
+            <Box
+              bg="#1f1f1f"
+              color="#ffef69"
+              border={`3px solid ${PANEL_BORDER}`}
+              px={3}
+              py={2}
+              fontFamily="mono"
+              fontWeight="800"
+              fontSize="sm"
+              textAlign="center"
+              whiteSpace="normal"
+              data-house-placing="1"
+            >
+              {session.phase === "result" ? session.message : header}
+            </Box>
+            {session.notice ? (
+              <Box
+                bg="#1f1f1f"
+                color="#ff9c93"
+                border={`3px solid ${PANEL_BORDER}`}
+                px={3}
+                py={1}
+                fontFamily="mono"
+                fontWeight="800"
+                fontSize="xs"
+                textAlign="center"
+                whiteSpace="normal"
+                data-house-notice="error"
+              >
+                {session.notice.message}
+              </Box>
+            ) : null}
+          </VStack>
         </Box>
       ) : null}
 
-      {menuOpen || isDigits || isNaming ? (
+      {windowOpen ? (
         <Box
           position="fixed"
-          left={`${session.menuX}px`}
-          top={`${session.menuY}px`}
+          inset={0}
+          bg="rgba(0, 0, 0, 0.45)"
           pointerEvents="auto"
-          style={{ transform: "translate(-50%, calc(-100% - 12px))" } as CSSProperties}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <RetroPanel minWidth="220px" maxWidth="320px">
-            <VStack align="stretch" spacing={2}>
-              <HStack spacing={2} justify="center">
-                <Text fontSize="18px" lineHeight="1">🏠</Text>
-                <Text fontFamily="mono" fontWeight="800" fontSize="sm" color="#404040" textTransform="uppercase" noOfLines={2}>
-                  {header}
-                </Text>
-              </HStack>
-              {apt && session.phase === "apartment" ? (
-                <Text fontFamily="mono" fontSize="xs" color="#4a6a4a" textAlign="center" whiteSpace="normal">
-                  {apartmentStatus(apt)}
-                </Text>
-              ) : null}
-              {session.kind === "house" && house ? (
-                <Text fontFamily="mono" fontSize="xs" color="#4a6a4a" textAlign="center" whiteSpace="normal">
-                  {house.isOwner
-                    ? t("house.status.yours")
-                    : t("house.status.owned", { name: house.ownerName ?? "—" })}
-                </Text>
-              ) : null}
-              {isNaming ? (
-                <>
-                  <Text fontFamily="mono" fontSize="xs" color="#4a6a4a" textAlign="center" whiteSpace="normal">
-                    {t("house.name.title")}
-                  </Text>
-                  <Input
-                    autoFocus
-                    size="sm"
-                    maxLength={30}
-                    fontFamily="mono"
-                    bg="#101010"
-                    color="#9cff8a"
-                    borderColor="#5d5a7b"
-                    value={session.nameDraft ?? ""}
-                    placeholder={house?.name ?? ""}
-                    data-house-name-input="1"
-                    onChange={(event) => {
-                      const nameDraft = event.target.value;
-                      setSession((prev) => (prev ? { ...prev, nameDraft } : prev));
-                    }}
-                  />
-                  <MenuChoiceButton active={false} onClick={submitName}>
-                    {t("house.name.save")}
-                  </MenuChoiceButton>
-                  <MenuChoiceButton
-                    active={false}
-                    onClick={() => {
-                      const current = getHouse(stateRef.current.mapId);
-                      if (current) submit("house:set-name", { apartmentId: current.apartmentId, name: null });
-                    }}
-                  >
-                    {t("house.name.reset")}
-                  </MenuChoiceButton>
-                  <MenuChoiceButton
-                    active={false}
-                    onClick={() => setSession((prev) => (prev ? { ...prev, phase: "house", selected: 0 } : prev))}
-                  >
-                    {t("house.action.back")}
-                  </MenuChoiceButton>
-                </>
-              ) : isDigits ? (
-                <>
-                  <Text fontFamily="mono" fontSize="xs" color="#4a6a4a" textAlign="center" whiteSpace="normal">
-                    {session.phase === "price"
-                      ? t("house.price.title")
-                      : session.keypadPurpose === "setKey"
-                        ? t("house.keypad.set")
-                        : t("house.keypad.enter")}
-                  </Text>
-                  <Box
-                    bg="#101010"
-                    color="#9cff8a"
-                    fontFamily="mono"
-                    fontSize="lg"
-                    fontWeight="800"
-                    textAlign="center"
-                    px={2}
-                    py={1}
-                    minH="32px"
-                    letterSpacing="0.2em"
-                    data-house-keypad-value={session.digits}
-                  >
-                    {session.phase === "price"
-                      ? session.digits
-                        ? `$${session.digits}`
-                        : "$"
-                      : "•".repeat(session.digits.length) || " "}
-                  </Box>
-                  <SimpleGrid columns={3} spacing={1}>
-                    {KEYPAD_KEYS.map((key) => (
-                      <Button
-                        key={key}
-                        size="sm"
-                        fontFamily="mono"
-                        fontWeight="800"
-                        colorScheme={key === "OK" ? "green" : key === "⌫" ? "red" : "gray"}
-                        data-house-keypad-key={key}
-                        onClick={() => {
-                          if (key === "OK") confirmDigits();
-                          else if (key === "⌫") popDigit();
-                          else pushDigit(key);
-                        }}
-                      >
-                        {key === "OK" ? t("house.keypad.ok") : key}
-                      </Button>
-                    ))}
-                  </SimpleGrid>
-                  <MenuChoiceButton active={false} onClick={backFromDigits}>
-                    {t("house.action.back")}
-                  </MenuChoiceButton>
-                </>
-              ) : (
-                <Box
-                  maxH={session.phase === "music" ? "260px" : undefined}
-                  overflowY={session.phase === "music" ? "auto" : undefined}
-                  data-house-music-list={session.phase === "music" ? "1" : undefined}
-                >
-                  {session.phase === "music" ? (
-                    <Text fontFamily="mono" fontSize="xs" color="#4a6a4a" textAlign="center" whiteSpace="normal" mb={1}>
-                      {t("house.music.title")}
-                    </Text>
-                  ) : null}
-                  <VStack align="stretch" spacing={2}>
-                    {entries.map((entry, index) => (
-                      <MenuChoiceButton
-                        key={entry.key}
-                        active={session.selected === index}
-                        isDisabled={entry.disabled}
-                        onClick={() => !entry.disabled && entry.run()}
-                        onMouseEnter={() => setSession((prev) => (prev ? { ...prev, selected: index } : prev))}
-                      >
-                        {entry.label}
-                      </MenuChoiceButton>
-                    ))}
-                  </VStack>
-                </Box>
-              )}
-            </VStack>
-          </RetroPanel>
-        </Box>
-      ) : null}
-
-      {session.phase === "result" && session.message ? (
-        <Box
-          position="fixed"
-          left={`${session.menuX}px`}
-          top={`${session.menuY - 8}px`}
-          style={{ transform: "translate(-50%, -100%)" } as CSSProperties}
-          pointerEvents="none"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          px={3}
+          py={4}
+          onClick={cancel}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            cancel();
+          }}
+          data-house-window={session.kind}
         >
           <Box
-            bg="#1f1f1f"
-            color={session.ok ? "#9cff8a" : "#ffef69"}
-            border="3px solid #5d5a7b"
-            px={3}
-            py={2}
-            fontFamily="mono"
-            fontWeight="800"
-            fontSize="sm"
-            textAlign="center"
-            whiteSpace="normal"
-            maxW="300px"
-            data-house-result={session.ok ? "ok" : "error"}
+            role="dialog"
+            aria-label={header}
+            onClick={(event) => event.stopPropagation()}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            w="100%"
+            maxW={compact ? "380px" : "460px"}
+            maxH="min(84vh, 680px)"
+            display="flex"
+            flexDirection="column"
+            bg="#f7f4eb"
+            border={`4px solid ${PANEL_BORDER}`}
+            boxShadow="0 8px 0 rgba(122, 215, 255, 0.75)"
+            px={compact ? 3 : 4}
+            py={compact ? 3 : 4}
           >
-            {session.message}
+            <Flex align="center" gap={2} pb={2} mb={2} borderBottom={`3px solid ${PANEL_BORDER}`}>
+              <Text fontSize="22px" lineHeight="1">
+                🏠
+              </Text>
+              <Text
+                flex="1"
+                minW={0}
+                fontFamily="mono"
+                fontWeight="800"
+                fontSize={compact ? "sm" : "md"}
+                color={INK}
+                textTransform="uppercase"
+                whiteSpace="normal"
+                noOfLines={2}
+                data-house-title="1"
+              >
+                {header}
+              </Text>
+              <Button
+                variant="unstyled"
+                minW="32px"
+                h="32px"
+                border="3px solid #8a89a8"
+                bg="#ffffff"
+                color={INK}
+                fontFamily="mono"
+                fontWeight="800"
+                lineHeight="1"
+                onClick={cancel}
+                aria-label={t("house.action.close")}
+                data-house-close="1"
+              >
+                ✕
+              </Button>
+            </Flex>
+            {subtitle ? (
+              <Box mb={2}>
+                <Hint>{subtitle}</Hint>
+              </Box>
+            ) : null}
+            <Box ref={bodyRef} flex="1" minH={0} overflowY="auto" pr="2px" data-house-body={session.phase}>
+              {renderBody()}
+            </Box>
+            {!compact && session.phase !== "result" && session.phase !== "loading" ? (
+              <Box mt={2} pt={2} borderTop="2px dashed #b9b8cc">
+                <Text fontFamily="mono" fontSize="10px" color="#8a89a8" textAlign="center" fontWeight="700">
+                  {t("house.window.hint")}
+                </Text>
+              </Box>
+            ) : null}
           </Box>
         </Box>
       ) : null}

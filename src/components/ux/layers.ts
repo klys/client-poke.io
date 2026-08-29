@@ -18,7 +18,8 @@
  *   4300     NPC_DIALOG_TOP  event dialog text box + choices, water action menu
  *   4400     VIRTUAL_PAD   on-screen touch gamepad (value mirrored in
  *                          VirtualControls.css — keep both in sync)
- *   4500     SYSTEM_UX     game system interface: account menu and its windows
+ *   4500     SYSTEM_UX     game system interface: account menu and its windows,
+ *                          apartment/house window (HouseInteractionController)
  *   4550     SYSTEM_MODAL  Chakra modals opened from the system UX (equip
  *                          pickers, item targets, confirmations). Chakra
  *                          portals them to <body> at its default z-index
