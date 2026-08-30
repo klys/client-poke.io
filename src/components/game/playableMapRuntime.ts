@@ -70,6 +70,16 @@ const PLAYABLE_MAPS_CACHE_KEY = "server-cache:playableMaps";
 // localStorage quota (~10MB per origin) cannot be trusted to hold the maps payload,
 // so the last synced payload always lives in memory and storage writes are best-effort.
 let memoryPlayableMapsPayload: PlayableMapsSyncPayload | null = null;
+
+// Editor saves made before the first maps sync of the session (while
+// memoryPlayableMapsPayload is still null). Bridges saveMapEditorData ->
+// buildPlayableMapsSnapshot so the publish never falls back to the
+// quota-prone per-map localStorage copy. Superseded by the next synced
+// payload from the server.
+const pendingEditorDataByMapId = new Map<
+  string,
+  ReturnType<typeof sanitizePlayableMapEditorData>
+>();
 const MAPS_STORAGE_KEY = "designer:section:mapsEditor";
 const LEGACY_MAPS_STORAGE_KEY = "designer-demo:mapsEditor";
 const MAP_EDITOR_STORAGE_PREFIX = "designer:mapEditor:";
@@ -521,6 +531,8 @@ export function persistPlayableMapsSyncPayload(
   }
 
   memoryPlayableMapsPayload = sanitizedPayload;
+  // A synced payload supersedes any pre-sync editor saves parked below.
+  pendingEditorDataByMapId.clear();
 
   if (typeof window === "undefined") {
     return;
@@ -605,10 +617,20 @@ function resolvePlayableMapsSnapshot(snapshot?: PlayableMapsStateSnapshot) {
  * the server echo then snaps the editor back to the stale content.
  */
 export function updateMemoryPlayableMapEditorData(mapId: string, editorData: unknown) {
-  if (!mapId || !memoryPlayableMapsPayload) {
+  if (!mapId) {
     return;
   }
 
+  // No synced payload in memory yet (fresh session before the first sync):
+  // park the save in the pending map so the snapshot built right after this
+  // call still sees it — the per-map localStorage fallback fails silently
+  // under quota for tile-mapped maps.
+  if (!memoryPlayableMapsPayload) {
+    pendingEditorDataByMapId.set(mapId, sanitizePlayableMapEditorData(editorData));
+    return;
+  }
+
+  pendingEditorDataByMapId.delete(mapId);
   memoryPlayableMapsPayload = {
     ...memoryPlayableMapsPayload,
     state: {
@@ -630,6 +652,12 @@ export function loadPlayableMapEditorData(mapId: string) {
 
   if (memoryEditorData) {
     return memoryEditorData;
+  }
+
+  const pendingEditorData = pendingEditorDataByMapId.get(mapId);
+
+  if (pendingEditorData) {
+    return pendingEditorData;
   }
 
   if (typeof window === "undefined") {

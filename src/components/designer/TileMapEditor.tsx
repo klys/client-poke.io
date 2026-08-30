@@ -254,6 +254,13 @@ export default function TileMapEditor({
       return;
     }
 
+    // External content is replacing the editing buffers: abandon any stroke
+    // in progress — its recorded "previous" values belong to the old arrays,
+    // so finishing it would diff against the wrong baseline and emit nothing.
+    strokeRef.current = null;
+    strokeAnchorRef.current = null;
+    rectDraftRef.current = null;
+
     layersRef.current = decodeTileMapLayers(tileMap);
     overridesRef.current =
       decodeCollisionOverrideCells(tileMap) ?? new Uint8Array(tileMap.width * tileMap.height);

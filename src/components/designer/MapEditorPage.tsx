@@ -971,62 +971,133 @@ export default function MapEditorPage() {
     });
   };
 
+  // Publish and wait for the server's answer: the save handler echoes
+  // "playableMaps:state" on success and "playableMaps:error" on failure. A
+  // fire-and-forget emit used to report "saved" even when the multi-MB packet
+  // never reached the server (disconnect mid-send), silently losing the edit
+  // on the next session.
+  const publishMapsStateConfirmed = (nextMapsState: DesignerSectionState) =>
+    new Promise<"confirmed" | "error" | "unconfirmed">((resolve) => {
+      if (!socket || !authenticated) {
+        resolve("unconfirmed");
+        return;
+      }
+
+      const timeout = window.setTimeout(() => {
+        cleanup();
+        resolve("unconfirmed");
+      }, 30000);
+
+      const handleState = () => {
+        cleanup();
+        resolve("confirmed");
+      };
+
+      const handleError = () => {
+        cleanup();
+        resolve("error");
+      };
+
+      const cleanup = () => {
+        window.clearTimeout(timeout);
+        socket.off("playableMaps:state", handleState);
+        socket.off("playableMaps:error", handleError);
+      };
+
+      socket.on("playableMaps:state", handleState);
+      socket.on("playableMaps:error", handleError);
+      socket.emit("designer:maps:update", {
+        state: buildPlayableMapsSnapshot(nextMapsState),
+      });
+    });
+
   const handleToolbarSave = async () => {
     if (!mapId || isSaving) {
       return;
     }
 
-    let nextEditorData = editorData;
+    setIsSaving(true);
 
-    if (editorData.tileMap) {
-      setIsSaving(true);
+    try {
+      // The canvas stays editable while the async bake/publish run below, so
+      // work only on this snapshot and never overwrite `editorData` with it —
+      // edits made meanwhile must survive as new unsaved changes.
+      const snapshot = editorData;
+      let nextEditorData = snapshot;
 
-      try {
-        const bakeResult = await bakeTileMapForSave(mapId, editorData.tileMap, socket);
+      if (snapshot.tileMap) {
+        try {
+          const bakeResult = await bakeTileMapForSave(mapId, snapshot.tileMap, socket);
 
-        nextEditorData = { ...editorData, tileMap: bakeResult.tileMap };
-        setEditorData(nextEditorData);
+          nextEditorData = { ...snapshot, tileMap: bakeResult.tileMap };
+          setEditorData((current) =>
+            current === snapshot
+              ? nextEditorData
+              : current.tileMap
+                ? { ...current, tileMap: { ...current.tileMap, baked: bakeResult.tileMap.baked } }
+                : current
+          );
 
-        if (!bakeResult.uploaded) {
+          if (!bakeResult.uploaded) {
+            toast({
+              title: "Baked map surfaces stored inline.",
+              description:
+                "The asset upload was unavailable, so the baked images were embedded in the map data.",
+              status: "warning",
+              duration: 4000,
+              isClosable: true,
+              position: "top",
+            });
+          }
+        } catch (error) {
           toast({
-            title: "Baked map surfaces stored inline.",
+            title: "Unable to bake the tile map.",
+            description: error instanceof Error ? error.message : "Unknown baking error.",
+            status: "error",
+            duration: 5000,
+            isClosable: true,
+            position: "top",
+          });
+          return;
+        }
+      }
+
+      saveMapEditorData(mapId, nextEditorData);
+
+      const outcome = await publishMapsStateConfirmed(mapsState);
+
+      if (outcome !== "confirmed") {
+        // Leave savedEditorData untouched so the editor stays dirty and the
+        // Save button re-publishes. On "error" the playableMaps:error handler
+        // already showed the server's message.
+        if (outcome === "unconfirmed") {
+          toast({
+            title: "The server did not confirm the save.",
             description:
-              "The asset upload was unavailable, so the baked images were embedded in the map data.",
+              "The map data was sent but no confirmation arrived. Keep this tab open and press Save again.",
             status: "warning",
-            duration: 4000,
+            duration: 6000,
             isClosable: true,
             position: "top",
           });
         }
-      } catch (error) {
-        setIsSaving(false);
-        toast({
-          title: "Unable to bake the tile map.",
-          description: error instanceof Error ? error.message : "Unknown baking error.",
-          status: "error",
-          duration: 5000,
-          isClosable: true,
-          position: "top",
-        });
         return;
       }
 
+      setSavedEditorData(nextEditorData);
+      toast({
+        title: "Map editor changes saved.",
+        description: `${nextEditorData.objects.length} objects, ${nextEditorData.portals.length} portals, ${nextEditorData.npcs.length} NPCs${
+          nextEditorData.tileMap ? ", and the baked tile map" : ""
+        } stored for this map.`,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+        position: "top",
+      });
+    } finally {
       setIsSaving(false);
     }
-
-    saveMapEditorData(mapId, nextEditorData);
-    setSavedEditorData(nextEditorData);
-    publishMapsState(mapsState);
-    toast({
-      title: "Map editor changes saved.",
-      description: `${nextEditorData.objects.length} objects, ${nextEditorData.portals.length} portals, ${nextEditorData.npcs.length} NPCs${
-        nextEditorData.tileMap ? ", and the baked tile map" : ""
-      } stored for this map.`,
-      status: "success",
-      duration: 3000,
-      isClosable: true,
-      position: "top",
-    });
   };
 
   const handleSaveProperties = () => {
@@ -1212,7 +1283,7 @@ export default function MapEditorPage() {
             colorScheme="green"
             isDisabled={!isEditorDirty}
             isLoading={isSaving}
-            loadingText="Baking..."
+            loadingText="Saving..."
           >
             Save
           </Button>
