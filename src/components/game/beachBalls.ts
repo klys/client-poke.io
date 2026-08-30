@@ -17,6 +17,8 @@ type LiveBall = {
   toY: number;
   stepMs: number;
   startsAt: number;
+  /** Wall/edge rebound in progress: render an arc over the pusher, not a roll. */
+  bounced: boolean;
 };
 
 export type BallSnapshotPacket = {
@@ -40,6 +42,7 @@ export type BallStepPacket = {
   toY: number;
   stepMs: number;
   pushesLeft: number;
+  bounced?: boolean;
 };
 
 /** How long a deflated ball keeps rendering its pop animation before removal. */
@@ -80,7 +83,8 @@ function liveFromSnapshot(snapshot: BallSnapshotPacket, now: number): LiveBall {
     toX: isFiniteNumber(snapshot.toX) ? snapshot.toX : snapshot.x,
     toY: isFiniteNumber(snapshot.toY) ? snapshot.toY : snapshot.y,
     stepMs,
-    startsAt: now - elapsed + INTERP_DELAY_MS
+    startsAt: now - elapsed + INTERP_DELAY_MS,
+    bounced: false
   };
 }
 
@@ -170,7 +174,8 @@ export function applyBallStep(mapId: string, step: BallStepPacket) {
     toX: step.toX,
     toY: step.toY,
     stepMs: isFiniteNumber(step.stepMs) && step.stepMs > 0 ? step.stepMs : 180,
-    startsAt: performance.now() + INTERP_DELAY_MS
+    startsAt: performance.now() + INTERP_DELAY_MS,
+    bounced: step.bounced === true
   };
 }
 
@@ -201,7 +206,7 @@ export function getBallCellPosition(
   mapId: string,
   id: string,
   now: number
-): { x: number; y: number; moving: boolean } | null {
+): { x: number; y: number; moving: boolean; bounceArc: number } | null {
   const ball = ballsByMap.get(mapId)?.get(id);
 
   if (!ball) {
@@ -212,14 +217,17 @@ export function getBallCellPosition(
   const isStep = live.toX !== live.fromX || live.toY !== live.fromY;
 
   if (!isStep) {
-    return { x: live.fromX, y: live.fromY, moving: false };
+    return { x: live.fromX, y: live.fromY, moving: false, bounceArc: 0 };
   }
 
   const progress = Math.max(0, Math.min(1, (now - live.startsAt) / live.stepMs));
+  const moving = progress > 0 && progress < 1;
 
   return {
     x: live.fromX + (live.toX - live.fromX) * progress,
     y: live.fromY + (live.toY - live.fromY) * progress,
-    moving: progress > 0 && progress < 1
+    moving,
+    // 0→1→0 hop height while a wall rebound flies over the pusher.
+    bounceArc: live.bounced && moving ? Math.sin(progress * Math.PI) : 0
   };
 }

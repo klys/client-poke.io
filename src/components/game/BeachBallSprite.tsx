@@ -48,6 +48,12 @@ export default function BeachBallSprite({
       const live = getBallCellPosition(mapId, ball.id, now);
       if (live) {
         boxNode.style.transform = `translate(${live.x * cellSize}px, ${live.y * cellSize}px)`;
+        // Wall rebound: the ball arcs over the pusher's head back behind them.
+        // While airborne it draws above players (999) and foreground (1200).
+        spriteNode.style.transform = live.bounceArc > 0
+          ? `translateY(${-live.bounceArc * cellSize * 0.9}px)`
+          : "";
+        boxNode.style.zIndex = live.bounceArc > 0 ? "1210" : "998";
       }
 
       let frame: number;
